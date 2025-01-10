@@ -29,10 +29,12 @@ venv/
 ENV/
 .env.mainnet
 .env.production
+.conda/
 
 # IDE
 .idea/
 .vscode/
+.vs/
 *.swp
 *.swo
 .project
@@ -67,6 +69,7 @@ reports/
 temp_contracts/
 cache/
 artifacts/
+.frontmatter/
 
 # Node
 node_modules/
@@ -78,3 +81,11 @@ package-lock.json
 temp.txt
 output.txt
 *.temp
+MAINNET_WALLET.json
+
+# Documentation
+docs/images/
+docs/failed_attempts/
+
+# Deployment
+deployments - Copy/
