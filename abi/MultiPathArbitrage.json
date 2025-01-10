@@ -1,0 +1,204 @@
+[
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "_minProfitBasisPoints",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "_maxTradeSize",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "_emergencyWithdrawalDelay",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address[]",
+                "name": "path",
+                "type": "address[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "address[]",
+                "name": "dexes",
+                "type": "address[]"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amountIn",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amountOut",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "profit",
+                "type": "uint256"
+            }
+        ],
+        "name": "ArbitrageExecuted",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "timestamp",
+                "type": "uint256"
+            }
+        ],
+        "name": "EmergencyWithdrawalRequested",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "EmergencyWithdrawalExecuted",
+        "type": "event"
+    },
+    {
+        "inputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "address[]",
+                        "name": "path",
+                        "type": "address[]"
+                    },
+                    {
+                        "internalType": "address[]",
+                        "name": "dexes",
+                        "type": "address[]"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "totalGasEstimate",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "expectedProfit",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "useFlashLoan",
+                        "type": "bool"
+                    }
+                ],
+                "internalType": "struct IArbitrageTypes.ArbitragePath",
+                "name": "path",
+                "type": "tuple"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "executeMultiPathArbitrage",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+            }
+        ],
+        "name": "executeEmergencyWithdrawal",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "requestEmergencyWithdrawal",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_priceFeedRegistry",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "_dexRegistry",
+                "type": "address"
+            }
+        ],
+        "name": "setRegistries",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_flashbotsRelayer",
+                "type": "address"
+            },
+            {
+                "internalType": "bool",
+                "name": "_usePrivateMempool",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "_maxGasPrice",
+                "type": "uint256"
+            }
+        ],
+        "name": "setMEVProtection",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]

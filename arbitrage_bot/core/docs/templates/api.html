@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/github.min.css">
+    <style>
+        body {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        
+        .endpoint {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+        
+        .method-get {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+        }
+        
+        .method-post {
+            background-color: #e8f5e9;
+            color: #1b5e20;
+        }
+        
+        .method-put {
+            background-color: #fff3e0;
+            color: #e65100;
+        }
+        
+        .method-delete {
+            background-color: #ffebee;
+            color: #b71c1c;
+        }
+        
+        .path {
+            font-family: monospace;
+            font-size: 1.1rem;
+        }
+        
+        .description {
+            margin: 1rem 0;
+            color: #666;
+        }
+        
+        .parameters {
+            margin: 1rem 0;
+        }
+        
+        .parameter {
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .parameter:last-child {
+            border-bottom: none;
+        }
+        
+        .parameter-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .parameter-type {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .parameter-required {
+            color: #dc3545;
+            font-size: 0.8rem;
+        }
+        
+        .parameter-optional {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+        
+        .response {
+            margin: 1rem 0;
+        }
+        
+        .response-code {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        pre {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin: 1rem 0;
+        }
+        
+        .schema {
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .nav-link {
+            color: #333;
+        }
+        
+        .nav-link.active {
+            font-weight: bold;
+        }
+        
+        #sidebar {
+            position: sticky;
+            top: 2rem;
+            height: calc(100vh - 4rem);
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2">
+                <div id="sidebar">
+                    <h5>API Documentation</h5>
+                    <hr>
+                    <nav class="nav flex-column">
+                        <a class="nav-link" href="#overview">Overview</a>
+                        <a class="nav-link" href="#authentication">Authentication</a>
+                        <div class="ms-3">
+                            <a class="nav-link" href="#jwt-auth">JWT</a>
+                            <a class="nav-link" href="#api-key-auth">API Key</a>
+                        </div>
+                        <a class="nav-link" href="#endpoints">Endpoints</a>
+                        {% for path, methods in paths.items() %}
+                        <div class="ms-3">
+                            <a class="nav-link" href="#{{ path|replace('/', '-')|trim('-') }}">
+                                {{ path }}
+                            </a>
+                        </div>
+                        {% endfor %}
+                    </nav>
+                </div>
+            </div>
+
+            <!-- Main content -->
+            <div class="col-md-9 col-lg-10">
+                <div class="container">
+                    <!-- Overview -->
+                    <section id="overview">
+                        <h1>{{ title }}</h1>
+                        <p class="lead">{{ description }}</p>
+                        <p>Version: {{ version }}</p>
+                    </section>
+
+                    <hr>
+
+                    <!-- Authentication -->
+                    <section id="authentication">
+                        <h2>Authentication</h2>
+                        <p>This API supports two authentication methods:</p>
+
+                        <h3 id="jwt-auth">JWT Authentication</h3>
+                        <ol>
+                            <li>Get a token using the <code>/api/v1/auth/token</code> endpoint</li>
+                            <li>Include the token in the Authorization header:
+                                <pre><code>Authorization: Bearer your-token-here</code></pre>
+                            </li>
+                        </ol>
+
+                        <h3 id="api-key-auth">API Key Authentication</h3>
+                        <ol>
+                            <li>Create an API key using the dashboard</li>
+                            <li>Include the key in the X-API-Key header:
+                                <pre><code>X-API-Key: your-api-key-here</code></pre>
+                            </li>
+                        </ol>
+                    </section>
+
+                    <hr>
+
+                    <!-- Endpoints -->
+                    <section id="endpoints">
+                        <h2>Endpoints</h2>
+
+                        {% for path, methods in paths.items() %}
+                        <div id="{{ path|replace('/', '-')|trim('-') }}" class="endpoint">
+                            <h3 class="path">{{ path }}</h3>
+
+                            {% for method, details in methods.items() %}
+                            <div class="method-details">
+                                <span class="method method-{{ method|lower }}">{{ method|upper }}</span>
+                                <p class="description">{{ details.description }}</p>
+
+                                {% if details.parameters %}
+                                <div class="parameters">
+                                    <h4>Parameters</h4>
+                                    {% for param in details.parameters %}
+                                    <div class="parameter">
+                                        <span class="parameter-name">{{ param.name }}</span>
+                                        <span class="parameter-type">({{ param.in }})</span>
+                                        {% if param.required %}
+                                        <span class="parameter-required">Required</span>
+                                        {% else %}
+                                        <span class="parameter-optional">Optional</span>
+                                        {% endif %}
+                                        <p>{{ param.description }}</p>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+
+                                {% if details.requestBody %}
+                                <div class="request-body">
+                                    <h4>Request Body</h4>
+                                    {% for content_type, content in details.requestBody.content.items() %}
+                                    <p>Content-Type: {{ content_type }}</p>
+                                    <pre><code class="language-json">{{ content.schema|tojson(indent=2) }}</code></pre>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+
+                                {% if details.responses %}
+                                <div class="responses">
+                                    <h4>Responses</h4>
+                                    {% for status, response in details.responses.items() %}
+                                    <div class="response">
+                                        <span class="response-code">{{ status }}</span>
+                                        <p>{{ response.description }}</p>
+                                        {% if response.content %}
+                                        {% for content_type, content in response.content.items() %}
+                                        <pre><code class="language-json">{{ content.schema|tojson(indent=2) }}</code></pre>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/highlight.min.js"></script>
+    <script>
+        // Initialize syntax highlighting
+        hljs.highlightAll();
+
+        // Active link tracking
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                
+                if (pageYOffset >= sectionTop - 60) {
+                    current = section.getAttribute('id');
+                }
+            });
+            
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').includes(current)) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1250 @@
+[
+  {
+    "timestamp": 1736414316.5768318,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414415.7073083,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414448.830955,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414529.3371634,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414611.9762948,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414689.9057984,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414786.8910825,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414864.3898501,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736414920.7045598,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415077.4524667,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415168.144075,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415222.8955948,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415731.0552757,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415737.635489,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415820.479544,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415827.6553557,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415974.1965702,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736415981.4095492,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416039.9912524,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416047.3962984,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416108.6611927,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416115.4095578,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416651.203932,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416658.308927,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416785.527195,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416792.752191,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416916.5097494,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736416923.5960557,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417146.075588,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417231.3079429,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417238.756541,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417467.8415334,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417474.5933392,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417627.2218597,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417634.1215737,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417781.266991,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417788.2727954,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417931.949721,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736417956.4728277,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736418179.8109627,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736418185.496763,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736418583.5971239,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736418585.9643784,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736418653.2907102,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736418655.7548127,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419197.5417907,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419199.9600353,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419289.6490126,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419291.9285889,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419411.9767427,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419414.1419861,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419512.127206,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419515.005746,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419643.2981043,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419646.180862,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419758.17446,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419761.0955927,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419942.8462102,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736419945.9731913,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736420976.81504,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736420978.4228656,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736428677.1762269,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736429098.7921786,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736429270.6992948,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736429338.5363579,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736429420.8525882,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736429513.8342326,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736429580.1541386,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736429818.7276814,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430004.983166,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430119.5122154,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430143.4151092,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430329.1863506,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430420.2272115,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430537.930919,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430718.7668357,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430721.0114253,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430808.8781111,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736430944.2435374,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736431042.3812902,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736440639.4373393,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736440677.7693028,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736440977.1276493,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736441054.316802,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736441280.121388,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736441437.741032,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736441581.184663,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736441777.039022,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736441872.7317195,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736441918.268301,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736442036.516637,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736442242.068279,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736442542.813969,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736442843.620813,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736443120.3107069,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736443421.0838733,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736443721.9339998,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736444022.7408633,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736444323.5376332,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736444624.360142,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736444925.1210635,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736445225.9147656,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736445526.6985505,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736445827.4733415,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736446128.3325236,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736446429.0562747,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736446729.822562,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736447030.617007,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736447331.3026216,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736447632.0435195,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736447932.7879171,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736448233.5823607,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736448534.3579297,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736448835.106943,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736449135.819462,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736449436.5958579,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736449737.362111,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736450038.1413448,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736450338.8966146,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736450639.665095,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736450940.7835505,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736451241.5488944,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736451542.331154,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736451843.091504,
+    "avg_gas_price": 0,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736452361.3008125,
+    "avg_gas_price": 13402256,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736452426.7906132,
+    "avg_gas_price": 18083203,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736452727.6250675,
+    "avg_gas_price": 12900044,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736453030.022195,
+    "avg_gas_price": 14467435,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736453657.0378993,
+    "avg_gas_price": 22222573,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736453957.9032197,
+    "avg_gas_price": 29002932,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736455818.8951056,
+    "avg_gas_price": 24909144,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736455931.7953398,
+    "avg_gas_price": 23099304,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736456251.215498,
+    "avg_gas_price": 18237824,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736456516.329383,
+    "avg_gas_price": 15787172,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736456599.2686985,
+    "avg_gas_price": 15484874,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736456767.5717692,
+    "avg_gas_price": 14751671,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736456982.2743213,
+    "avg_gas_price": 14151249,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736457263.6386778,
+    "avg_gas_price": 12671898,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736457346.3561914,
+    "avg_gas_price": 12300945,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736457479.6385796,
+    "avg_gas_price": 11936153,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736457656.1293666,
+    "avg_gas_price": 11518216,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736458420.0557396,
+    "avg_gas_price": 12488749,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736458505.641057,
+    "avg_gas_price": 12229731,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736458582.8435824,
+    "avg_gas_price": 11876832,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736458750.8763447,
+    "avg_gas_price": 11275074,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736458961.6542287,
+    "avg_gas_price": 10548020,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736459190.2372124,
+    "avg_gas_price": 9807563,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736459396.6500845,
+    "avg_gas_price": 9447441,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736459611.5546017,
+    "avg_gas_price": 15985608,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736459879.8015165,
+    "avg_gas_price": 11774801,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736460091.114652,
+    "avg_gas_price": 14285028,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736460901.834972,
+    "avg_gas_price": 11519863,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736461691.6789892,
+    "avg_gas_price": 10131851,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736462018.114049,
+    "avg_gas_price": 8091293,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736469407.210642,
+    "avg_gas_price": 1977124,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  },
+  {
+    "timestamp": 1736472477.7988331,
+    "avg_gas_price": 2242840,
+    "avg_gas_used": 0,
+    "total_gas_cost": "0.0",
+    "success_rate": 1.0,
+    "confirmation_time": 0.0
+  }
+]

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Status Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Trades</h5>
+                    <h2 class="card-text" id="total-trades">0</h2>
+                    <small>Last 24 hours: <span id="trades-24h">0</span></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Success Rate</h5>
+                    <h2 class="card-text" id="success-rate">0%</h2>
+                    <small>Failed: <span id="failed-trades">0</span></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Profit</h5>
+                    <h2 class="card-text" id="total-profit">$0.00</h2>
+                    <small>24h Profit: <span id="profit-24h">$0.00</span></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Active Opportunities</h5>
+                    <h2 class="card-text" id="active-opportunities">0</h2>
+                    <small>Rejected: <span id="rejected-opportunities">0</span></small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Container -->
+    <div id="alerts-container" class="mb-4"></div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Profit History</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="profit-chart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Trade Volume</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="volume-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Recent Trades</h5>
+                    <a href="{{ url_for('history') }}" class="btn btn-sm btn-primary">View All</a>
+                </div>
+                <div class="card-body">
+                    <div id="recent-trades" class="list-group list-group-flush">
+                        <div class="text-center">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Current Opportunities</h5>
+                    <a href="{{ url_for('opportunities') }}" class="btn btn-sm btn-primary">View All</a>
+                </div>
+                <div class="card-body">
+                    <div id="current-opportunities" class="list-group list-group-flush">
+                        <div class="text-center">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='home.js') }}"></script>
+{% endblock %}

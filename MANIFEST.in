@@ -1,0 +1,4 @@
+recursive-include arbitrage_bot/dashboard/static *
+recursive-include arbitrage_bot/dashboard/templates *
+recursive-include arbitrage_bot/configs *.json
+recursive-include arbitrage_bot/abi *.json

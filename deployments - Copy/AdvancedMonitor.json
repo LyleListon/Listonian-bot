@@ -1,0 +1,50 @@
+{
+    "address": "0x0000000000000000000000000000000000000000",
+    "abi": [
+        {
+            "inputs": [
+                {"internalType": "address", "name": "token0", "type": "address"},
+                {"internalType": "address", "name": "token1", "type": "address"},
+                {"internalType": "address", "name": "router", "type": "address"}
+            ],
+            "name": "getVolatilityData",
+            "outputs": [
+                {"internalType": "uint256", "name": "", "type": "uint256"},
+                {"internalType": "uint256", "name": "", "type": "uint256"},
+                {"internalType": "uint256", "name": "", "type": "uint256"},
+                {"internalType": "uint256", "name": "", "type": "uint256"},
+                {"internalType": "uint256[]", "name": "", "type": "uint256[]"}
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {"internalType": "address", "name": "router1", "type": "address"},
+                {"internalType": "address", "name": "router2", "type": "address"}
+            ],
+            "name": "getDEXCorrelation",
+            "outputs": [
+                {"internalType": "int256", "name": "", "type": "int256"},
+                {"internalType": "int256", "name": "", "type": "int256"},
+                {"internalType": "uint256", "name": "", "type": "uint256"}
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {"internalType": "address", "name": "token0", "type": "address"},
+                {"internalType": "address", "name": "token1", "type": "address"}
+            ],
+            "name": "getMetrics",
+            "outputs": [
+                {"internalType": "uint256", "name": "", "type": "uint256"},
+                {"internalType": "uint256", "name": "", "type": "uint256"},
+                {"internalType": "uint256", "name": "", "type": "uint256"}
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ]
+}

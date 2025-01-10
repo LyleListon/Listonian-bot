@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+
+{% block title %}Report Templates{% endblock %}
+
+{% block styles %}
+<style>
+.template-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.template-list {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.template-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.template-item:last-child {
+    border-bottom: none;
+}
+
+.template-info {
+    flex-grow: 1;
+}
+
+.template-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.template-meta {
+    font-size: 12px;
+    color: #666;
+}
+
+.template-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.color-preview {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Template Creation Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="template-card">
+                <h4>Create Report Template</h4>
+                <form id="template-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Template Name</label>
+                                <input type="text" class="form-control" id="template-name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Description</label>
+                                <textarea class="form-control" id="template-description" rows="3" required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Report Type</label>
+                                <select class="form-select" id="report-type" required>
+                                    <option value="performance">Performance Report</option>
+                                    <option value="comparison">Strategy Comparison</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Page Size</label>
+                                <select class="form-select" id="page-size" required>
+                                    <!-- Page size options will be inserted here -->
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Orientation</label>
+                                <select class="form-select" id="orientation" required>
+                                    <!-- Orientation options will be inserted here -->
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Primary Color</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <div class="color-preview" id="primary-color-preview"></div>
+                                    </span>
+                                    <select class="form-select" id="primary-color" required>
+                                        <!-- Color options will be inserted here -->
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Secondary Color</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <div class="color-preview" id="secondary-color-preview"></div>
+                                    </span>
+                                    <select class="form-select" id="secondary-color" required>
+                                        <!-- Color options will be inserted here -->
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Template</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Templates List -->
+    <div class="row">
+        <div class="col-12">
+            <div class="template-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4>Available Templates</h4>
+                    <div class="d-flex gap-2">
+                        <select class="form-select" id="template-type-filter">
+                            <option value="all">All Templates</option>
+                            <option value="performance">Performance Reports</option>
+                            <option value="comparison">Strategy Comparisons</option>
+                        </select>
+                        <button class="btn btn-outline-primary" onclick="refreshTemplates()">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="template-list" id="template-list">
+                    <!-- Template items will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Show loading overlay
+function showLoading() {
+    document.getElementById('loading-overlay').style.display = 'flex';
+}
+
+// Hide loading overlay
+function hideLoading() {
+    document.getElementById('loading-overlay').style.display = 'none';
+}
+
+// Update color preview
+function updateColorPreview(colorId, previewId) {
+    const color = document.getElementById(colorId).value;
+    document.getElementById(previewId).style.backgroundColor = color;
+}
+
+// Load defaults
+async function loadDefaults() {
+    try {
+        const response = await fetch('/api/templates/defaults');
+        const data = await response.json();
+        
+        if (data.success) {
+            const defaults = data.data;
+            
+            // Load page sizes
+            const pageSizeSelect = document.getElementById('page-size');
+            pageSizeSelect.innerHTML = '';
+            defaults.page_sizes.forEach(size => {
+                const option = document.createElement('option');
+                option.value = size.value;
+                option.textContent = size.label;
+                pageSizeSelect.appendChild(option);
+            });
+            
+            // Load orientations
+            const orientationSelect = document.getElementById('orientation');
+            orientationSelect.innerHTML = '';
+            defaults.orientations.forEach(orientation => {
+                const option = document.createElement('option');
+                option.value = orientation.value;
+                option.textContent = orientation.label;
+                orientationSelect.appendChild(option);
+            });
+            
+            // Load colors
+            const colorSelects = [
+                document.getElementById('primary-color'),
+                document.getElementById('secondary-color')
+            ];
+            
+            colorSelects.forEach(select => {
+                select.innerHTML = '';
+                Object.entries(defaults.colors).forEach(([name, value]) => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+                    select.appendChild(option);
+                });
+            });
+            
+            // Update color previews
+            updateColorPreview('primary-color', 'primary-color-preview');
+            updateColorPreview('secondary-color', 'secondary-color-preview');
+        }
+        
+    } catch (error) {
+        console.error('Failed to load defaults:', error);
+    }
+}
+
+// Create template
+async function createTemplate(event) {
+    event.preventDefault();
+    showLoading();
+    
+    try {
+        const formData = {
+            name: document.getElementById('template-name').value,
+            description: document.getElementById('template-description').value,
+            report_type: document.getElementById('report-type').value,
+            style_config: {
+                colors: {
+                    primary: document.getElementById('primary-color').value,
+                    secondary: document.getElementById('secondary-color').value
+                }
+            },
+            layout_config: {
+                page_size: document.getElementById('page-size').value,
+                orientation: document.getElementById('orientation').value
+            },
+            content_config: {
+                sections: {}  // Will be populated based on report type
+            }
+        };
+        
+        // Add content sections based on report type
+        if (formData.report_type === 'performance') {
+            formData.content_config.sections = {
+                summary: {
+                    required: true,
+                    max_length: 500
+                },
+                metrics: {
+                    required: true,
+                    metrics: [
+                        'alpha',
+                        'beta',
+                        'sharpe_ratio',
+                        'sortino_ratio',
+                        'max_drawdown',
+                        'win_rate'
+                    ]
+                },
+                charts: {
+                    required: true,
+                    charts: [
+                        'returns',
+                        'drawdown'
+                    ]
+                }
+            };
+        } else {
+            formData.content_config.sections = {
+                overview: {
+                    required: true,
+                    max_length: 500
+                },
+                comparison: {
+                    required: true,
+                    metrics: [
+                        'alpha',
+                        'beta',
+                        'sharpe_ratio',
+                        'information_ratio',
+                        'max_drawdown',
+                        'win_rate'
+                    ]
+                },
+                charts: {
+                    required: true,
+                    charts: [
+                        'returns_comparison',
+                        'risk_comparison'
+                    ]
+                }
+            };
+        }
+        
+        const response = await fetch('/api/templates', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (response.ok) {
+            document.getElementById('template-form').reset();
+            refreshTemplates();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to create template');
+        }
+        
+    } catch (error) {
+        console.error('Failed to create template:', error);
+        alert(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// Delete template
+async function deleteTemplate(templateId) {
+    if (!confirm('Are you sure you want to delete this template?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/templates/${templateId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            refreshTemplates();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete template');
+        }
+        
+    } catch (error) {
+        console.error('Failed to delete template:', error);
+        alert(error.message);
+    }
+}
+
+// Refresh templates list
+async function refreshTemplates() {
+    try {
+        const type = document.getElementById('template-type-filter').value;
+        
+        const response = await fetch('/api/templates' + 
+            (type !== 'all' ? `?report_type=${type}` : ''));
+        const data = await response.json();
+        
+        if (data.success) {
+            const list = document.getElementById('template-list');
+            list.innerHTML = '';
+            
+            data.data.forEach(template => {
+                const item = document.createElement('div');
+                item.className = 'template-item';
+                item.innerHTML = `
+                    <div class="template-info">
+                        <div class="template-title">${template.name}</div>
+                        <div class="template-meta">
+                            Type: ${template.report_type === 'performance' ? 'Performance Report' : 'Strategy Comparison'}
+                            | Page Size: ${template.layout_config.page_size}
+                            | Orientation: ${template.layout_config.orientation}
+                        </div>
+                        <div class="template-meta">
+                            ${template.description}
+                        </div>
+                    </div>
+                    <div class="template-actions">
+                        <button class="btn btn-sm btn-danger" onclick="deleteTemplate('${template.template_id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+        
+    } catch (error) {
+        console.error('Failed to refresh templates:', error);
+    }
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    loadDefaults();
+    document.getElementById('template-form').addEventListener('submit', createTemplate);
+    document.getElementById('primary-color').addEventListener('change', () => updateColorPreview('primary-color', 'primary-color-preview'));
+    document.getElementById('secondary-color').addEventListener('change', () => updateColorPreview('secondary-color', 'secondary-color-preview'));
+    document.getElementById('template-type-filter').addEventListener('change', refreshTemplates);
+    refreshTemplates();
+});
+</script>
+{% endblock %}

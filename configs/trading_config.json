@@ -1,0 +1,121 @@
+{
+    "network": {
+        "rpc_url": "https://mainnet.base.org",
+        "backup_rpc_url": "https://base.blockpi.network/v1/rpc/public",
+        "chain_id": 8453,
+        "name": "Base"
+    },
+    "dexes": {
+        "aerodrome": {
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+            "version": "v2"
+        }
+    },
+    "tokens": {
+        "WETH": {
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18,
+            "min_amount": 0.1
+        },
+        "USDC": {
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6,
+            "min_amount": 100.0
+        },
+        "DAI": {
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 18,
+            "min_amount": 100.0
+        }
+    },
+    "pairs": [
+        {
+            "token0": "WETH",
+            "token1": "USDC",
+            "priority": 1,
+            "pools": {
+                "aerodrome_Volatile": "0xcDAC0d6c6C59727a65F871236188350531885C43",
+                "aerodrome_Stable": "0x3548029694fbB241D45FB24Ba0cd9c9d4E745f16"
+            },
+            "max_trade_size": 0.1,
+            "historical_profit": 0,
+            "historical_success_rate": 0.8
+        }
+    ],
+    "trading": {
+        "min_profit_usd": 0.5,
+        "max_trade_size_usd": 10.0,
+        "slippage_tolerance": 0.005,
+        "use_live_price_feed": true,
+        "balance_targets": {
+            "usdc_target_percent": 80,
+            "min_eth_for_gas_usd": 10.0,
+            "rebalance_threshold_percent": 5,
+            "rebalance_check_interval": 60
+        },
+        "safety": {
+            "min_balance_usd": 20.0,
+            "max_price_impact": 0.01,
+            "balance_check_interval": 15,
+            "price_check_interval": 0.1,
+            "validation_thresholds": {
+                "min_liquidity_ratio": 0.05,
+                "max_volume_share": 0.01,
+                "min_confidence": 0.9
+            },
+            "protection_limits": {
+                "max_slippage_percent": 0.5,
+                "max_gas_multiplier": 1.2,
+                "min_profit_after_fees": 0.5
+            },
+            "recovery_options": {
+                "retry_attempts": 2,
+                "delay_seconds": 5,
+                "fallback_dexes": ["aerodrome"]
+            }
+        },
+        "transaction_timeout": 180,
+        "confirmation_blocks": 2,
+        "max_retries": 2,
+        "retry_delay_seconds": 5,
+        "gas": {
+            "max_base_fee_gwei": 30.0,
+            "max_priority_fee_gwei": 1.0,
+            "min_profit_multiplier": 2.0,
+            "cache_duration_seconds": 15,
+            "history_window_seconds": 300
+        },
+        "liquidity": {
+            "min_pool_depth_usd": 100000.0,
+            "min_volume_24h_usd": 50000.0,
+            "max_utilization_rate": 0.01,
+            "min_confidence": 0.9,
+            "cache_duration_seconds": 60
+        }
+    },
+    "monitoring": {
+        "price_update_interval": 1.0,
+        "log_level": "INFO",
+        "save_state_interval": 300,
+        "logging": {
+            "log_directory": "logs",
+            "max_file_size": 10485760,
+            "backup_count": 5,
+            "formatters": {
+                "trade": "%(asctime)s - %(message)s",
+                "error": "%(asctime)s - %(levelname)s - %(message)s",
+                "system": "%(asctime)s - %(message)s"
+            },
+            "status_interval": 60,
+            "retention_days": 30,
+            "compression": true
+        },
+        "alert_thresholds": {
+            "error_rate_percent": 1.0,
+            "memory_usage_mb": 500,
+            "cpu_usage_percent": 80,
+            "warning_threshold_count": 3
+        }
+    }
+}

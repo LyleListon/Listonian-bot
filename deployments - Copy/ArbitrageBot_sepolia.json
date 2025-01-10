@@ -1,0 +1,16 @@
+{
+  "address": "0xa111E81d1F6F8bF648d1405ADf45aAC92602BcA8",
+  "network": "sepolia",
+  "deployer": "0xb9039E54Ad00ae6559fF91d0db2c1192D0eaA801",
+  "timestamp": 1730127661,
+  "constructor_args": [
+    200,
+    "100000000000000000",
+    86400
+  ],
+  "parameters": {
+    "minProfitBasisPoints": "200 (2%)",
+    "maxTradeSize": "0.1 ETH",
+    "emergencyWithdrawalDelay": "86400 seconds (24 hours)"
+  }
+}

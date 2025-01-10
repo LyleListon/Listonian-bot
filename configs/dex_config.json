@@ -1,0 +1,64 @@
+{
+    "dexes": {
+        "baseswap": {
+            "name": "BaseSwap",
+            "version": "v2",
+            "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
+            "fee": 3000
+        },
+        "swapbased": {
+            "name": "SwapBased",
+            "version": "v2",
+            "factory": "0x8909dc15e40173ff4699343b6eb8132c65e18ec6",
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+            "fee": 3000
+        },
+        "rocketswap": {
+            "name": "RocketSwap",
+            "version": "v2",
+            "factory": "0xD9B9E9B5e77dD51915fc96AA0c3F6E7FA1C9E6E6",
+            "router": "0x0Bf5DE1BEA878f70808dC014e3b0dBB6bF9F0B6F",
+            "fee": 2500
+        },
+        "pancakeswap": {
+            "name": "PancakeSwap",
+            "version": "v3",
+            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
+            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
+            "fee": 2500
+        },
+        "aerodrome": {
+            "name": "Aerodrome",
+            "version": "v2",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+            "fee": 2000,
+            "pools": {
+                "WETH-USDC": {
+                    "stable": false,
+                    "address": "0x0D7c4b40018969f81750D0A164c3839A77353EFB"
+                }
+            }
+        }
+    },
+    "tokens": {
+        "WETH": {
+            "name": "Wrapped Ether",
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18
+        },
+        "USDC": {
+            "name": "USD Coin",
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6
+        },
+        "USDT": {
+            "name": "Tether USD",
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 6
+        }
+    }
+}
