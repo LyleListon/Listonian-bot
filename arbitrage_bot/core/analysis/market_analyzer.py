@@ -2,12 +2,14 @@
 
 import logging
 import asyncio
+import json
 import time
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from statistics import mean, median, stdev
+from web3 import Web3
 from ..web3.web3_manager import Web3Manager
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,8 @@ class MarketAnalyzer:
             web3_manager: Web3Manager instance
             config: Configuration dictionary
         """
-        self.w3 = web3_manager
+        self.web3_manager = web3_manager
+        self.w3 = web3_manager.w3
         self.config = config
         
         # Price history
@@ -103,14 +106,13 @@ class MarketAnalyzer:
             tokens = self.config.get("tokens", {})
             
             # Get current prices from MCP
+            token_ids = {
+                "WETH": "ethereum",
+                "USDC": "usd-coin"
+            }
+            
             try:
-                token_ids = {
-                    "WETH": "ethereum",
-                    "USDC": "usd-coin"
-                }
-                
-                from ...utils.mcp_client import use_mcp_tool
-                response = await use_mcp_tool(
+                response = await self.web3_manager.use_mcp_tool(
                     "crypto-price",
                     "get_prices",
                     {
@@ -119,14 +121,71 @@ class MarketAnalyzer:
                     }
                 )
                 
+                if not response:
+                    logger.warning("Empty response from crypto-price MCP tool")
+                    return
+                    
+                # Log raw response at debug level
+                logger.debug(f"Raw price data: {json.dumps(response, indent=2)}")
+                
+                # Process and validate response
+                if not isinstance(response, dict):
+                    logger.warning("Invalid response format - not a dictionary")
+                    return
+                    
+                # Handle both direct price data and nested 'prices' field
+                prices = response.get('prices', response)
+                if not isinstance(prices, dict):
+                    logger.warning("Invalid response format - prices data is not a dictionary")
+                    return
+                    
+                processed_response = {}
+                for symbol, token_id in token_ids.items():
+                    if token_id not in prices:
+                        logger.warning(f"No price data for {symbol} ({token_id})")
+                        continue
+                        
+                    token_data = prices[token_id]
+                    if not isinstance(token_data, dict):
+                        logger.warning(f"Invalid price data format for {symbol}: {token_data}")
+                        continue
+                        
+                    # Handle both price_usd and usd field names
+                    price = token_data.get('price_usd', token_data.get('usd'))
+                    if price is None:
+                        logger.warning(f"No price data found for {symbol}")
+                        continue
+                        
+                    processed_response[token_id] = {
+                        'usd': price,
+                        'volume_24h': token_data.get('volume_24h', 0),
+                        'change_24h': token_data.get('change_24h', 0)
+                    }
+                    logger.info(f"Got price for {symbol}: ${price:,.2f}")
+                
+                if not processed_response:
+                    logger.warning("No valid price data found in response")
+                    return
+                
+                response = processed_response
+                
                 # Process each token
                 for symbol, token_id in token_ids.items():
-                    if token_id in response:
-                        price = Decimal(str(response[token_id]["usd"]))
-                        volume = Decimal(str(response[token_id].get("volume_24h", 0)))
+                    try:
+                        if token_id not in response:
+                            logger.warning(f"No price data for {symbol} ({token_id})")
+                            continue
+                            
+                        token_data = response[token_id]
+                        if not isinstance(token_data, dict) or "usd" not in token_data:
+                            logger.warning(f"Invalid price data format for {symbol}")
+                            continue
+                            
+                        price = Decimal(str(token_data["usd"]))
+                        volume = Decimal(str(token_data.get("volume_24h", 0)))
                         
                         # Get market analysis
-                        market_response = await use_mcp_tool(
+                        market_response = await self.web3_manager.use_mcp_tool(
                             "market-analysis",
                             "assess_market_conditions",
                             {
@@ -134,6 +193,16 @@ class MarketAnalyzer:
                                 "metrics": ["volatility", "volume", "trend"]
                             }
                         )
+                        
+                        if not market_response:
+                            logger.warning(f"Empty market analysis response for {symbol}")
+                            market_response = {
+                                "metrics": {
+                                    "volatility": 0.0,
+                                    "volume": 0.0,
+                                    "trend": "sideways"
+                                }
+                            }
                         
                         # Get pool liquidity
                         if symbol in tokens:
@@ -189,6 +258,9 @@ class MarketAnalyzer:
                             f"  Volatility: {volatility:.1%}\n"
                             f"  Price Impact: {price_impact:.1%}"
                         )
+                    except Exception as e:
+                        logger.error(f"Error processing token {symbol}: {e}")
+                        continue
                         
             except Exception as e:
                 logger.error(f"Failed to get prices from MCP: {e}")
@@ -215,7 +287,7 @@ class MarketAnalyzer:
             with open("abi/aerodrome_factory.json", "r") as f:
                 factory_abi = json.load(f)
                 
-            factory = self.w3.get_contract(factory_address, factory_abi)
+            factory = self.w3.eth.contract(address=factory_address, abi=factory_abi)
             
             # Try both stable and volatile pools
             pool_address = await factory.functions.getPool(
@@ -235,7 +307,7 @@ class MarketAnalyzer:
                 return {"liquidity_usd": 0}
                 
             # Get pool info
-            pool = self.w3.get_contract(pool_address, pool_abi)
+            pool = self.w3.eth.contract(address=pool_address, abi=pool_abi)
             reserves = await pool.functions.getReserves().call()
             
             # Calculate USD value
@@ -380,9 +452,51 @@ class MarketAnalyzer:
         except Exception as e:
             logger.error(f"Failed to update metrics: {e}")
 
-    def get_market_condition(self, symbol: str) -> Optional[MarketCondition]:
-        """Get current market condition for a token."""
-        return self.market_conditions.get(symbol)
+    async def get_market_condition(self, symbol: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Get current market condition for a token or overall market.
+        
+        Args:
+            symbol: Optional token symbol. If None, returns overall market condition.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Market condition metrics
+        """
+        try:
+            # Update market conditions if needed
+            current_time = time.time()
+            if current_time - self.last_update > self.update_interval:
+                await self._update_market_conditions()
+                
+            if symbol:
+                condition = self.market_conditions.get(symbol)
+                if condition:
+                    return {
+                        'price': float(condition.price),
+                        'volume': float(condition.volume_24h),
+                        'liquidity': float(condition.liquidity),
+                        'volatility': condition.volatility_24h,
+                        'trend': condition.trend.direction,
+                        'trend_strength': float(condition.trend.strength),
+                        'confidence': float(condition.trend.confidence)
+                    }
+            else:
+                # Get overall market condition using market-analysis server
+                market_response = await self.web3_manager.use_mcp_tool(
+                    "market-analysis",
+                    "assess_market_conditions",
+                    {
+                        "token": "bitcoin",  # Use as market indicator
+                        "metrics": ["volatility", "volume", "liquidity", "trend"]
+                    }
+                )
+                return market_response['metrics']
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get market condition for {symbol}: {e}")
+            return None
 
     def should_execute(
         self,
@@ -433,6 +547,25 @@ class MarketAnalyzer:
             "last_update": self.last_update
         }
 
+    async def get_market_metrics(self) -> Dict[str, Any]:
+        """Get current market metrics for all tracked tokens."""
+        metrics = {}
+        for symbol, condition in self.market_conditions.items():
+            if condition:
+                metrics[symbol] = {
+                    'price': float(condition.price),
+                    'volume_24h': float(condition.volume_24h),
+                    'liquidity': float(condition.liquidity),
+                    'volatility': condition.volatility_24h,
+                    'trend': {
+                        'direction': condition.trend.direction,
+                        'strength': float(condition.trend.strength),
+                        'confidence': float(condition.trend.confidence)
+                    },
+                    'last_updated': datetime.fromtimestamp(condition.last_updated).isoformat()
+                }
+        return metrics
+
 async def create_market_analyzer(
     web3_manager: Web3Manager,
     config: Dict[str, Any]
@@ -440,7 +573,36 @@ async def create_market_analyzer(
     """Create and initialize market analyzer."""
     try:
         analyzer = MarketAnalyzer(web3_manager, config)
-        asyncio.create_task(analyzer.start_monitoring())
+        
+        # Force initial market update
+        await analyzer._update_market_conditions()
+        
+        if not analyzer.market_conditions:
+            logger.warning("Initial market update returned no data")
+            
+        # Start monitoring in background task
+        monitoring_task = asyncio.create_task(analyzer.start_monitoring())
+        
+        # Wait for initial data with progress logging
+        start_time = time.time()
+        dots = 0
+        while not analyzer.market_conditions and time.time() - start_time < 30:  # 30s timeout
+            dots = (dots + 1) % 4
+            logger.info(f"Waiting for market data{'.' * dots}")
+            await asyncio.sleep(1)
+            
+            # Try to force an update
+            try:
+                await analyzer._update_market_conditions()
+            except Exception as e:
+                logger.warning(f"Error during market update: {e}")
+        
+        if not analyzer.market_conditions:
+            logger.warning("Market analyzer initialized but no data available yet")
+        else:
+            logger.info("Market analyzer initialized with data")
+            logger.info(f"Initial market conditions: {analyzer.market_conditions}")
+            
         return analyzer
     except Exception as e:
         logger.error(f"Failed to create market analyzer: {e}")

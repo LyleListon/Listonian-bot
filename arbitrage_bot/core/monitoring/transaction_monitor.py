@@ -1,10 +1,13 @@
 """Transaction monitoring and mempool analysis system."""
 
 import logging
+from typing import Optional
+
 import asyncio
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional, Set, Tuple
 from datetime import datetime, timedelta
 import json
+from json import JSONEncoder
 from pathlib import Path
 from collections import defaultdict
 import numpy as np
@@ -14,6 +17,7 @@ from ..analytics.analytics_system import AnalyticsSystem
 from ..ml.ml_system import MLSystem
 from ..dex.dex_manager import DEXManager
 from ..dex.utils import COMMON_TOKENS
+from ...utils.database import DateTimeEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,7 @@ class TransactionMonitor:
         self.monitoring_dir.mkdir(exist_ok=True)
         self.max_blocks_history = max_blocks_history
         self.mempool_refresh_rate = mempool_refresh_rate
+        self.last_update = datetime.now().timestamp()
         
         # Monitoring state
         self.known_competitors: Set[str] = set()
@@ -64,23 +69,72 @@ class TransactionMonitor:
             await self._load_historical_data()
             
             # Start monitoring tasks
-            await asyncio.gather(
-                self._monitor_mempool(),
-                self._monitor_blocks(),
-                self._analyze_competitors(),
-                self._detect_reorgs(),
-                self._save_monitoring_data()
-            )
+            self._tasks = [
+                asyncio.create_task(self._monitor_mempool()),
+                asyncio.create_task(self._monitor_blocks()),
+                asyncio.create_task(self._analyze_competitors()),
+                asyncio.create_task(self._detect_reorgs()),
+                asyncio.create_task(self._save_monitoring_data())
+            ]
             
         except Exception as e:
             logger.error(f"Error starting monitoring: {e}")
+
+    async def get_metrics(self) -> Dict[str, Any]:
+        """Get monitoring metrics."""
+        try:
+            total_txs = len(self.recent_transactions)
+            successful_txs = len([tx for tx in self.recent_transactions if tx['success']])
+            
+            return {
+                'total_transactions': total_txs,
+                'successful_transactions': successful_txs,
+                'success_rate': successful_txs / total_txs if total_txs > 0 else 0.0,
+                'known_competitors': len(self.known_competitors),
+                'block_reorgs': len(self.block_reorgs),
+                'last_update': self.last_update
+            }
+        except Exception as e:
+            logger.error(f"Failed to get metrics: {e}")
+            return {
+                'total_transactions': 0,
+                'successful_transactions': 0,
+                'success_rate': 0.0,
+                'known_competitors': 0,
+                'block_reorgs': 0,
+                'last_update': datetime.now().timestamp()
+            }
+
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
+        try:
+            # Cancel any ongoing tasks
+            if hasattr(self, '_tasks'):
+                for task in self._tasks:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            logger.info("Transaction monitor cleanup complete")
+        except Exception as e:
+            logger.error(f"Error during transaction monitor cleanup: {e}")
 
     async def _monitor_mempool(self) -> None:
         """Monitor mempool for new transactions."""
         try:
             while True:
                 # Get pending transactions
-                pending = await self.web3_manager.w3.eth.get_pending_transactions()
+                pending_filter = await self.web3_manager.w3.eth.filter('pending')
+                pending_hashes = await pending_filter.get_all_entries()
+                pending = []
+                for tx_hash in pending_hashes:
+                    try:
+                        tx = await self.web3_manager.w3.eth.get_transaction(tx_hash)
+                        if tx:
+                            pending.append(tx)
+                    except Exception as e:
+                        logger.debug(f"Failed to get transaction {tx_hash.hex()}: {e}")
                 
                 for tx in pending:
                     # Check if transaction is relevant
@@ -238,25 +292,22 @@ class TransactionMonitor:
     async def _is_relevant_transaction(self, tx: Dict[str, Any]) -> bool:
         """Check if transaction is relevant for monitoring."""
         try:
-            # Check if transaction is to a known DEX
-            dex_addresses = set(
-                dex.router_address.lower()
-                for dex in self.dex_manager.get_all_dexes()
-            )
-            
-            if tx['to'] and tx['to'].lower() in dex_addresses:
-                # Decode transaction input
-                router = self.dex_manager.get_dex_by_address(tx['to'])
-                if router:
-                    try:
-                        decoded = router.decode_function_input(tx['input'])
-                        # Check if it's a swap function
-                        return any(
-                            name in decoded[0].fn_name.lower()
-                            for name in ['swap', 'exactinput', 'exactoutput']
-                        )
-                    except:
-                        pass
+            if not tx['to']:
+                return False
+                
+            # Get DEX by router address
+            dex = self.dex_manager.get_dex_by_address(tx['to'])
+            if dex:
+                try:
+                    # Decode transaction input
+                    decoded = dex.decode_function_input(tx['input'])
+                    # Check if it's a swap function
+                    return any(
+                        name in decoded[0].fn_name.lower()
+                        for name in ['swap', 'exactinput', 'exactoutput']
+                    )
+                except Exception:
+                    pass
             
             return False
             
@@ -375,7 +426,7 @@ class TransactionMonitor:
                 file_path = self.monitoring_dir / f"monitoring_{timestamp}.json"
                 
                 with open(file_path, 'w') as f:
-                    json.dump(report, f, indent=2)
+                    json.dump(report, f, indent=2, cls=DateTimeEncoder)
                 
                 await asyncio.sleep(300)  # Save every 5 minutes
                 
@@ -412,3 +463,35 @@ class TransactionMonitor:
             
         except Exception as e:
             logger.error(f"Error loading historical data: {e}")
+
+async def create_transaction_monitor(
+    web3_manager: Web3Manager,
+    analytics: AnalyticsSystem,
+    ml_system: MLSystem,
+    dex_manager: DEXManager,
+    monitoring_dir: Optional[str] = None,
+    max_blocks_history: Optional[int] = None,
+    mempool_refresh_rate: Optional[float] = None
+) -> Optional[TransactionMonitor]:
+    """Create and initialize a transaction monitor instance."""
+    try:
+        # Ensure DEX manager is initialized
+        if not dex_manager.initialized:
+            success = await dex_manager.initialize()
+            if not success:
+                logger.error("Failed to initialize DEX manager")
+                return None
+
+        monitor = TransactionMonitor(
+            web3_manager=web3_manager,
+            analytics=analytics,
+            ml_system=ml_system,
+            dex_manager=dex_manager,
+            monitoring_dir=monitoring_dir or "monitoring_data",
+            max_blocks_history=max_blocks_history or 1000,
+            mempool_refresh_rate=mempool_refresh_rate or 0.1
+        )
+        return monitor
+    except Exception as e:
+        logger.error(f"Failed to create transaction monitor: {e}")
+        return None

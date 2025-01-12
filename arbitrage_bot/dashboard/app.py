@@ -2,12 +2,13 @@
 
 import os
 import sys
+import time
 import logging
 import asyncio
 from pathlib import Path
 from flask import Flask, render_template, g, send_from_directory
 from werkzeug.serving import is_running_from_reloader
-from ..core.web3.web3_manager import create_web3_manager
+from ..core.web3.web3_manager import Web3Manager, create_web3_manager
 from ..core.execution.arbitrage_executor import create_arbitrage_executor
 from ..core.metrics.portfolio_tracker import create_portfolio_tracker
 from ..core.analytics.analytics_system import create_analytics_system
@@ -111,18 +112,48 @@ async def initialize_components():
         config = load_config()
         
         # Initialize components in dependency order
-        components['web3_manager'] = await initialize_component(
-            'web3_manager',
-            create_web3_manager
-        )
+        # Initialize and connect web3_manager
+        web3_manager = await create_web3_manager()
+        if not isinstance(web3_manager, Web3Manager):
+            raise ValueError(f"Expected Web3Manager instance, got {type(web3_manager)}")
+        await web3_manager.connect()
+        components['web3_manager'] = web3_manager
+        logger.info(f"Initialized web3_manager of type {type(web3_manager)}")
         
+        # Create executor with connected web3_manager
         components['executor'] = await initialize_component(
             'executor',
             create_arbitrage_executor,
-            config,
-            components['web3_manager']
+            web3_manager=components['web3_manager']
         )
         await components['executor'].initialize()
+        
+        # Wait for market analyzer to initialize
+        market_analyzer = components['executor'].market_analyzer
+        if not hasattr(market_analyzer, '_monitoring_started'):
+            logger.info("Starting market analyzer monitoring...")
+            await market_analyzer.start_monitoring()
+            market_analyzer._monitoring_started = True
+        
+        # Wait for initial market data with progress logging
+        start_time = time.time()
+        dots = 0
+        while not market_analyzer.market_conditions and time.time() - start_time < 30:
+            dots = (dots + 1) % 4
+            logger.info(f"Waiting for market data{'.' * dots}")
+            await asyncio.sleep(1)
+            
+            # Try to force an update
+            try:
+                await market_analyzer._update_market_conditions()
+            except Exception as e:
+                logger.warning(f"Error during market update: {e}")
+        
+        if not market_analyzer.market_conditions:
+            logger.warning("Market analyzer initialized but no data available yet")
+        else:
+            logger.info("Market analyzer initialized with data")
+            logger.info(f"Initial market conditions: {market_analyzer.market_conditions}")
         
         components['portfolio_tracker'] = await initialize_component(
             'portfolio_tracker',

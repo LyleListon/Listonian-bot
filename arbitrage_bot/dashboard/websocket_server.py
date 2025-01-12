@@ -29,7 +29,31 @@ class WebSocketServer:
         self.host = host
         self.base_port = port or int(os.getenv('WEBSOCKET_PORT', '8770'))
         self.port = self.base_port
+        self.max_port_attempts = 10  # Try up to 10 ports
         self.update_task = None
+
+    async def check_port_available(self, port: int) -> bool:
+        """Check if a port is available for use."""
+        try:
+            # Try to create a test server
+            test_server = await websockets.serve(
+                lambda ws, path: None,  # Dummy handler
+                self.host,
+                port
+            )
+            test_server.close()
+            await test_server.wait_closed()
+            return True
+        except Exception:
+            return False
+
+    async def find_available_port(self) -> Optional[int]:
+        """Find an available port starting from base_port."""
+        for port_offset in range(self.max_port_attempts):
+            try_port = self.base_port + port_offset
+            if await self.check_port_available(try_port):
+                return try_port
+        return None
         
     async def register(self, websocket: WebSocketServerProtocol):
         """Register a new client connection."""
@@ -40,7 +64,7 @@ class WebSocketServer:
         if self.analytics_system:
             try:
                 # Get latest performance metrics
-                metrics = self.analytics_system.get_performance_metrics()
+                metrics = await self.analytics_system.get_performance_metrics()
                 if metrics:
                     latest_metrics = metrics[-1]  # Get most recent metrics
                     
@@ -92,18 +116,65 @@ class WebSocketServer:
         if not self.clients:
             return
             
-        message = json.dumps(data)
-        await asyncio.gather(
-            *[client.send(message) for client in self.clients],
-            return_exceptions=True
-        )
+        try:
+            message = json.dumps(data, default=str)  # Handle datetime serialization
+            await asyncio.gather(
+                *[client.send(message) for client in self.clients],
+                return_exceptions=True
+            )
+        except Exception as e:
+            logger.error(f"Error sending update: {e}")
+
+    async def broadcast_metrics(self, metrics: Dict[str, Any]):
+        """Broadcast metrics update to all clients."""
+        try:
+            await self.send_update({
+                'type': 'metrics',
+                'metrics': {
+                    'total_trades': metrics.get('performance', {}).get('total_trades', 0),
+                    'trades_24h': metrics.get('performance', {}).get('trades_24h', 0),
+                    'success_rate': metrics.get('performance', {}).get('success_rate', 0),
+                    'total_profit': metrics.get('performance', {}).get('total_profit_usd', 0),
+                    'profit_24h': metrics.get('performance', {}).get('profit_24h', 0),
+                    'active_opportunities': len(metrics.get('market', {}).get('opportunities', [])),
+                }
+            })
+            
+            # Send performance history for charts
+            await self.send_update({
+                'type': 'performance',
+                'profit_history': metrics.get('performance', {}).get('profit_history', []),
+                'volume_history': metrics.get('performance', {}).get('volume_history', [])
+            })
+        except Exception as e:
+            logger.error(f"Error broadcasting metrics: {e}")
+
+    async def broadcast_trade(self, trade_data: Dict[str, Any]):
+        """Broadcast trade update to all clients."""
+        try:
+            await self.send_update({
+                'type': 'trade',
+                'trade': {
+                    'id': trade_data.get('id'),
+                    'status': trade_data.get('status'),
+                    'token_in': trade_data.get('token_in'),
+                    'token_out': trade_data.get('token_out'),
+                    'amount_in': trade_data.get('amount_in'),
+                    'amount_out': trade_data.get('amount_out'),
+                    'profit': trade_data.get('analysis', {}).get('profit', 0),
+                    'gas_cost': trade_data.get('analysis', {}).get('gas_cost', 0),
+                    'timestamp': trade_data.get('completion_time', datetime.now()).isoformat()
+                }
+            })
+        except Exception as e:
+            logger.error(f"Error broadcasting trade: {e}")
         
     async def send_periodic_updates(self):
         """Send periodic updates to all connected clients."""
         while True:
             try:
                 if self.analytics_system:
-                    metrics = self.analytics_system.get_performance_metrics()
+                    metrics = await self.analytics_system.get_performance_metrics()
                     if metrics:
                         latest_metrics = metrics[-1]
                         update_data = {
@@ -158,7 +229,7 @@ class WebSocketServer:
             # Send initial state
             if self.analytics_system:
                 try:
-                    metrics = self.analytics_system.get_performance_metrics()
+                    metrics = await self.analytics_system.get_performance_metrics()
                     if metrics:
                         latest_metrics = metrics[-1]
                         initial_data = {
@@ -220,8 +291,20 @@ class WebSocketServer:
             logger.info(f"Client {client_id} disconnected")
             
     async def start(self):
-        """Start WebSocket server."""
+        """Start WebSocket server with port fallback."""
+        last_error = None
+        available_port = await self.find_available_port()
+
+        if not available_port:
+            error_msg = (
+                f"No available ports found after {self.max_port_attempts} attempts. "
+                f"Tried ports {self.base_port} through {self.base_port + self.max_port_attempts - 1}"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
         try:
+            self.port = available_port
             # Create server with CORS and ping settings
             self.server = await websockets.serve(
                 self.handler,
@@ -241,8 +324,9 @@ class WebSocketServer:
             return self
             
         except Exception as e:
-            logger.error(f"Failed to start WebSocket server: {str(e)}", exc_info=True)
-            raise
+            error_msg = f"Failed to start WebSocket server on port {self.port}: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
             
     def is_running(self) -> bool:
         """Check if server is running."""

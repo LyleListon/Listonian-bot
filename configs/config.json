@@ -1,6 +1,11 @@
 {
+    "network": {
+        "rpc_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
+        "chainId": 8453,
+        "name": "Base"
+    },
     "web3": {
-        "provider_url": "https://base-mainnet.infura.io/v3/803c326dab1a444dba3f41ae7a07ccce",
+        "provider_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
         "chain_id": 8453,
         "gas_limit": 500000,
         "gas_price": "auto"
@@ -35,8 +40,8 @@
     },
     "pairs": [
         {
-            "base_token": "WETH",
-            "quote_token": "USDC",
+            "token0": "WETH",
+            "token1": "USDC",
             "min_profit_threshold": 0.002,
             "max_trade_size": 0.5,
             "pools": {
@@ -60,6 +65,57 @@
             "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
             "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
             "fee": 2500
+        }
+    },
+    "trading": {
+        "min_profit_usd": 0.5,
+        "max_trade_size_usd": 10.0,
+        "slippage_tolerance": 0.005,
+        "use_live_price_feed": true,
+        "balance_targets": {
+            "usdc_target_percent": 80,
+            "min_eth_for_gas_usd": 10.0,
+            "rebalance_threshold_percent": 5,
+            "rebalance_check_interval": 60
+        },
+        "safety": {
+            "min_balance_usd": 20.0,
+            "max_price_impact": 0.01,
+            "balance_check_interval": 15,
+            "price_check_interval": 0.1,
+            "validation_thresholds": {
+                "min_liquidity_ratio": 0.05,
+                "max_volume_share": 0.01,
+                "min_confidence": 0.9
+            },
+            "protection_limits": {
+                "max_slippage_percent": 0.5,
+                "max_gas_multiplier": 1.2,
+                "min_profit_after_fees": 0.5
+            },
+            "recovery_options": {
+                "retry_attempts": 2,
+                "delay_seconds": 5,
+                "fallback_dexes": ["baseswap"]
+            }
+        },
+        "transaction_timeout": 180,
+        "confirmation_blocks": 2,
+        "max_retries": 2,
+        "retry_delay_seconds": 5,
+        "gas": {
+            "max_base_fee_gwei": 30.0,
+            "max_priority_fee_gwei": 1.0,
+            "min_profit_multiplier": 2.0,
+            "cache_duration_seconds": 15,
+            "history_window_seconds": 300
+        },
+        "liquidity": {
+            "min_pool_depth_usd": 100000.0,
+            "min_volume_24h_usd": 50000.0,
+            "max_utilization_rate": 0.01,
+            "min_confidence": 0.9,
+            "cache_duration_seconds": 60
         }
     }
 }

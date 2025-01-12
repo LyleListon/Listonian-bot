@@ -39,10 +39,10 @@ class ArbitrageOpportunity:
 class OpportunityDetector:
     """Detects arbitrage opportunities across DEXes."""
     
-    def __init__(self, config, web3_manager, balance_manager):
+    def __init__(self, config, web3_manager, balance_manager=None):
         self.config = config
         self.w3 = web3_manager
-        self.balance_manager = balance_manager
+        self.balance_manager = None  # Will be set during initialization
         self.min_profit = float(config["trading"]["min_profit_usd"])
         self.max_slippage = float(config["trading"]["safety"]["protection_limits"]["max_slippage_percent"]) / 100
         self.max_trade_size = float(config["trading"]["max_trade_size_usd"])
@@ -50,27 +50,62 @@ class OpportunityDetector:
         # Initialize DEX interfaces
         self.dex_interfaces = {}
         self.initialized = False
+        
+        logger.info("OpportunityDetector instance created")
 
     async def initialize(self):
-        """Initialize DEX interfaces."""
+        """Initialize DEX interfaces and get balance manager instance."""
         if self.initialized:
             return
             
-        dex_classes = {
-            "aerodrome": AerodromeDEX,
-            "swapbased": SwapBasedDEX,
-            "rocketswap": RocketSwapDEX
-        }
-        
-        # Initialize all configured DEXes
-        for dex_name, dex_config in self.config.get("dexes", {}).items():
-            if dex_name in dex_classes:
-                dex = dex_classes[dex_name](self.w3, dex_config)
-                if await dex.initialize():
-                    self.dex_interfaces[dex_name] = dex
-                    logger.info(f"Initialized {dex_name} interface")
-                    
-        self.initialized = True
+        try:
+            # Get balance manager singleton instance
+            from ..balance_manager import BalanceManager
+            self.balance_manager = await BalanceManager.get_instance(
+                web3_manager=self.w3,
+                analytics=None,  # These will be set by the first instance
+                ml_system=None,
+                monitor=None,
+                dex_manager=None
+            )
+            
+            if not self.balance_manager:
+                raise ValueError("Failed to get balance manager instance")
+                
+            if not hasattr(self.balance_manager, 'check_pair_balance'):
+                raise ValueError("Balance manager missing check_pair_balance method")
+                
+            # Initialize DEX interfaces
+            dex_classes = {
+                "aerodrome": AerodromeDEX,
+                "swapbased": SwapBasedDEX,
+                "rocketswap": RocketSwapDEX
+            }
+            
+            # Initialize all configured DEXes
+            for dex_name, dex_config in self.config.get("dexes", {}).items():
+                if dex_name in dex_classes:
+                    dex = dex_classes[dex_name](self.w3, dex_config)
+                    if await dex.initialize():
+                        self.dex_interfaces[dex_name] = dex
+                        logger.info(f"Initialized {dex_name} interface")
+                        
+            # Test balance manager functionality
+            test_token0 = self.config["tokens"]["WETH"]["address"]
+            test_token1 = self.config["tokens"]["USDC"]["address"]
+            try:
+                await self.balance_manager.check_pair_balance(test_token0, test_token1)
+                logger.info("Balance manager check_pair_balance test successful")
+            except Exception as e:
+                logger.error(f"Balance manager check_pair_balance test failed: {e}")
+                raise
+                
+            self.initialized = True
+            logger.info("OpportunityDetector initialization complete")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize OpportunityDetector: {e}")
+            raise
 
     async def verify_liquidity(self, token: str, dex: str) -> bool:
         """Verify liquidity conditions using Market Analysis Server."""
@@ -185,10 +220,20 @@ class OpportunityDetector:
 
     async def detect_opportunities(self) -> List[ArbitrageOpportunity]:
         """Detect arbitrage opportunities across configured DEXes."""
-        await self.ensure_initialized()
-        opportunities = []
-        
         try:
+            await self.ensure_initialized()
+            opportunities = []
+            
+            if not self.balance_manager:
+                logger.error("Balance manager not initialized")
+                await self.cleanup()
+                return []
+                
+            if not self.initialized:
+                logger.error("OpportunityDetector not properly initialized")
+                await self.cleanup()
+                return []
+                
             pairs = sorted(
                 self.config.get("pairs", []),
                 key=lambda x: (x.get("priority", 0), x.get("historical_profit", 0)),
@@ -197,9 +242,17 @@ class OpportunityDetector:
             dexes = self.config.get("dexes", {})
 
             for pair in pairs:
-                if not await self.balance_manager.check_pair_balance(
-                    pair["token0"], pair["token1"]
-                ):
+                try:
+                    # Get token addresses from config
+                    token0_addr = self.config["tokens"][pair["token0"]]["address"]
+                    token1_addr = self.config["tokens"][pair["token1"]]["address"]
+                    
+                    if not await self.balance_manager.check_pair_balance(
+                        token0_addr, token1_addr
+                    ):
+                        continue
+                except Exception as e:
+                    logger.error(f"Error checking pair balance: {e}")
                     continue
 
                 # Verify liquidity across all DEXes
@@ -286,6 +339,27 @@ class OpportunityDetector:
         """Ensure detector is initialized."""
         if not self.initialized:
             await self.initialize()
+            
+    async def cleanup(self):
+        """Cleanup resources."""
+        try:
+            # Cancel any ongoing tasks
+            if hasattr(self, '_tasks'):
+                for task in self._tasks:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                        
+            # Clear references
+            self.balance_manager = None
+            self.dex_interfaces.clear()
+            self.initialized = False
+            
+            logger.info("OpportunityDetector cleanup complete")
+        except Exception as e:
+            logger.error(f"Error during OpportunityDetector cleanup: {e}")
             
     async def _estimate_gas_cost(self, buy_dex: str, sell_dex: str) -> int:
         """Estimate gas cost for arbitrage."""

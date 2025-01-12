@@ -10,10 +10,15 @@ import asyncio
 from threading import Thread, Event
 from flask import Flask
 from dotenv import load_dotenv
-from .app import create_app
 
-# Load environment variables from .env.production
-load_dotenv('.env.production')
+# Add project root to Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, project_root)
+
+from arbitrage_bot.dashboard.app import create_app
+
+# Load environment variables from .env
+load_dotenv('.env')
 
 # Global flag for server status
 server_ready = Event()
@@ -26,6 +31,28 @@ def run_flask(app, host, port):
         
         # Configure Flask server
         app.config['PROPAGATE_EXCEPTIONS'] = True  # Ensure exceptions are logged
+        app.config['JSON_SORT_KEYS'] = False  # Preserve metric order
+        app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True  # Pretty print JSON
+        
+        # Wait for components to be ready
+        logging.info("Waiting for components to initialize...")
+        start_time = time.time()
+        while not hasattr(app, 'market_analyzer') and time.time() - start_time < 30:
+            time.sleep(1)
+        
+        if not hasattr(app, 'market_analyzer'):
+            raise RuntimeError("Market analyzer not initialized after 30 seconds")
+            
+        # Log component status
+        components = [
+            'market_analyzer', 'analytics_system', 'websocket_server',
+            'portfolio_tracker', 'gas_optimizer'
+        ]
+        for component in components:
+            if hasattr(app, component):
+                logging.info(f"{component} initialized successfully")
+            else:
+                logging.warning(f"{component} not initialized")
         
         # Start Flask
         app.run(
@@ -49,8 +76,17 @@ def main():
         # Configure logging
         logging.basicConfig(
             level=logging.INFO,
-            format='%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)d)'
+            format='%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)d)',
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler('logs/dashboard.log')
+            ]
         )
+        
+        # Log startup information
+        logging.info("Starting dashboard application")
+        logging.info(f"Python version: {sys.version}")
+        logging.info(f"Current directory: {os.getcwd()}")
         
         # Create Flask app
         app = create_app()

@@ -19,9 +19,9 @@ class BaseDEXV2(BaseDEX):
         """Initialize the V2 DEX interface."""
         try:
             # Load contract ABIs
-            self.router_abi = self.w3.web3_manager.load_abi(f"{self.name.lower()}_router")
-            self.factory_abi = self.w3.web3_manager.load_abi(f"{self.name.lower()}_factory")
-            self.pair_abi = self.w3.web3_manager.load_abi(f"{self.name.lower()}_pair")
+            self.router_abi = self.web3_manager.load_abi(f"{self.name.lower()}_router")
+            self.factory_abi = self.web3_manager.load_abi(f"{self.name.lower()}_factory")
+            self.pair_abi = self.web3_manager.load_abi(f"{self.name.lower()}_pair")
             
             # Initialize contracts
             self.router = self.w3.eth.contract(

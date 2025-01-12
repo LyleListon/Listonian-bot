@@ -27,6 +27,7 @@ class BaseDEX(ABC):
                 - wallet: Wallet configuration (optional)
         """
         self.w3 = web3_manager.w3
+        self.web3_manager = web3_manager
         self.config = config
         self.router_address = config['router']
         self.factory_address = config['factory']

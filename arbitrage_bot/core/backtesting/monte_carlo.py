@@ -1,481 +1,487 @@
-"""Monte Carlo simulation for backtesting arbitrage strategies."""
+"""Monte Carlo simulation system for backtesting and risk analysis."""
 
 import logging
+import asyncio
+from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
-import asyncio
+from scipy import stats
 from pathlib import Path
 
 from ..analytics.analytics_system import AnalyticsSystem
 from ..ml.ml_system import MLSystem
-from ..dex.dex_manager import DEXManager
-from ..dex.utils import COMMON_TOKENS
-from ..gas.gas_optimizer import GasOptimizer
+from ...utils.database import Database
 
 logger = logging.getLogger(__name__)
 
-class MonteCarloSimulator:
-    """Monte Carlo simulation for strategy validation."""
+class MonteCarloSystem:
+    """Monte Carlo simulation system for strategy analysis."""
 
     def __init__(
         self,
         analytics: AnalyticsSystem,
+        market_analyzer: Any,
         ml_system: MLSystem,
-        dex_manager: DEXManager,
-        gas_optimizer: GasOptimizer,
-        results_dir: str = "simulation_results",
-        num_simulations: int = 1000,
-        time_horizon: int = 24  # hours
+        config: Dict[str, Any],
+        db: Optional[Database] = None,
+        simulations_dir: str = "simulations"
     ):
-        """Initialize simulator."""
-        self.analytics = analytics
-        self.ml_system = ml_system
-        self.dex_manager = dex_manager
-        self.gas_optimizer = gas_optimizer
-        self.results_dir = Path(results_dir)
-        self.results_dir.mkdir(exist_ok=True)
-        self.num_simulations = num_simulations
-        self.time_horizon = time_horizon
-        
-        # Simulation parameters
-        self.volatility_factor = 1.5  # Increased market volatility
-        self.competition_factor = 1.2  # Increased competition
-        self.slippage_factor = 1.1  # Increased slippage
-        
-        # Risk metrics
-        self.var_confidence = 0.95  # 95% VaR
-        self.max_drawdown = 0.1  # 10% maximum drawdown
-        self.min_sharpe = 1.5  # Minimum Sharpe ratio
+        """
+        Initialize Monte Carlo system.
 
-    async def run_simulation(
-        self,
-        initial_capital: float = 10000.0,  # $10k starting capital
-        min_trade_size: float = 100.0,  # Minimum $100 per trade
-        max_trade_size: float = 1000.0  # Maximum $1k per trade
-    ) -> Dict[str, Any]:
-        """
-        Run Monte Carlo simulation.
-        
         Args:
-            initial_capital: Starting capital in USD
-            min_trade_size: Minimum trade size in USD
-            max_trade_size: Maximum trade size in USD
-            
-        Returns:
-            Dict[str, Any]: Simulation results and analysis
+            analytics: Analytics system instance
+            market_analyzer: Market analyzer instance
+            ml_system: ML system instance
+            config: Configuration dictionary
+            db: Optional Database instance
+            simulations_dir: Directory for saving simulation results
         """
+        self.analytics = analytics
+        self.market_analyzer = market_analyzer
+        self.ml_system = ml_system
+        self.config = config
+        self.db = db if db else Database()
+        self.simulations_dir = Path(simulations_dir)
+        self.simulations_dir.mkdir(exist_ok=True)
+        
+        # Simulation settings
+        self.num_simulations = config.get('monte_carlo', {}).get('num_simulations', 1000)
+        self.time_horizon = config.get('monte_carlo', {}).get('time_horizon', 30)  # days
+        self.confidence_level = config.get('monte_carlo', {}).get('confidence_level', 0.95)
+        
+        # Results storage
+        self.simulation_results: Dict[str, Any] = {}
+        self.risk_metrics: Dict[str, Any] = {}
+
+    async def initialize(self) -> bool:
+        """Initialize Monte Carlo system."""
         try:
-            # Initialize simulation state
-            results = []
-            capital_trajectories = []
+            # Load historical data
+            await self._load_historical_data()
             
-            # Get historical data
-            historical_trades = self.analytics.trade_metrics
-            if not historical_trades:
-                return self._empty_results()
+            # Run initial simulations
+            await self.run_simulations()
             
-            # Run simulations in parallel
-            with ThreadPoolExecutor() as executor:
-                futures = []
-                for i in range(self.num_simulations):
-                    futures.append(
-                        executor.submit(
-                            self._run_single_simulation,
-                            initial_capital,
-                            min_trade_size,
-                            max_trade_size,
-                            historical_trades
-                        )
-                    )
-                
-                # Collect results
-                for future in futures:
-                    sim_result = future.result()
-                    if sim_result:
-                        results.append(sim_result['metrics'])
-                        capital_trajectories.append(sim_result['trajectory'])
-            
-            # Analyze results
-            analysis = self._analyze_results(results, capital_trajectories)
-            
-            # Save results
-            self._save_results(analysis)
-            
-            return analysis
+            logger.info("Monte Carlo system initialized")
+            return True
             
         except Exception as e:
-            logger.error(f"Error running simulation: {e}")
-            return self._empty_results()
+            logger.error(f"Failed to initialize Monte Carlo system: {e}")
+            return False
 
-    def _run_single_simulation(
-        self,
-        initial_capital: float,
-        min_trade_size: float,
-        max_trade_size: float,
-        historical_trades: List[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """Run single simulation path."""
+    async def run_simulations(self) -> Dict[str, Any]:
+        """Run Monte Carlo simulations."""
         try:
-            capital = initial_capital
-            trades_executed = 0
-            successful_trades = 0
-            total_profit = 0.0
-            total_gas = 0.0
-            capital_history = [capital]
+            # Get historical data
+            trades = await self.db.get_trades({})
+            if not trades:
+                return {}
+                
+            # Calculate historical metrics
+            returns = self._calculate_returns(trades)
+            volatility = np.std(returns)
+            mean_return = np.mean(returns)
             
-            # Simulate time periods
-            current_time = datetime.now()
-            end_time = current_time + timedelta(hours=self.time_horizon)
+            # Run simulations
+            paths = []
+            initial_value = 1000.0  # Starting with $1000
             
-            while current_time < end_time:
-                # Simulate market conditions
-                market_conditions = self._simulate_market_conditions(historical_trades)
+            for _ in range(self.num_simulations):
+                path = [initial_value]
+                current_value = initial_value
                 
-                # Generate trade opportunity
-                opportunity = self._generate_opportunity(
-                    historical_trades,
-                    min_trade_size,
-                    max_trade_size,
-                    market_conditions
-                )
+                for _ in range(self.time_horizon * 24):  # Hourly simulations
+                    # Generate random return using historical distribution
+                    daily_return = np.random.normal(mean_return, volatility)
+                    current_value *= (1 + daily_return)
+                    path.append(current_value)
                 
-                if opportunity:
-                    # Get ML predictions
-                    success_prob, _ = asyncio.run(
-                        self.ml_system.predict_trade_success(opportunity)
-                    )
-                    predicted_profit, _ = asyncio.run(
-                        self.ml_system.predict_profit(opportunity)
-                    )
-                    
-                    # Execute trade if predictions are favorable
-                    if (
-                        success_prob > 0.7 and  # 70% success probability
-                        predicted_profit > opportunity['gas_cost_usd'] * 2  # 2x gas cost
-                    ):
-                        trades_executed += 1
-                        
-                        # Simulate trade outcome
-                        success, profit, gas = self._simulate_trade_outcome(
-                            opportunity,
-                            market_conditions
-                        )
-                        
-                        if success:
-                            successful_trades += 1
-                            total_profit += profit
-                            capital += profit
-                        
-                        total_gas += gas
-                        capital -= gas
-                
-                # Record capital
-                capital_history.append(capital)
-                
-                # Move time forward
-                current_time += timedelta(minutes=5)  # 5-minute intervals
+                paths.append(path)
             
             # Calculate metrics
-            roi = (capital - initial_capital) / initial_capital
-            success_rate = successful_trades / trades_executed if trades_executed > 0 else 0
-            avg_profit = total_profit / trades_executed if trades_executed > 0 else 0
+            paths_array = np.array(paths)
+            final_values = paths_array[:, -1]
             
-            return {
+            self.simulation_results = {
+                'paths': paths,
                 'metrics': {
-                    'final_capital': capital,
-                    'roi': roi,
-                    'trades_executed': trades_executed,
-                    'success_rate': success_rate,
-                    'total_profit': total_profit,
-                    'total_gas': total_gas,
-                    'avg_profit': avg_profit
-                },
-                'trajectory': capital_history
+                    'mean_final_value': float(np.mean(final_values)),
+                    'std_final_value': float(np.std(final_values)),
+                    'max_final_value': float(np.max(final_values)),
+                    'min_final_value': float(np.min(final_values)),
+                    'var_95': float(np.percentile(final_values, 5)),
+                    'expected_shortfall': float(np.mean(
+                        final_values[final_values < np.percentile(final_values, 5)]
+                    ))
+                }
             }
             
+            # Update risk metrics
+            await self._update_risk_metrics()
+            
+            # Save results
+            await self._save_simulation_results()
+            
+            return self.simulation_results
+            
         except Exception as e:
-            logger.error(f"Error in simulation path: {e}")
-            return None
+            logger.error(f"Error running simulations: {e}")
+            return {}
 
-    def _simulate_market_conditions(
+    async def get_risk_metrics(self) -> Dict[str, Any]:
+        """Get current risk metrics."""
+        return self.risk_metrics.copy()
+
+    async def analyze_strategy(
         self,
-        historical_trades: List[Dict[str, Any]]
+        strategy_params: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Simulate market conditions based on historical data."""
-        try:
-            # Get base conditions
-            base_conditions = asyncio.run(self.ml_system.analyze_market_conditions())
-            
-            # Add random volatility
-            for dex in base_conditions['volatility']:
-                base_conditions['volatility'][dex] *= (
-                    1 + np.random.normal(0, 0.2) * self.volatility_factor
-                )
-            
-            # Adjust competition
-            base_conditions['competition']['rate'] *= (
-                1 + np.random.normal(0, 0.1) * self.competition_factor
-            )
-            
-            # Adjust liquidity
-            for token in base_conditions['liquidity']:
-                base_conditions['liquidity'][token] *= (
-                    1 + np.random.normal(0, 0.15)
-                )
-            
-            return base_conditions
-            
-        except Exception as e:
-            logger.error(f"Error simulating market conditions: {e}")
-            return {
-                'volatility': {},
-                'liquidity': {},
-                'competition': {'rate': 0.5}
-            }
-
-    def _generate_opportunity(
-        self,
-        historical_trades: List[Dict[str, Any]],
-        min_size: float,
-        max_size: float,
-        market_conditions: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """Generate simulated trade opportunity."""
-        try:
-            if not historical_trades:
-                return None
-            
-            # Sample historical trade
-            base_trade = np.random.choice(historical_trades)
-            
-            # Adjust parameters based on market conditions
-            dex_volatility = market_conditions['volatility'].get(
-                base_trade['buy_dex'],
-                0.1
-            )
-            
-            # Adjust amounts
-            amount_in = np.random.uniform(min_size, max_size)
-            price_impact = base_trade.get('price_impact', 0.001) * self.slippage_factor
-            amount_out = amount_in * (1 - price_impact)
-            
-            # Get gas estimate
-            gas_price = asyncio.run(self.gas_optimizer.get_optimal_gas_price())
-            gas_limit = asyncio.run(
-                self.gas_optimizer.estimate_gas_limit(
-                    base_trade['buy_dex'],
-                    base_trade.get('buy_path', []),
-                    'v3' if 'quoter' in base_trade else 'v2'
-                )
-            )
-            gas_cost_usd = (gas_price * gas_limit) / 1e18 * 2000  # Rough ETH price
-            
-            return {
-                'buy_dex': base_trade['buy_dex'],
-                'sell_dex': base_trade['sell_dex'],
-                'buy_path': base_trade.get('buy_path', []),
-                'sell_path': base_trade.get('sell_path', []),
-                'amount_in': amount_in,
-                'amount_out': amount_out,
-                'price_impact': price_impact,
-                'gas_cost_usd': gas_cost_usd,
-                'market_volatility': dex_volatility,
-                'competition_rate': market_conditions['competition']['rate']
-            }
-            
-        except Exception as e:
-            logger.error(f"Error generating opportunity: {e}")
-            return None
-
-    def _simulate_trade_outcome(
-        self,
-        opportunity: Dict[str, Any],
-        market_conditions: Dict[str, Any]
-    ) -> Tuple[bool, float, float]:
         """
-        Simulate trade execution outcome.
-        
+        Analyze trading strategy using Monte Carlo simulations.
+
+        Args:
+            strategy_params: Strategy parameters to analyze
+
         Returns:
-            Tuple[bool, float, float]: Success flag, profit, gas cost
+            Dict[str, Any]: Analysis results
         """
         try:
-            # Base success probability on market conditions
-            base_prob = 1.0 - market_conditions['competition']['rate']
-            
-            # Adjust for volatility
-            volatility = market_conditions['volatility'].get(
-                opportunity['buy_dex'],
-                0.1
-            )
-            success_prob = base_prob * (1 - volatility * self.volatility_factor)
-            
-            # Determine success
-            success = np.random.random() < success_prob
-            
-            if success:
-                # Calculate profit with random variation
-                base_profit = opportunity['amount_out'] - opportunity['amount_in']
-                profit_variation = np.random.normal(0, 0.1)  # 10% standard deviation
-                actual_profit = base_profit * (1 + profit_variation)
+            # Get historical performance with strategy
+            trades = await self._simulate_strategy_trades(strategy_params)
+            if not trades:
+                return {}
                 
-                # Ensure profit covers gas
-                if actual_profit < opportunity['gas_cost_usd']:
-                    success = False
-                    actual_profit = 0
-            else:
-                actual_profit = 0
+            # Run simulations with strategy
+            returns = self._calculate_returns(trades)
+            volatility = np.std(returns)
+            mean_return = np.mean(returns)
             
-            return success, actual_profit, opportunity['gas_cost_usd']
+            paths = []
+            initial_value = 1000.0
             
-        except Exception as e:
-            logger.error(f"Error simulating trade outcome: {e}")
-            return False, 0.0, 0.0
-
-    def _analyze_results(
-        self,
-        results: List[Dict[str, Any]],
-        trajectories: List[List[float]]
-    ) -> Dict[str, Any]:
-        """Analyze simulation results."""
-        try:
-            if not results:
-                return self._empty_results()
+            for _ in range(self.num_simulations):
+                path = [initial_value]
+                current_value = initial_value
+                
+                for _ in range(self.time_horizon * 24):
+                    # Apply strategy constraints
+                    max_trade_size = strategy_params.get('max_trade_size', current_value * 0.1)
+                    min_profit_threshold = strategy_params.get('min_profit_threshold', 0.001)
+                    
+                    # Generate return with strategy constraints
+                    trade_return = np.random.normal(mean_return, volatility)
+                    if abs(trade_return) > min_profit_threshold:
+                        trade_size = min(max_trade_size, current_value * 0.1)
+                        current_value += trade_size * trade_return
+                    
+                    path.append(current_value)
+                
+                paths.append(path)
             
-            # Convert to DataFrame
-            df = pd.DataFrame(results)
-            
-            # Calculate risk metrics
-            returns = df['roi'].values
-            var = np.percentile(returns, (1 - self.var_confidence) * 100)
-            
-            # Calculate maximum drawdown
-            max_dd = 0
-            for trajectory in trajectories:
-                peaks = pd.Series(trajectory).expanding(min_periods=1).max()
-                drawdowns = (pd.Series(trajectory) - peaks) / peaks
-                max_dd = min(max_dd, drawdowns.min())
-            
-            # Calculate Sharpe ratio (assuming risk-free rate of 2%)
-            rf_rate = 0.02
-            excess_returns = returns - rf_rate
-            sharpe = np.mean(excess_returns) / np.std(excess_returns) if len(returns) > 1 else 0
+            # Calculate strategy metrics
+            paths_array = np.array(paths)
+            final_values = paths_array[:, -1]
             
             return {
-                'summary_stats': {
-                    'mean_roi': float(df['roi'].mean()),
-                    'median_roi': float(df['roi'].median()),
-                    'roi_std': float(df['roi'].std()),
-                    'success_rate': float(df['success_rate'].mean()),
-                    'avg_trades': float(df['trades_executed'].mean()),
-                    'avg_profit_per_trade': float(df['avg_profit'].mean()),
-                    'total_gas_spent': float(df['total_gas'].sum())
-                },
-                'risk_metrics': {
-                    'value_at_risk': float(var),
-                    'max_drawdown': float(max_dd),
-                    'sharpe_ratio': float(sharpe)
-                },
-                'recommendations': self._generate_recommendations(
-                    df,
-                    var,
-                    max_dd,
-                    sharpe
+                'expected_return': float(np.mean(final_values) / initial_value - 1),
+                'volatility': float(np.std(final_values) / initial_value),
+                'sharpe_ratio': float(
+                    (np.mean(final_values) - initial_value) /
+                    (np.std(final_values) + 1e-10)
+                ),
+                'max_drawdown': float(self._calculate_max_drawdown(paths_array)),
+                'success_rate': float(np.mean(final_values > initial_value)),
+                'var_95': float(np.percentile(final_values, 5)),
+                'expected_shortfall': float(np.mean(
+                    final_values[final_values < np.percentile(final_values, 5)]
+                ))
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing strategy: {e}")
+            return {}
+
+    async def optimize_parameters(
+        self,
+        param_ranges: Dict[str, Tuple[float, float]],
+        num_iterations: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Optimize strategy parameters using Monte Carlo simulations.
+
+        Args:
+            param_ranges: Dictionary of parameter ranges to optimize
+            num_iterations: Number of optimization iterations
+
+        Returns:
+            Dict[str, Any]: Optimal parameters and performance metrics
+        """
+        try:
+            best_params = {}
+            best_performance = float('-inf')
+            
+            for _ in range(num_iterations):
+                # Generate random parameters within ranges
+                params = {
+                    name: np.random.uniform(low, high)
+                    for name, (low, high) in param_ranges.items()
+                }
+                
+                # Analyze strategy with parameters
+                results = await self.analyze_strategy(params)
+                if not results:
+                    continue
+                
+                # Calculate performance score
+                performance = (
+                    results['expected_return'] * 0.4 +
+                    results['sharpe_ratio'] * 0.3 +
+                    (1 - results['max_drawdown']) * 0.2 +
+                    results['success_rate'] * 0.1
+                )
+                
+                if performance > best_performance:
+                    best_performance = performance
+                    best_params = params
+            
+            # Run final analysis with best parameters
+            final_results = await self.analyze_strategy(best_params)
+            
+            return {
+                'optimal_params': best_params,
+                'performance_metrics': final_results
+            }
+            
+        except Exception as e:
+            logger.error(f"Error optimizing parameters: {e}")
+            return {}
+
+    def _calculate_returns(self, trades: List[Dict[str, Any]]) -> np.ndarray:
+        """Calculate returns from trades."""
+        try:
+            if not trades:
+                return np.array([])
+                
+            returns = []
+            for trade in trades:
+                if trade['status'] == 'completed':
+                    profit = float(trade.get('profit', 0))
+                    value = float(trade.get('value', 0))
+                    if value > 0:
+                        returns.append(profit / value)
+            
+            return np.array(returns)
+            
+        except Exception as e:
+            logger.error(f"Error calculating returns: {e}")
+            return np.array([])
+
+    def _calculate_max_drawdown(self, paths: np.ndarray) -> float:
+        """Calculate maximum drawdown from paths."""
+        try:
+            max_drawdown = 0
+            for path in paths:
+                peaks = np.maximum.accumulate(path)
+                drawdowns = (peaks - path) / peaks
+                max_drawdown = max(max_drawdown, np.max(drawdowns))
+            return max_drawdown
+            
+        except Exception as e:
+            logger.error(f"Error calculating max drawdown: {e}")
+            return 1.0
+
+    async def _simulate_strategy_trades(
+        self,
+        strategy_params: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Simulate trades with strategy parameters."""
+        try:
+            # Get historical market data
+            market_data = await self.market_analyzer.get_historical_data(
+                days=self.time_horizon
+            )
+            
+            simulated_trades = []
+            portfolio_value = 1000.0  # Initial value
+            
+            for timestamp, data in market_data.items():
+                # Check strategy conditions
+                if await self._check_strategy_conditions(data, strategy_params):
+                    # Simulate trade
+                    trade_size = min(
+                        portfolio_value * strategy_params.get('position_size', 0.1),
+                        strategy_params.get('max_trade_size', float('inf'))
+                    )
+                    
+                    # Predict trade outcome
+                    success_prob, _ = await self.ml_system.predict_trade_success({
+                        'market_volatility': data['volatility'],
+                        'competition_rate': data['competition_rate'],
+                        'gas_price': data['gas_price']
+                    })
+                    
+                    if success_prob > strategy_params.get('min_success_prob', 0.5):
+                        # Simulate trade outcome
+                        profit = trade_size * (
+                            np.random.normal(
+                                data['expected_return'],
+                                data['volatility']
+                            )
+                        )
+                        
+                        simulated_trades.append({
+                            'timestamp': timestamp,
+                            'value': trade_size,
+                            'profit': profit,
+                            'status': 'completed' if profit > 0 else 'failed'
+                        })
+                        
+                        portfolio_value += profit
+            
+            return simulated_trades
+            
+        except Exception as e:
+            logger.error(f"Error simulating strategy trades: {e}")
+            return []
+
+    async def _check_strategy_conditions(
+        self,
+        market_data: Dict[str, Any],
+        strategy_params: Dict[str, Any]
+    ) -> bool:
+        """Check if strategy conditions are met."""
+        try:
+            # Check volatility conditions
+            if market_data['volatility'] > strategy_params.get('max_volatility', float('inf')):
+                return False
+                
+            # Check competition conditions
+            if market_data['competition_rate'] > strategy_params.get('max_competition', float('inf')):
+                return False
+                
+            # Check gas price conditions
+            if market_data['gas_price'] > strategy_params.get('max_gas_price', float('inf')):
+                return False
+                
+            # Check minimum profit potential
+            if market_data['expected_return'] < strategy_params.get('min_return', float('-inf')):
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking strategy conditions: {e}")
+            return False
+
+    async def _update_risk_metrics(self) -> None:
+        """Update risk metrics from simulation results."""
+        try:
+            if not self.simulation_results:
+                return
+                
+            metrics = self.simulation_results['metrics']
+            paths = np.array(self.simulation_results['paths'])
+            
+            # Calculate additional risk metrics
+            self.risk_metrics = {
+                'value_at_risk': metrics['var_95'],
+                'expected_shortfall': metrics['expected_shortfall'],
+                'volatility': float(np.std(paths[:, -1])),
+                'skewness': float(stats.skew(paths[:, -1])),
+                'kurtosis': float(stats.kurtosis(paths[:, -1])),
+                'max_drawdown': float(self._calculate_max_drawdown(paths)),
+                'success_rate': float(np.mean(paths[:, -1] > paths[:, 0])),
+                'sharpe_ratio': float(
+                    (np.mean(paths[:, -1]) - paths[0, 0]) /
+                    (np.std(paths[:, -1]) + 1e-10)
                 )
             }
             
         except Exception as e:
-            logger.error(f"Error analyzing results: {e}")
-            return self._empty_results()
+            logger.error(f"Error updating risk metrics: {e}")
 
-    def _generate_recommendations(
-        self,
-        results_df: pd.DataFrame,
-        var: float,
-        max_dd: float,
-        sharpe: float
-    ) -> List[str]:
-        """Generate strategy recommendations."""
-        recommendations = []
-        
-        # Check Sharpe ratio
-        if sharpe < self.min_sharpe:
-            recommendations.append(
-                f"Low Sharpe ratio ({sharpe:.2f}). Consider increasing "
-                "minimum profit threshold or reducing gas costs."
-            )
-        
-        # Check maximum drawdown
-        if abs(max_dd) > self.max_drawdown:
-            recommendations.append(
-                f"High maximum drawdown ({max_dd:.2%}). Consider implementing "
-                "stricter risk controls or position sizing."
-            )
-        
-        # Check success rate
-        mean_success = results_df['success_rate'].mean()
-        if mean_success < 0.8:  # 80% target
-            recommendations.append(
-                f"Low success rate ({mean_success:.2%}). Consider increasing "
-                "ML prediction thresholds."
-            )
-        
-        # Check gas efficiency
-        avg_profit = results_df['avg_profit'].mean()
-        avg_gas = results_df['total_gas'].mean() / results_df['trades_executed'].mean()
-        if avg_profit < avg_gas * 3:  # 3x gas cost target
-            recommendations.append(
-                "Low profit/gas ratio. Consider optimizing gas usage or "
-                "focusing on higher-value opportunities."
-            )
-        
-        return recommendations
-
-    def _empty_results(self) -> Dict[str, Any]:
-        """Return empty results structure."""
-        return {
-            'summary_stats': {
-                'mean_roi': 0.0,
-                'median_roi': 0.0,
-                'roi_std': 0.0,
-                'success_rate': 0.0,
-                'avg_trades': 0.0,
-                'avg_profit_per_trade': 0.0,
-                'total_gas_spent': 0.0
-            },
-            'risk_metrics': {
-                'value_at_risk': 0.0,
-                'max_drawdown': 0.0,
-                'sharpe_ratio': 0.0
-            },
-            'recommendations': ["Insufficient data for analysis"]
-        }
-
-    def _save_results(self, results: Dict[str, Any]) -> None:
-        """Save simulation results."""
+    async def _save_simulation_results(self) -> None:
+        """Save simulation results to file."""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_path = self.results_dir / f"simulation_{timestamp}.json"
+            file_path = self.simulations_dir / f"simulation_{timestamp}.json"
             
+            results = {
+                'timestamp': datetime.now().isoformat(),
+                'parameters': {
+                    'num_simulations': self.num_simulations,
+                    'time_horizon': self.time_horizon,
+                    'confidence_level': self.confidence_level
+                },
+                'metrics': self.simulation_results['metrics'],
+                'risk_metrics': self.risk_metrics
+            }
+            
+            # Save results as JSON
+            import json
             with open(file_path, 'w') as f:
-                import json
-                json.dump(
-                    {
-                        'results': results,
-                        'parameters': {
-                            'num_simulations': self.num_simulations,
-                            'time_horizon': self.time_horizon,
-                            'volatility_factor': self.volatility_factor,
-                            'competition_factor': self.competition_factor,
-                            'slippage_factor': self.slippage_factor
-                        },
-                        'timestamp': timestamp
-                    },
-                    f,
-                    indent=2
-                )
-                
+                json.dump(results, f, indent=2)
+            
         except Exception as e:
-            logger.error(f"Error saving results: {e}")
+            logger.error(f"Error saving simulation results: {e}")
+
+    async def _load_historical_data(self) -> None:
+        """Load historical simulation results."""
+        try:
+            files = list(self.simulations_dir.glob("simulation_*.json"))
+            if not files:
+                return
+                
+            # Load most recent simulation
+            latest_file = max(files, key=lambda p: p.stat().st_mtime)
+            
+            import json
+            with open(latest_file, 'r') as f:
+                data = json.load(f)
+                
+            self.risk_metrics = data.get('risk_metrics', {})
+            
+        except Exception as e:
+            logger.error(f"Error loading historical data: {e}")
+
+
+async def create_monte_carlo_system(
+    analytics: AnalyticsSystem,
+    market_analyzer: Any,
+    ml_system: MLSystem,
+    config: Dict[str, Any],
+    db: Optional[Database] = None
+) -> Optional[MonteCarloSystem]:
+    """
+    Create Monte Carlo system instance.
+
+    Args:
+        analytics: Analytics system instance
+        market_analyzer: Market analyzer instance
+        ml_system: ML system instance
+        config: Configuration dictionary
+        db: Optional Database instance
+
+    Returns:
+        Optional[MonteCarloSystem]: Monte Carlo system instance
+    """
+    try:
+        system = MonteCarloSystem(
+            analytics=analytics,
+            market_analyzer=market_analyzer,
+            ml_system=ml_system,
+            config=config,
+            db=db
+        )
+        
+        success = await system.initialize()
+        if not success:
+            raise ValueError("Failed to initialize Monte Carlo system")
+            
+        return system
+        
+    except Exception as e:
+        logger.error(f"Failed to create Monte Carlo system: {e}")
+        return None

@@ -1,51 +1,57 @@
-# Active Development Context
+# Active Context
+
+## Current System State
+- Bot and dashboard are integrated components
+- ArbitrageBot class in main.py handles both:
+  - Core arbitrage functionality
+  - Dashboard initialization via subprocess
 
 ## Current Focus
-Enhancing arbitrage bot core systems with ML-driven decision making and advanced risk management.
+- Fixing market metrics collection in market_analyzer.py
+- Issue: Response format mismatch between MCP tool and analyzer
+- Status: Implementing format handling updates
+- Impact: Affects price data processing for WETH and USDC
+
+## Running the System
+- Single entry point through production.py
+- Dashboard auto-starts with bot
+- Environment variables loaded from .env
+- Logging configured for both bot and dashboard
+
+## Component Status
+1. Core Bot
+   - Web3 connection established
+   - DEX integrations initialized (PancakeSwap V3, BaseSwap)
+   - Analytics system running
+   - Alert system active
+
+2. Dashboard
+   - Running on http://localhost:5000
+   - WebSocket server on port 8771
+   - Real-time metrics display working
+   - Graphs initialized
 
 ## Recent Changes
-1. ML System Implementation
-   - Trade success prediction models
-   - Profit prediction models
-   - Market condition analysis
-   - Feature importance tracking
-   - Continuous model retraining
+1. Core Improvements
+   - Fixed PancakeSwap V3 slot0() decoding
+   - Integrated real-time price data via crypto-price MCP server
+   - Enhanced market validation using market analyzer
+   - Streamlined trade execution flow
 
-2. Monte Carlo Simulation Enhancements
-   - Risk-adjusted backtesting
-   - Market condition simulation
-   - Performance metrics
-   - Strategy validation
-
-3. Transaction Monitoring Improvements
-   - Mempool analysis
-   - Competitor tracking
-   - Block reorg detection
-   - Performance metrics
-
-4. Balance Management Updates
-   - Dynamic position sizing
-   - Risk-based trade approval
-   - Portfolio rebalancing
-   - Performance tracking
+## Known Issues
+1. Non-Critical Warnings
+   - Market metrics initially empty (expected during startup)
+   - Some ML warnings due to insufficient training data
+   - Non-critical WebSocket connection retries
 
 ## Next Steps
-1. Price Feed Integration
-   - Implement real-time price feeds
-   - Add price validation
-   - Enhance USD value calculations
+1. Monitor arbitrage opportunity detection
+2. Track execution success rate
+3. Fine-tune market validation parameters
+4. Optimize gas usage for higher profitability
 
-2. Cross-Chain Support
-   - Add multi-chain monitoring
-   - Implement bridge detection
-   - Cross-chain arbitrage strategies
-
-3. Advanced Execution
-   - Flashbots integration
-   - MEV protection
-   - Bundle transactions
-
-4. Dashboard Enhancements
-   - Real-time ML insights
-   - Risk metrics visualization
-   - Performance analytics
+## Important Notes
+- All components initialized successfully
+- WebSocket server properly configured
+- Database connections established
+- Real-time monitoring active

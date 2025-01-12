@@ -28,7 +28,13 @@ async def use_mcp_tool(server_name: str, tool_name: str, arguments: Dict[str, An
                 "prices": {
                     "ethereum": {
                         "price_usd": 3308.1,
-                        "change_24h": -1.8253010265840701
+                        "volume_24h": 15234567890,
+                        "change_24h": -1.82
+                    },
+                    "usd-coin": {
+                        "price_usd": 1.0,
+                        "volume_24h": 5234567890,
+                        "change_24h": 0.01
                     }
                 },
                 "timestamp": "2025-01-09T09:01:47.966Z"
@@ -36,9 +42,13 @@ async def use_mcp_tool(server_name: str, tool_name: str, arguments: Dict[str, An
         elif server_name == "market-analysis" and tool_name == "assess_market_conditions":
             # Mock response for testing
             return {
-                "volatility": 0.0124,
-                "volume_trend": 0.0014827637739027561,
-                "overall_trend": "bearish"
+                "metrics": {
+                    "volatility": 0.0124,
+                    "volume": 15234567890,
+                    "liquidity": 1234567890,
+                    "trend": "sideways"
+                },
+                "confidence": 0.85
             }
         else:
             # For other tools, let the system handle it
@@ -104,8 +114,8 @@ async def validate_prices(token_addresses: List[str], amounts_in: List[int] = No
                 request
             )
             logger.info(f"Price response: {response}")
-            if not response or 'prices' not in response:
-                logger.error("Invalid price response format")
+            if not response:
+                logger.error("Empty response from crypto-price MCP tool")
                 return {}
         except Exception as e:
             logger.error(f"Failed to get prices: {e}")
@@ -113,16 +123,25 @@ async def validate_prices(token_addresses: List[str], amounts_in: List[int] = No
         
         # Validate prices and add market analysis if needed
         result = {}
-        for token in token_data:
-            token_id = token['id']
-            if token_id not in response.get('prices', {}):
-                continue
-                
-            result[token['address']] = {
-                'price': response['prices'][token_id]['price_usd'],
-                'change_24h': response['prices'][token_id]['change_24h'],
-                'validation': {'is_valid': True, 'reason': None}
-            }
+        if isinstance(response, dict) and 'prices' in response:
+            prices = response['prices']
+            for token in token_data:
+                token_id = token['id']
+                if token_id not in prices:
+                    logger.warning(f"No price data for {token_id}")
+                    continue
+                    
+                token_data = prices[token_id]
+                if not isinstance(token_data, dict) or 'price_usd' not in token_data:
+                    logger.warning(f"Invalid price data format for {token_id}")
+                    continue
+                    
+                result[token['address']] = {
+                    'price': token_data['price_usd'],
+                    'volume_24h': token_data.get('volume_24h', 0),
+                    'change_24h': token_data.get('change_24h', 0),
+                    'validation': {'is_valid': True, 'reason': None}
+                }
             
             # If we have amounts, validate the implied price
             if token['amount_in'] and token['amount_out']:
@@ -130,7 +149,7 @@ async def validate_prices(token_addresses: List[str], amounts_in: List[int] = No
                 amount_in_decimal = token['amount_in'] / (10 ** token['decimals'])  # 1 ETH
                 amount_out_decimal = token['amount_out'] / (10 ** 6)  # USDC has 6 decimals for USD
                 implied_price = amount_out_decimal / amount_in_decimal
-                market_price = float(response['prices'][token_id]['price_usd'])
+                market_price = float(token_data['price_usd'])
                 
                 # Check deviation
                 deviation = abs(implied_price - market_price) / market_price
@@ -157,8 +176,8 @@ async def validate_prices(token_addresses: List[str], amounts_in: List[int] = No
                     result[token['address']]['market_conditions'] = market_response
                     
                     # Validate based on market conditions
-                    volatility = market_response.get("volatility", 0)
-                    trend = market_response.get("overall_trend", "neutral")
+                    volatility = market_response.get("metrics", {}).get("volatility", 0)
+                    trend = market_response.get("metrics", {}).get("trend", "sideways")
                     
                     if volatility > 0.5 or trend == "bearish":
                         result[token['address']]['validation'] = {
@@ -218,9 +237,9 @@ async def assess_opportunity(
             "market_conditions": conditions,
             "opportunity_analysis": analysis,
             "risk_factors": {
-                "volatility": max(c.get("volatility", 0) for c in conditions),
-                "volume_ratio": volume_usd / min(c.get("volume_trend", float('inf')) for c in conditions),
-                "trend_alignment": all(c.get("overall_trend") == "bullish" for c in conditions)
+                "volatility": max(c.get("metrics", {}).get("volatility", 0) for c in conditions),
+                "volume_ratio": volume_usd / min(c.get("metrics", {}).get("volume", float('inf')) for c in conditions),
+                "trend_alignment": all(c.get("metrics", {}).get("trend") == "up" for c in conditions)
             }
         }
         

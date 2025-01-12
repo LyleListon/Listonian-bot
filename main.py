@@ -35,7 +35,6 @@ class ArbitrageBot:
         self.web3_manager = None
         self.arbitrage_executor = None
         self.performance_tracker = None
-        self.risk_manager = None
     
     def _validate_environment(self):
         """Validate required environment variables"""
@@ -48,37 +47,100 @@ class ArbitrageBot:
     async def initialize(self):
         """Initialize all components asynchronously"""
         try:
-            # Import and create component instances after config is loaded
-            from arbitrage_bot.core.execution.arbitrage_executor import create_arbitrage_executor
-            from arbitrage_bot.core.monitoring.performance_tracker import create_performance_tracker
-            from arbitrage_bot.core.strategy.risk_manager import create_risk_manager
+            # Import required components
             from arbitrage_bot.core.web3.web3_manager import create_web3_manager
+            from arbitrage_bot.core.analysis.market_analyzer import create_market_analyzer
+            from arbitrage_bot.core.ml.ml_system import create_ml_system
+            from arbitrage_bot.core.analytics.analytics_system import create_analytics_system
+            from arbitrage_bot.core.monitoring.transaction_monitor import create_transaction_monitor
+            from arbitrage_bot.core.execution.arbitrage_executor import create_arbitrage_executor
+            from arbitrage_bot.core.metrics.portfolio_tracker import create_portfolio_tracker
+            from arbitrage_bot.core.dex.dex_manager import create_dex_manager
+            from arbitrage_bot.core.gas.gas_optimizer import create_gas_optimizer
             
             # Get config
             config = self.config_loader.get_config()
             
-            # Create component instances
-            network_config = config.get('network', {})
-            provider_url = network_config.get('rpc_url')
-            chain_id = network_config.get('chainId')
-            
-            if not provider_url:
-                raise ValueError("RPC URL not configured")
-            if not chain_id:
-                raise ValueError("Chain ID not configured")
+            # Set environment variables for Web3 manager
+            os.environ['BASE_RPC_URL'] = config['network']['rpc_url']
+            os.environ['CHAIN_ID'] = str(config['network']['chainId'])
             
             # Initialize Web3 manager first
-            self.web3_manager = await create_web3_manager(
-                provider_url=provider_url,
-                chain_id=chain_id
-            )
-            if not self.web3_manager.chain_id:
-                raise ValueError("Chain ID not available after Web3 initialization")
+            self.web3_manager = await create_web3_manager()
             
-            # Initialize other components
-            self.arbitrage_executor = await create_arbitrage_executor(config, self.web3_manager)
-            self.performance_tracker = create_performance_tracker(config)
-            self.risk_manager = create_risk_manager(config)
+            # Initialize market analyzer
+            self.market_analyzer = await create_market_analyzer(
+                self.web3_manager,
+                config
+            )
+            
+            # Initialize ML system
+            self.ml_system = await create_ml_system(
+                None,  # Analytics will be set after creation
+                self.market_analyzer,
+                config
+            )
+            
+            # Initialize portfolio tracker (serves as performance tracker)
+            self.portfolio_tracker = await create_portfolio_tracker(
+                web3_manager=self.web3_manager,
+                wallet_address=self.web3_manager.wallet_address,
+                config=config
+            )
+            self.performance_tracker = self.portfolio_tracker  # Use portfolio tracker for performance tracking
+            
+            # Initialize DEX manager
+            self.dex_manager = await create_dex_manager(
+                self.web3_manager
+            )
+            
+            # Initialize gas optimizer
+            self.gas_optimizer = await create_gas_optimizer(
+                dex_manager=self.dex_manager,
+                web3_manager=self.web3_manager
+            )
+            
+            # Initialize analytics system
+            self.analytics_system = await create_analytics_system(
+                self.web3_manager,
+                None,  # Transaction monitor will be set after creation
+                self.market_analyzer,
+                self.portfolio_tracker,
+                self.gas_optimizer,
+                config
+            )
+            
+            # Set analytics in ML system
+            self.ml_system.analytics = self.analytics_system
+            
+            # Initialize transaction monitor
+            self.tx_monitor = await create_transaction_monitor(
+                self.web3_manager,
+                self.analytics_system,
+                self.ml_system,
+                self.dex_manager
+            )
+            
+            # Set transaction monitor in analytics system
+            self.analytics_system.tx_monitor = self.tx_monitor
+            
+            # Initialize alert system
+            from arbitrage_bot.core.alerts.alert_system import create_alert_system
+            self.alert_system = await create_alert_system(
+                self.analytics_system,
+                self.tx_monitor,
+                self.market_analyzer,
+                config
+            )
+            
+            # Finally, initialize arbitrage executor with all components
+            self.arbitrage_executor = await create_arbitrage_executor(
+                web3_manager=self.web3_manager,
+                dex_manager=self.dex_manager,
+                gas_optimizer=self.gas_optimizer,
+                tx_monitor=self.tx_monitor,
+                market_analyzer=self.market_analyzer  # Pass market analyzer
+            )
             
             logger.info("ArbitrageBot initialized successfully")
         
@@ -101,6 +163,10 @@ class ArbitrageBot:
             
             # Start dashboard if enabled
             if self.config_loader.get_config().get('dashboard', {}).get('enabled', True):
+                # Set dashboard WebSocket port
+                os.environ['DASHBOARD_WEBSOCKET_PORT'] = '8771'
+                # Set analytics system reference
+                os.environ['ANALYTICS_SYSTEM_ID'] = str(id(self.analytics_system))
                 await self._start_dashboard()
             
             # Main arbitrage loop
@@ -143,16 +209,17 @@ class ArbitrageBot:
                     logger.info(f"Found {len(opportunities)} opportunities")
                     
                     for opportunity in opportunities:
-                        # Validate opportunity with risk manager
-                        if not await self.risk_manager.validate_trade(opportunity):
+                        # Validate opportunity with market analyzer
+                        if not await self.market_analyzer.should_execute(
+                            opportunity['buy_path'][0],  # Input token
+                            opportunity['amount_in'],
+                            min_confidence=0.8
+                        )[0]:
                             continue
                         
-                        # Execute trade
-                        success = await self.arbitrage_executor.execute_trade(
-                            opportunity,
-                            self.web3_manager.wallet_address,
-                            os.getenv('PRIVATE_KEY')
-                        )
+                        # Execute opportunity
+                        result = await self.arbitrage_executor.execute_opportunity(opportunity)
+                        success = result is not None and result.get('success', False)
                         
                         if success:
                             logger.info("Trade executed successfully")

@@ -5,8 +5,9 @@ import asyncio
 from typing import Dict, List, Any, Optional, Tuple
 from decimal import Decimal
 
-from ..web3.web3_manager import Web3Manager
-from ..dex.dex_manager import DEXManager
+from ..web3.web3_manager import Web3Manager, create_web3_manager
+from ..dex.dex_manager import DEXManager, create_dex_manager
+from ..gas.gas_optimizer import GasOptimizer, create_gas_optimizer
 from ..dex.utils import (
     calculate_price_impact,
     estimate_gas_cost,
@@ -27,15 +28,20 @@ class ArbitrageExecutor:
         gas_optimizer: GasOptimizer,
         min_profit_usd: float = 10.0,  # Minimum profit in USD
         max_price_impact: float = 0.02,  # Maximum 2% price impact
-        slippage_tolerance: float = 0.005  # 0.5% slippage tolerance
+        slippage_tolerance: float = 0.005,  # 0.5% slippage tolerance
+        tx_monitor: Optional[Any] = None,
+        market_analyzer: Optional[Any] = None
     ):
         """Initialize arbitrage executor."""
         self.dex_manager = dex_manager
         self.web3_manager = web3_manager
         self.gas_optimizer = gas_optimizer
         self.min_profit_usd = min_profit_usd
+        self.wallet_address = web3_manager.wallet_address
         self.max_price_impact = max_price_impact
         self.slippage_tolerance = slippage_tolerance
+        self.tx_monitor = tx_monitor
+        self.market_analyzer = market_analyzer
 
     async def find_opportunities(
         self,
@@ -379,13 +385,106 @@ class ArbitrageExecutor:
 
     async def _convert_wei_to_usd(self, amount_wei: int) -> float:
         """Convert wei amount to USD value."""
-        # TODO: Implement price feed integration
-        # For now, using mock conversion
-        eth_price = 2000  # Mock ETH price
-        eth_amount = amount_wei / 1e18
-        return eth_amount * eth_price
+        try:
+            # Get ETH price from crypto-price server
+            response = await self.web3_manager.use_mcp_tool(
+                "crypto-price",
+                "get_prices",
+                {
+                    "coins": ["ethereum"],
+                    "include_24h_change": False
+                }
+            )
+            
+            if not response or "ethereum" not in response:
+                self.logger.error("Failed to get ETH price from MCP server")
+                return 0.0
+                
+            eth_price = float(response["ethereum"]["usd"])
+            eth_amount = amount_wei / 1e18
+            return eth_amount * eth_price
+            
+        except Exception as e:
+            self.logger.error(f"Error converting wei to USD: {e}")
+            return 0.0
 
     def _get_deadline(self) -> int:
         """Get transaction deadline timestamp."""
         current_block = self.web3_manager.w3.eth.get_block('latest')
         return current_block['timestamp'] + 300  # 5 minutes
+
+    async def initialize(self) -> bool:
+        """Initialize arbitrage executor."""
+        try:
+            # Connect to Web3
+            await self.web3_manager.connect()
+
+            # Initialize DEX manager
+            if not await self.dex_manager.initialize():
+                logger.error("Failed to initialize DEX manager")
+                return False
+
+            # Initialize gas optimizer
+            if not await self.gas_optimizer.initialize():
+                logger.error("Failed to initialize gas optimizer")
+                return False
+
+            # Check wallet balance
+            balance = await self.web3_manager.get_eth_balance()
+            if balance == 0:
+                logger.warning("Wallet has no ETH balance")
+
+            logger.info("Arbitrage executor initialized")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to initialize arbitrage executor: {e}")
+            return False
+
+    # Alias for find_opportunities to maintain compatibility
+    detect_opportunities = find_opportunities
+
+
+async def create_arbitrage_executor(
+    web3_manager: Optional[Web3Manager] = None,
+    dex_manager: Optional[DEXManager] = None,
+    gas_optimizer: Optional[GasOptimizer] = None,
+    min_profit_usd: float = 10.0,
+    max_price_impact: float = 0.02,
+    slippage_tolerance: float = 0.005,
+    tx_monitor: Optional[Any] = None,
+    market_analyzer: Optional[Any] = None
+) -> ArbitrageExecutor:
+    """
+    Create arbitrage executor instance.
+
+    Args:
+        web3_manager: Web3Manager instance
+        dex_manager: Optional DEXManager instance
+        gas_optimizer: Optional GasOptimizer instance
+        min_profit_usd: Minimum profit in USD
+        max_price_impact: Maximum price impact
+        slippage_tolerance: Slippage tolerance
+
+    Returns:
+        ArbitrageExecutor: Arbitrage executor instance
+    """
+    if not web3_manager:
+        web3_manager = await create_web3_manager()
+    if not isinstance(web3_manager, Web3Manager):
+        raise TypeError(f"Expected Web3Manager instance, got {type(web3_manager)}")
+    if not dex_manager:
+        dex_manager = await create_dex_manager(web3_manager)
+    if not gas_optimizer:
+        gas_optimizer = await create_gas_optimizer(dex_manager=dex_manager, web3_manager=web3_manager)
+
+    return ArbitrageExecutor(
+        dex_manager=dex_manager,
+        web3_manager=web3_manager,
+        gas_optimizer=gas_optimizer,
+        min_profit_usd=min_profit_usd,
+        max_price_impact=max_price_impact,
+        slippage_tolerance=slippage_tolerance,
+        tx_monitor=tx_monitor,
+        market_analyzer=market_analyzer
+    )

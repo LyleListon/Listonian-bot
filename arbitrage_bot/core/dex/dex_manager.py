@@ -26,6 +26,11 @@ class DEXStatus:
 class DEXManager:
     """Manager for handling multiple DEX instances."""
 
+    @property
+    def web3(self):
+        """Get Web3 instance."""
+        return self.web3_manager.w3
+
     def __init__(
         self,
         web3_manager: Web3Manager,
@@ -106,6 +111,37 @@ class DEXManager:
         except Exception as e:
             logger.error(f"Failed to initialize DEX manager: {e}")
             return False
+
+    def get_dex_by_address(self, address: str) -> Optional[BaseDEX]:
+        """Get DEX instance by router address."""
+        if not address:
+            return None
+            
+        address = address.lower()
+        for dex in self.dexes.values():
+            # Check router address attribute
+            if hasattr(dex, 'router_address'):
+                if isinstance(dex.router_address, str) and dex.router_address.lower() == address:
+                    return dex
+            
+            # Check router contract attribute
+            if hasattr(dex, 'router'):
+                if hasattr(dex.router, 'address'):
+                    if isinstance(dex.router.address, str) and dex.router.address.lower() == address:
+                        return dex
+                    
+            # Check factory address
+            if hasattr(dex, 'factory_address'):
+                if isinstance(dex.factory_address, str) and dex.factory_address.lower() == address:
+                    return dex
+                    
+            # Check factory contract
+            if hasattr(dex, 'factory'):
+                if hasattr(dex.factory, 'address'):
+                    if isinstance(dex.factory.address, str) and dex.factory.address.lower() == address:
+                        return dex
+        
+        return None
 
     def get_dex(self, name: str) -> Optional[BaseDEX]:
         """
@@ -266,3 +302,41 @@ class DEXManager:
                 logger.error(f"Error in health monitor: {e}")
                 
             await asyncio.sleep(interval)
+
+
+async def create_dex_manager(
+    web3_manager: Optional[Web3Manager] = None,
+    configs: Optional[Dict[str, Dict[str, Any]]] = None,
+    max_errors: int = 3,
+    recovery_delay: int = 300
+) -> DEXManager:
+    """
+    Create DEX manager instance.
+
+    Args:
+        web3_manager: Optional Web3Manager instance
+        configs: Optional DEX configurations
+        max_errors: Maximum errors before disabling DEX
+        recovery_delay: Seconds to wait before recovery attempt
+
+    Returns:
+        DEXManager: DEX manager instance
+    """
+    if not web3_manager:
+        from ..web3.web3_manager import create_web3_manager
+        web3_manager = await create_web3_manager()
+
+    if not configs:
+        # Load default configs
+        from ...utils.config_loader import load_config
+        configs = load_config().get('dexes', {})
+
+    manager = DEXManager(
+        web3_manager=web3_manager,
+        configs=configs,
+        max_errors=max_errors,
+        recovery_delay=recovery_delay
+    )
+
+    await manager.initialize()
+    return manager

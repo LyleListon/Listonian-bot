@@ -1,170 +1,75 @@
 # Product Context
 
-## Project Overview
+## Purpose
+The Arbitrage Bot is an advanced cryptocurrency trading system designed to identify and execute profitable arbitrage opportunities across multiple decentralized exchanges (DEXs). It combines real-time market analysis with machine learning to make informed trading decisions while managing risks effectively.
 
-### Purpose
-Build a high-performance arbitrage bot that maximizes profit while maintaining strict risk controls through ML-driven decision making and advanced monitoring.
+## Problems Solved
+1. Market Inefficiencies
+   - Identifies price discrepancies across different DEXs
+   - Executes trades to profit from these discrepancies
+   - Monitors multiple trading pairs simultaneously
 
-### Core Value Proposition
-- Automated arbitrage execution
-- ML-powered decision making
-- Real-time market analysis
-- Advanced risk management
-- Multi-DEX support
+2. Execution Timing
+   - Real-time price monitoring via MCP servers
+   - Market condition assessment
+   - Dynamic gas optimization for timely execution
 
-## Key Features
+3. Risk Management
+   - Sophisticated risk assessment
+   - ML-driven decision making
+   - Advanced monitoring and alerts
 
-### Trading Engine
-- Multi-DEX integration (V2/V3)
-- Dynamic path finding
-- Gas optimization
-- MEV protection
-- Transaction bundling
+4. Technical Complexity
+   - Unified interface for multiple DEX protocols
+   - Handles both V2 and V3 liquidity pools
+   - Automated gas optimization
 
-### ML System
-- Trade success prediction
-- Profit prediction
-- Market condition analysis
-- Continuous learning
-- Feature importance tracking
+## Core Functionality
+1. Multi-DEX Integration
+   - PancakeSwap V3
+   - BaseSwap
+   - Extensible to other DEX protocols
+   - Unified trading interface
 
-### Risk Management
-- Dynamic position sizing
-- Portfolio rebalancing
-- Drawdown protection
-- Risk-adjusted returns
-- Performance monitoring
+2. Market Analysis
+   - Real-time price tracking
+   - Liquidity depth monitoring
+   - Volatility analysis
+   - Market condition assessment
 
-### Market Analysis
-- Mempool monitoring
-- Competitor analysis
-- Block reorganization detection
-- Liquidity analysis
-- Price impact calculation
-
-## Success Metrics
-
-### Performance Targets
-- Minimum 95% trade success rate
-- Maximum 10% drawdown
-- Minimum 1.5 Sharpe ratio
-- Maximum 2s execution time
-- Minimum 0.1% profit per trade
-
-### Risk Controls
-- Maximum 10% position size
-- Minimum 20% reserve ratio
-- Maximum 2% price impact
-- Maximum 50% gas increase
-- Minimum 70% success probability
-
-### System Health
-- 99.9% uptime
-- <100ms response time
-- <1GB memory usage
-- <50% CPU usage
-- <100 concurrent connections
-
-## Development Priorities
-
-### Current Focus
-1. Price Feed Integration
-   - Real-time price data
-   - Price validation
-   - USD calculations
-
-2. Cross-Chain Support
-   - Multi-chain monitoring
-   - Bridge detection
-   - Cross-chain arbitrage
-
-3. Advanced Execution
-   - Flashbots integration
+3. Trade Execution
+   - Gas-optimized transactions
    - MEV protection
-   - Bundle optimization
+   - Multi-hop trade routing
+   - Slippage management
 
-4. Dashboard Enhancement
-   - ML insights visualization
-   - Risk metrics display
-   - Performance analytics
+4. Monitoring & Analytics
+   - Real-time WebSocket updates
+   - Performance metrics
+   - System health monitoring
+   - Historical data analysis
 
-### Future Roadmap
-1. Additional DEX Support
-   - More V3 protocols
-   - Specialized DEXs
-   - Cross-chain DEXs
+## Expected Behavior
+1. Startup
+   - Load configurations
+   - Initialize connections to DEXs
+   - Start monitoring systems
+   - Launch dashboard interface
 
-2. Enhanced ML Capabilities
-   - Deep learning models
-   - Network effect analysis
-   - Pattern recognition
+2. Operation
+   - Continuously monitor prices
+   - Identify arbitrage opportunities
+   - Execute trades when profitable
+   - Update metrics and analytics
 
-3. Advanced Risk Features
-   - Portfolio optimization
-   - Hedging strategies
-   - Insurance mechanisms
+3. Risk Management
+   - Monitor gas prices
+   - Track slippage
+   - Assess market conditions
+   - Enforce position limits
 
-4. System Scaling
-   - Multi-node support
-   - Load balancing
-   - Geographic distribution
-
-## Operational Requirements
-
-### Performance
-- Sub-second trade execution
-- Real-time market data
-- Continuous monitoring
-- Instant alerts
-- Automated recovery
-
-### Security
-- Private key protection
-- API security
-- Rate limiting
-- Access control
-- Audit logging
-
-### Reliability
-- Automatic failover
-- Data backup
-- Error recovery
-- Health monitoring
-- Performance tracking
-
-### Maintainability
-- Clear documentation
-- Modular design
-- Testing coverage
-- Easy deployment
-- Simple updates
-
-## User Requirements
-
-### Configuration
-- Easy setup
-- Clear parameters
-- Safe defaults
-- Validation checks
-- Environment specific
-
-### Monitoring
-- Real-time dashboard
-- Performance metrics
-- Risk indicators
-- Alert system
-- Historical analysis
-
-### Control
-- Emergency stop
-- Parameter adjustment
-- Strategy selection
-- Position management
-- Manual override
-
-### Reporting
-- Performance reports
-- Risk analysis
-- Market insights
-- System health
-- Audit trails
+4. Reporting
+   - Real-time performance updates
+   - Trade history tracking
+   - Profit/loss calculations
+   - System health status

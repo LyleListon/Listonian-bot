@@ -21,11 +21,11 @@ class BaseDEXV3(BaseDEX):
         """Initialize the V3 DEX interface."""
         try:
             # Load contract ABIs
-            self.router_abi = self.w3.web3_manager.load_abi(f"{self.name.lower()}_v3_router")
-            self.factory_abi = self.w3.web3_manager.load_abi(f"{self.name.lower()}_factory")
-            self.pool_abi = self.w3.web3_manager.load_abi(f"{self.name.lower()}_v3_pool")
+            self.router_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_router")
+            self.factory_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_factory")
+            self.pool_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_pool")
             if self.quoter_address:
-                self.quoter_abi = self.w3.web3_manager.load_abi(f"{self.name.lower()}_quoter")
+                self.quoter_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_quoter")
             
             # Initialize contracts
             self.router = self.w3.eth.contract(
@@ -185,6 +185,80 @@ class BaseDEXV3(BaseDEX):
             encoded += self.fee.to_bytes(3, 'big')  # Add fee as 3 bytes
         encoded += bytes.fromhex(path[-1][2:])  # Add final token
         return encoded
+
+    async def get_best_path(
+        self,
+        token_in: str,
+        token_out: str,
+        amount_in: int,
+        max_hops: int = 2
+    ) -> Optional[Dict[str, Any]]:
+        """Find best trading path between tokens."""
+        try:
+            if not self.initialized:
+                raise ValueError("DEX not initialized")
+
+            # For V3, we'll first try direct path
+            direct_quote = await self.get_quote_with_impact(
+                amount_in=amount_in,
+                path=[token_in, token_out]
+            )
+            
+            if direct_quote:
+                return {
+                    'path': [token_in, token_out],
+                    'amounts': [amount_in, direct_quote['amount_out']],
+                    'fees': [self.fee],
+                    'price_impact': direct_quote['price_impact']
+                }
+
+            # If direct path fails and max_hops > 1, try common intermediary tokens
+            if max_hops > 1:
+                intermediaries = ['WETH', 'USDC', 'USDT', 'DAI']
+                best_quote = None
+                best_amount_out = 0
+
+                for mid_token in intermediaries:
+                    mid_address = self.config.get('tokens', {}).get(mid_token, {}).get('address')
+                    if not mid_address:
+                        continue
+
+                    # Try path through intermediary
+                    try:
+                        first_hop = await self.get_quote_with_impact(
+                            amount_in=amount_in,
+                            path=[token_in, mid_address]
+                        )
+                        
+                        if first_hop:
+                            second_hop = await self.get_quote_with_impact(
+                                amount_in=first_hop['amount_out'],
+                                path=[mid_address, token_out]
+                            )
+                            
+                            if second_hop and second_hop['amount_out'] > best_amount_out:
+                                best_amount_out = second_hop['amount_out']
+                                best_quote = {
+                                    'path': [token_in, mid_address, token_out],
+                                    'amounts': [
+                                        amount_in,
+                                        first_hop['amount_out'],
+                                        second_hop['amount_out']
+                                    ],
+                                    'fees': [self.fee, self.fee],
+                                    'price_impact': first_hop['price_impact'] + second_hop['price_impact']
+                                }
+                    except Exception as e:
+                        self.logger.debug(f"Failed to check path through {mid_token}: {e}")
+                        continue
+
+                return best_quote
+
+            return None
+
+        except Exception as e:
+            self._handle_error(e, "Finding best V3 path")
+            return None
 
     def _calculate_price_impact(
         self,
