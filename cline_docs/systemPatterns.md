@@ -10,9 +10,10 @@
   - Integration Layer (DEX)
 
 - **Event-Driven Architecture**
-  - WebSocket server for real-time updates
-  - Event-based monitoring system
+  - WebSocket server for real-time updates with error handling
+  - Event-based monitoring system with reconnection logic
   - Asynchronous trade execution
+  - Robust WebSocket client with exponential backoff
 
 ### 2. Design Patterns
 
@@ -28,9 +29,10 @@
   - Various arbitrage strategies
 
 - **Observer Pattern**
-  - WebSocket notifications
+  - WebSocket notifications with error recovery
   - Market price monitoring
   - System alerts
+  - Heartbeat monitoring for connection health
 
 - **Singleton Pattern**
   - Web3 manager
@@ -92,11 +94,13 @@ arbitrage_bot/
   - Structured error hierarchy
   - Contextual error messages
   - Error recovery patterns
+  - WebSocket connection error handling
 
 - **Retry Mechanisms**
-  - Exponential backoff
+  - Exponential backoff for reconnections
   - Circuit breakers
   - Fallback strategies
+  - WebSocket reconnection with attempt limits
 
 #### State Management
 - **Immutable State**

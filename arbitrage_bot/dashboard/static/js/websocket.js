@@ -23,11 +23,18 @@ class WebSocketHandler {
         this.isConnecting = true;
         
         try {
-            const port = window.WEBSOCKET_PORT || '8771';
+            const port = parseInt(window.WEBSOCKET_PORT);
+            if (!port) {
+                console.error('WebSocket port not configured');
+                this.isConnecting = false;
+                this.reconnect();
+                return;
+            }
             const wsUrl = `ws://${window.location.hostname}:${port}`;
-            console.log(`Connecting to WebSocket at ${wsUrl}`);
+            console.debug(`Connecting to WebSocket at ${wsUrl}`);
             
             this.socket = new WebSocket(wsUrl);
+            console.debug('WebSocket instance created');
             
             this.socket.onopen = () => {
                 console.log('WebSocket connected');
@@ -37,6 +44,12 @@ class WebSocketHandler {
                 
                 // Start heartbeat
                 this.startHeartbeat();
+                
+                // Send initial request for data
+                this.socket.send(JSON.stringify({
+                    type: 'subscribe',
+                    channels: ['metrics', 'performance']
+                }));
             };
             
             this.socket.onmessage = this.handleMessage;

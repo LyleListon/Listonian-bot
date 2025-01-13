@@ -71,7 +71,8 @@
 4. Monitoring & Analytics
    - transaction_monitor.py: Transaction tracking
    - alert_system.py: System alerts
-   - websocket_server.py: Real-time updates
+   - websocket_server.py: Real-time updates with error handling
+   - websocket.js: Client-side WebSocket handler with reconnection logic
 
 ### Supporting Systems
 1. Dashboard
@@ -94,6 +95,8 @@
 - Sub-second response time for price updates
 - Maximum 3-second latency for trade execution
 - Real-time WebSocket updates (< 100ms)
+- WebSocket reconnection within 2 seconds
+- Maximum 5 reconnection attempts with exponential backoff
 - Efficient memory usage (< 2GB RAM)
 
 ### Network Requirements
@@ -112,11 +115,13 @@
 ## Monitoring & Maintenance
 
 ### Health Checks
-- WebSocket connectivity
+- WebSocket connectivity and heartbeat monitoring
+- Connection state tracking and recovery
 - DEX connection status
 - Database integrity
 - Memory usage
 - Network latency
+- WebSocket error rate monitoring
 
 ### Logging
 - System logs in /logs

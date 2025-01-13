@@ -44,10 +44,11 @@ The Arbitrage Bot is an advanced cryptocurrency trading system designed to ident
    - Slippage management
 
 4. Monitoring & Analytics
-   - Real-time WebSocket updates
-   - Performance metrics
-   - System health monitoring
+   - Real-time WebSocket updates with error recovery
+   - Reliable performance metrics delivery
+   - Continuous system health monitoring
    - Historical data analysis
+   - Connection state monitoring
 
 ## Expected Behavior
 1. Startup
@@ -69,7 +70,8 @@ The Arbitrage Bot is an advanced cryptocurrency trading system designed to ident
    - Enforce position limits
 
 4. Reporting
-   - Real-time performance updates
-   - Trade history tracking
-   - Profit/loss calculations
-   - System health status
+   - Real-time performance updates with reconnection handling
+   - Uninterrupted trade history tracking
+   - Accurate profit/loss calculations
+   - Comprehensive system health status
+   - Connection reliability metrics

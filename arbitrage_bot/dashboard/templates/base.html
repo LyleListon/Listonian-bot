@@ -8,7 +8,8 @@
     <link href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.css" rel="stylesheet">
     <script>
         // Set WebSocket port from environment
-        window.WEBSOCKET_PORT = '8771';
+        window.WEBSOCKET_PORT = "{{ websocket_port }}";
+        console.debug("WebSocket port configured:", window.WEBSOCKET_PORT);
     </script>
 </head>
 <body>

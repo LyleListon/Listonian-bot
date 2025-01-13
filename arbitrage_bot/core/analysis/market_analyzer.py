@@ -204,13 +204,22 @@ class MarketAnalyzer:
                                 }
                             }
                         
-                        # Get pool liquidity
+                        # Get pool liquidity from configured DEXs
+                        liquidity = Decimal("0")
                         if symbol in tokens:
                             token_config = tokens[symbol]
-                            pool_info = await self._get_pool_liquidity(token_config["address"])
-                            liquidity = Decimal(str(pool_info["liquidity_usd"]))
-                        else:
-                            liquidity = Decimal("0")
+                            total_liquidity = Decimal("0")
+                            
+                            # Get liquidity from each configured DEX
+                            for dex_name, dex_config in self.config.get("dexes", {}).items():
+                                try:
+                                    if dex_name.lower() in ["baseswap", "pancakeswap"]:  # Only use configured DEXs
+                                        pool_info = await self._get_pool_liquidity(token_config["address"], dex_name)
+                                        total_liquidity += Decimal(str(pool_info["liquidity_usd"]))
+                                except Exception as e:
+                                    logger.warning(f"Failed to get {dex_name} pool liquidity: {e}")
+                            
+                            liquidity = total_liquidity
                         
                         # Create price point
                         point = PricePoint(
@@ -270,64 +279,72 @@ class MarketAnalyzer:
         except Exception as e:
             logger.error(f"Failed to update market conditions: {e}")
 
-    async def _get_pool_liquidity(self, token_address: str) -> Dict[str, Any]:
-        """Get pool liquidity information."""
+    async def _get_pool_liquidity(self, token_address: str, dex_name: str) -> Dict[str, Any]:
+        """Get pool liquidity information for a specific DEX."""
         try:
             # Get WETH address
             weth_address = self.config["tokens"]["WETH"]["address"]
             
-            # Create pool contract
-            pool_abi = []  # Load pool ABI
-            with open("abi/aerodrome_pool.json", "r") as f:
-                pool_abi = json.load(f)
-                
-            # Get pool address from factory
-            factory_address = self.config["dexes"]["aerodrome"]["factory"]
-            factory_abi = []  # Load factory ABI
-            with open("abi/aerodrome_factory.json", "r") as f:
-                factory_abi = json.load(f)
-                
-            factory = self.w3.eth.contract(address=factory_address, abi=factory_abi)
+            # Get DEX config
+            dex_config = self.config["dexes"][dex_name]
             
-            # Try both stable and volatile pools
-            pool_address = await factory.functions.getPool(
-                weth_address,
-                token_address,
-                True
-            ).call()
+            # Load appropriate ABI based on DEX
+            if dex_name.lower() == "baseswap":
+                with open("abi/baseswap_pair.json", "r") as f:
+                    pool_abi = json.load(f)
+                with open("abi/baseswap_factory.json", "r") as f:
+                    factory_abi = json.load(f)
+            elif dex_name.lower() == "pancakeswap":
+                with open("abi/pancakeswap_v3_pool.json", "r") as f:
+                    pool_abi = json.load(f)
+                with open("abi/pancakeswap_v3_factory.json", "r") as f:
+                    factory_abi = json.load(f)
+            else:
+                logger.warning(f"Unsupported DEX: {dex_name}")
+                return {"liquidity_usd": 0}
             
-            if pool_address == "0x0000000000000000000000000000000000000000":
-                pool_address = await factory.functions.getPool(
-                    weth_address,
-                    token_address,
-                    False
-                ).call()
-                
+            # Get factory contract
+            factory = self.w3.eth.contract(address=dex_config["factory"], abi=factory_abi)
+            
+            # Get pool address based on DEX type
+            if dex_name.lower() == "baseswap":
+                pool_address = await factory.functions.getPair(weth_address, token_address).call()
+            else:  # PancakeSwap V3
+                pool_address = await factory.functions.getPool(weth_address, token_address, dex_config["fee"]).call()
+            
             if pool_address == "0x0000000000000000000000000000000000000000":
                 return {"liquidity_usd": 0}
-                
+            
             # Get pool info
             pool = self.w3.eth.contract(address=pool_address, abi=pool_abi)
-            reserves = await pool.functions.getReserves().call()
             
-            # Calculate USD value
-            eth_price = self.market_conditions.get("WETH", None)
-            if eth_price:
-                weth_value = Web3.from_wei(reserves[0], "ether") * eth_price.price
-                token_value = Web3.from_wei(reserves[1], "ether")  # Assuming 18 decimals
-                total_value = weth_value + token_value
-            else:
-                total_value = 0
-                
+            # Get liquidity based on DEX type
+            if dex_name.lower() == "baseswap":
+                reserves = await pool.functions.getReserves().call()
+                eth_price = self.market_conditions.get("WETH", None)
+                if eth_price:
+                    weth_value = Web3.from_wei(reserves[0], "ether") * eth_price.price
+                    token_value = Web3.from_wei(reserves[1], "ether")
+                    total_value = weth_value + token_value
+                else:
+                    total_value = 0
+            else:  # PancakeSwap V3
+                slot0 = await pool.functions.slot0().call()
+                liquidity = await pool.functions.liquidity().call()
+                eth_price = self.market_conditions.get("WETH", None)
+                if eth_price and liquidity > 0:
+                    # Simplified V3 liquidity calculation
+                    total_value = Web3.from_wei(liquidity, "ether") * eth_price.price
+                else:
+                    total_value = 0
+            
             return {
                 "address": pool_address,
-                "reserve0": reserves[0],
-                "reserve1": reserves[1],
                 "liquidity_usd": total_value
             }
             
         except Exception as e:
-            logger.error(f"Failed to get pool liquidity: {e}")
+            logger.warning(f"Failed to get {dex_name} pool liquidity: {e}")
             return {"liquidity_usd": 0}
 
     def _calculate_trend(self, symbol: str) -> MarketTrend:
@@ -546,6 +563,30 @@ class MarketAnalyzer:
             "data_points": sum(len(h) for h in self.price_history.values()),
             "last_update": self.last_update
         }
+
+    async def wait_for_data(self, timeout: int = 30) -> bool:
+        """Wait for initial market data to be available.
+        
+        Args:
+            timeout: Maximum time to wait in seconds
+            
+        Returns:
+            bool: True if data is available, False if timeout occurred
+        """
+        start_time = time.time()
+        dots = 0
+        while not self.market_conditions and time.time() - start_time < timeout:
+            dots = (dots + 1) % 4
+            logger.info(f"Waiting for market data{'.' * dots}")
+            await asyncio.sleep(1)
+            
+            # Try to force an update
+            try:
+                await self._update_market_conditions()
+            except Exception as e:
+                logger.warning(f"Error during market update: {e}")
+                
+        return bool(self.market_conditions)
 
     async def get_market_metrics(self) -> Dict[str, Any]:
         """Get current market metrics for all tracked tokens."""

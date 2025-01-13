@@ -13,7 +13,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Total Trades</h5>
-                <h2 class="card-text" id="total-trades">0</h2>
+                <h2 class="card-text" id="total-trades">{{ metrics.get('total_trades', 0) }}</h2>
             </div>
         </div>
     </div>
@@ -21,7 +21,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">24h Trades</h5>
-                <h2 class="card-text" id="trades-24h">0</h2>
+                <h2 class="card-text" id="trades-24h">{{ metrics.get('trades_24h', 0) }}</h2>
             </div>
         </div>
     </div>
@@ -29,7 +29,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Success Rate</h5>
-                <h2 class="card-text" id="success-rate">0%</h2>
+                <h2 class="card-text" id="success-rate">{{ "%.1f"|format(metrics.get('success_rate', 0) * 100) }}%</h2>
             </div>
         </div>
     </div>
@@ -40,7 +40,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Total Profit</h5>
-                <h2 class="card-text" id="total-profit">$0.00</h2>
+                <h2 class="card-text" id="total-profit">${{ "%.2f"|format(metrics.get('total_profit', 0)) }}</h2>
             </div>
         </div>
     </div>
@@ -48,7 +48,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">24h Profit</h5>
-                <h2 class="card-text" id="profit-24h">$0.00</h2>
+                <h2 class="card-text" id="profit-24h">${{ "%.2f"|format(metrics.get('profit_24h', 0)) }}</h2>
             </div>
         </div>
     </div>
@@ -82,7 +82,44 @@
 <script>
 // Initialize charts when document is ready
 document.addEventListener('DOMContentLoaded', function() {
-    // Profit chart options
+    // Initialize WebSocket connection
+    if (window.wsHandler) {
+        // Subscribe to channels
+        window.wsHandler.socket.addEventListener('open', () => {
+            window.wsHandler.socket.send(JSON.stringify({
+                type: 'subscribe',
+                channels: ['metrics', 'performance']
+            }));
+        });
+
+        window.wsHandler.onMetrics((metrics) => {
+            // Update metrics display
+            document.getElementById('total-trades').textContent = metrics.total_trades;
+            document.getElementById('trades-24h').textContent = metrics.trades_24h;
+            document.getElementById('success-rate').textContent = `${(metrics.success_rate * 100).toFixed(1)}%`;
+            document.getElementById('total-profit').textContent = `$${metrics.total_profit.toFixed(2)}`;
+            document.getElementById('profit-24h').textContent = `$${metrics.profit_24h.toFixed(2)}`;
+            if (document.getElementById('active-opportunities')) {
+                document.getElementById('active-opportunities').textContent = metrics.active_opportunities;
+            }
+        });
+
+        window.wsHandler.onPerformance((data) => {
+            // Update charts
+            if (window.profitChart && data.profit_history) {
+                window.profitChart.updateSeries([{
+                    data: data.profit_history
+                }]);
+            }
+            if (window.volumeChart && data.volume_history) {
+                window.volumeChart.updateSeries([{
+                    data: data.volume_history
+                }]);
+            }
+        });
+    }
+
+    // Initialize charts
     const profitChartOptions = {
         series: [{
             name: 'Profit',
