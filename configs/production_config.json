@@ -51,16 +51,16 @@
         {
             "token0": "WETH",
             "token1": "USDC",
-            "dexes": ["baseswap", "aerodrome", "pancakeswap"],
-            "min_profit_usd": 0.5,
+            "dexes": ["baseswap", "aerodrome", "pancakeswap", "sushiswap"],
+            "min_profit_usd": 0.10,
             "max_trade_size_usd": 1000.0,
             "slippage_tolerance": 0.005
         },
         {
             "token0": "WETH",
             "token1": "DAI",
-            "dexes": ["baseswap", "aerodrome", "pancakeswap"],
-            "min_profit_usd": 0.5,
+            "dexes": ["baseswap", "aerodrome", "pancakeswap", "sushiswap"],
+            "min_profit_usd": 0.10,
             "max_trade_size_usd": 1000.0,
             "slippage_tolerance": 0.005
         }

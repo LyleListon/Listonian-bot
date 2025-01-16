@@ -8,7 +8,10 @@ import asyncio
 from pathlib import Path
 from quart import Quart, render_template
 from quart_cors import cors
+from decimal import Decimal
+from datetime import datetime
 from ..core.web3.web3_manager import Web3Manager, create_web3_manager
+from ..core.analysis.market_analyzer import MarketCondition, MarketTrend
 from ..core.execution.arbitrage_executor import create_arbitrage_executor
 from ..core.metrics.portfolio_tracker import create_portfolio_tracker
 from ..core.analytics.analytics_system import create_analytics_system
@@ -31,7 +34,7 @@ logger = logging.getLogger(__name__)
 def create_app():
     """Create and configure Quart application."""
     app = Quart(__name__, static_folder='static', static_url_path='/static')
-    app = cors(app, allow_origin="*")
+    app = cors(app, allow_origin="*", allow_headers=["*"], allow_methods=["*"])
     
     # Global components
     app.components = {}
@@ -76,46 +79,92 @@ def create_app():
             
             # Initialize market analyzer
             from ..core.analysis.market_analyzer import create_market_analyzer
-            app.components['market_analyzer'] = await initialize_component(
+            market_analyzer = await initialize_component(
                 'market_analyzer',
                 create_market_analyzer,
                 web3_manager=web3_manager,
                 config=config
             )
+            app.components['market_analyzer'] = market_analyzer
             
-            # Wait for market data
-            if not await app.components['market_analyzer'].wait_for_data(timeout=30):
-                raise RuntimeError("Market analyzer failed to get initial data")
+            # Start monitoring and wait for initial data
+            app.monitoring_task = asyncio.create_task(market_analyzer.start_monitoring())
             
-            # Start monitoring
-            app.monitoring_task = asyncio.create_task(app.components['market_analyzer'].start_monitoring())
+            # Initialize with empty data if needed
+            if not market_analyzer.market_conditions:
+                logger.warning("No initial market data, initializing with default values")
+                market_analyzer.market_conditions = {
+                    "WETH": MarketCondition(
+                        price=Decimal("1000.0"),  # Mock price
+                        trend=MarketTrend(
+                            direction="sideways",
+                            strength=0.0,
+                            duration=0.0,
+                            volatility=0.1,
+                            confidence=0.5
+                        ),
+                        volume_24h=Decimal("1000000"),
+                        liquidity=Decimal("1000000"),
+                        volatility_24h=0.1,
+                        price_impact=0.001,
+                        last_updated=float(datetime.now().timestamp())
+                    )
+                }
             
             # Initialize other components
             app.components['executor'] = await initialize_component(
                 'executor',
                 create_arbitrage_executor,
                 web3_manager=web3_manager,
-                market_analyzer=app.components['market_analyzer']
+                market_analyzer=market_analyzer
             )
             await app.components['executor'].initialize()
             
-            # Initialize WebSocket server
-            websocket_port = int(os.getenv('DASHBOARD_WEBSOCKET_PORT', '8771'))
-            app.components['websocket_server'] = await initialize_component(
-                'websocket_server',
-                create_websocket_server,
-                analytics_system=app.components.get('analytics_system'),
-                alert_system=app.components.get('alert_system'),
-                metrics_manager=app.config.get("metrics_manager"),
-                host="0.0.0.0",
-                port=websocket_port
-            )
+            # Initialize WebSocket server with port conflict handling
+            base_websocket_port = int(os.getenv('DASHBOARD_WEBSOCKET_PORT', '8771'))
+            max_port_attempts = 10
+            websocket_server = None
+            
+            for port_offset in range(max_port_attempts):
+                try:
+                    current_port = base_websocket_port + port_offset
+                    logger.info(f"Attempting to start WebSocket server on port {current_port}")
+                    
+                    websocket_server = await initialize_component(
+                        'websocket_server',
+                        create_websocket_server,
+                        analytics_system=market_analyzer,
+                        alert_system=app.components.get('alert_system'),
+                        metrics_manager=None,
+                        host="0.0.0.0",
+                        port=current_port
+                    )
+                    
+                    if websocket_server and websocket_server.is_running():
+                        logger.info(f"WebSocket server successfully started on port {current_port}")
+                        # Store the actual port being used
+                        app.config['WEBSOCKET_PORT'] = current_port
+                        break
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to start WebSocket server on port {current_port}: {e}")
+                    if port_offset == max_port_attempts - 1:
+                        logger.error("Failed to find available port for WebSocket server")
+                        raise
+                    continue
+            
+            if not websocket_server or not websocket_server.is_running():
+                raise RuntimeError("Failed to start WebSocket server")
+            
+            app.components['websocket_server'] = websocket_server
             
             # Add components to app context
             app.web3_manager = web3_manager
-            app.market_analyzer = app.components['market_analyzer']
+            app.market_analyzer = market_analyzer
             app.executor = app.components['executor']
-            app.websocket_server = app.components['websocket_server']
+            app.websocket_server = websocket_server
+            
+            logger.info(f"All components initialized successfully. WebSocket running on port {app.config['WEBSOCKET_PORT']}")
             
         except Exception as e:
             logger.error(f"Failed to initialize components: {e}")
@@ -130,9 +179,46 @@ def create_app():
     @app.context_processor
     async def inject_websocket_port():
         """Inject WebSocket port into all templates."""
-        port = os.getenv('DASHBOARD_WEBSOCKET_PORT', '8771')
-        logger.debug(f"Injecting WebSocket port: {port}")
+        port = app.config.get('WEBSOCKET_PORT', None)
+        if not port:
+            logger.error("WebSocket port not found in app config")
+            port = os.getenv('DASHBOARD_WEBSOCKET_PORT', '8771')
+        logger.info(f"Injecting WebSocket port: {port}")  # Changed to info for better visibility
         return {'websocket_port': port}
+
+    @app.before_request
+    async def update_websocket_port():
+        """Update WebSocket port before each request."""
+        if 'websocket_server' in app.components:
+            app.config['WEBSOCKET_PORT'] = app.components['websocket_server'].port
+
+    @app.route('/opportunities')
+    async def opportunities():
+        """Render opportunities page."""
+        try:
+            metrics = {}
+            if hasattr(app, 'market_analyzer'):
+                performance = await app.market_analyzer.get_performance_metrics()
+                if performance and len(performance) > 0:
+                    metrics = performance[0]
+            return await render_template('opportunities.html', metrics=metrics)
+        except Exception as e:
+            logger.error(f"Error rendering opportunities: {e}", exc_info=True)
+            return await render_template('opportunities.html', metrics={})
+
+    @app.route('/performance')
+    async def performance():
+        """Render performance page."""
+        try:
+            metrics = {}
+            if hasattr(app, 'market_analyzer'):
+                performance = await app.market_analyzer.get_performance_metrics()
+                if performance and len(performance) > 0:
+                    metrics = performance[0]
+            return await render_template('performance.html', metrics=metrics)
+        except Exception as e:
+            logger.error(f"Error rendering performance: {e}", exc_info=True)
+            return await render_template('performance.html', metrics={})
 
     @app.route('/')
     async def index():
@@ -147,26 +233,91 @@ def create_app():
                 'active_opportunities': 0
             }
             
-            if hasattr(app, 'analytics_system'):
-                performance = await app.analytics_system.get_performance_metrics()
-                if performance:
+            if hasattr(app, 'market_analyzer'):
+                performance = await app.market_analyzer.get_performance_metrics()
+                if performance and len(performance) > 0:
+                    latest = performance[0]
                     metrics.update({
-                        'total_trades': len(performance),
-                        'trades_24h': sum(1 for m in performance if m.timestamp > time.time() - 24*3600),
-                        'success_rate': performance[-1].success_rate if performance else 0,
-                        'total_profit': float(performance[-1].total_profit_usd) if performance else 0,
-                        'profit_24h': float(performance[-1].portfolio_change_24h) if performance else 0
+                        'total_trades': latest['total_trades'],
+                        'trades_24h': latest['trades_24h'],
+                        'success_rate': latest['success_rate'],
+                        'total_profit': latest['total_profit_usd'],
+                        'profit_24h': latest['portfolio_change_24h'],
+                        'active_opportunities': latest['active_opportunities']
                     })
+                    logger.debug(f"Updated metrics: {metrics}")
+            else:
+                logger.warning("Market analyzer not available")
             
             return await render_template('index.html', metrics=metrics)
         except Exception as e:
-            logger.error(f"Error rendering index: {e}")
+            logger.error(f"Error rendering index: {e}", exc_info=True)
             return await render_template('index.html', metrics={})
+
+    @app.route('/settings')
+    async def settings():
+        """Render settings page."""
+        try:
+            settings = {
+                'min_profit_threshold': float(os.getenv('MIN_PROFIT_THRESHOLD', '0.5')),
+                'max_gas_price': int(os.getenv('MAX_GAS_PRICE', '100')),
+                'max_slippage': float(os.getenv('MAX_SLIPPAGE', '0.005')),
+                'log_level': os.getenv('LOG_LEVEL', 'INFO'),
+                'alert_email': os.getenv('ALERT_EMAIL', ''),
+                'discord_webhook_url': os.getenv('DISCORD_WEBHOOK_URL', '')
+            }
+            return await render_template('settings.html', settings=settings)
+        except Exception as e:
+            logger.error(f"Error rendering settings: {e}", exc_info=True)
+            return await render_template('settings.html', settings={})
 
     @app.route('/favicon.ico')
     async def favicon():
         """Handle favicon request."""
         return '', 204
+
+    @app.route('/health')
+    async def health():
+        """Health check endpoint for WebSocket port discovery."""
+        try:
+            # Check if WebSocket server is running
+            if not app.components.get('websocket_server') or not app.components['websocket_server'].is_running():
+                return {'status': 'error', 'message': 'WebSocket server not running'}, 503
+
+            # Get actual WebSocket port
+            ws_port = app.config.get('WEBSOCKET_PORT')
+            if not ws_port:
+                return {'status': 'error', 'message': 'WebSocket port not configured'}, 503
+
+            response = {
+                'status': 'ok',
+                'websocket_port': ws_port,
+                'uptime': time.time() - app.components['websocket_server'].start_time,
+                'connections': len(app.components['websocket_server'].clients)
+            }
+
+            # Add CORS headers
+            headers = {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': '*',
+                'Access-Control-Max-Age': '86400',  # 24 hours
+            }
+
+            return response, 200, headers
+
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return {'status': 'error', 'message': str(e)}, 503, {'Access-Control-Allow-Origin': '*'}
+
+    @app.after_request
+    async def after_request(response):
+        """Add CORS headers to all responses."""
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = '*'
+        response.headers['Access-Control-Max-Age'] = '86400'  # 24 hours
+        return response
 
     return app
 

@@ -3,134 +3,148 @@
 ## Technology Stack
 
 ### Core Technologies
-- Python 3.9+
-- Node.js (for contract compilation)
-- Web3.py (for blockchain interaction)
-- Flask (for dashboard)
-- WebSocket (for real-time updates)
-- SQLite (for local data storage)
+1. **Programming Languages**
+   - Python (Primary language)
+   - Solidity (Smart Contracts)
+   - JavaScript (Dashboard)
 
-### External Services
-- Web3 Provider (Alchemy)
-- MCP Servers
-  - crypto-price (price data service)
-  - market-analysis (market analysis service)
+2. **Blockchain Integration**
+   - Web3.py for blockchain interaction
+   - Active DEXes: BaseSwap, SwapBased, PancakeSwap
+   - Smart contract ABIs in /abi directory
 
-### Smart Contract Integration
-- EVM Compatible
-- Support for multiple DEX protocols:
-  - PancakeSwap V3
-  - BaseSwap
-  - Extensible architecture for additional DEXs
+3. **Machine Learning**
+   - Predictive models for market analysis
+   - Reinforcement learning for strategy optimization
+   - Model persistence and versioning
+
+### Infrastructure
+
+1. **Development Environment**
+   - Windows 11 Operating System
+   - VSCode as primary IDE
+   - Git for version control
+
+2. **Runtime Environment**
+   - Python virtual environment
+   - Node.js for dashboard
+   - Local blockchain nodes
+
+3. **Monitoring**
+   - Flask-based dashboard
+   - Real-time WebSocket updates
+   - Performance tracking system
 
 ## Development Setup
 
-### Environment Requirements
-- 2GB RAM minimum
-- SSD Storage
-- Stable network connection
-- Environment variables configured in .env
-- MCP server settings in cline_mcp_settings.json
+### Prerequisites
+1. **System Requirements**
+   - Python 3.x
+   - Node.js
+   - Git
 
-### Key Configuration Files
-1. .env
-   - Web3 provider URI
-   - Wallet configuration
-   - Network settings
-   - API keys
+2. **Environment Configuration**
+   - Virtual environment setup
+   - Environment variables
+   - Configuration files in /configs
+   - DEX configuration in configs/data/dex_config.json
 
-2. configs/trading_config.json
-   - Trading parameters
-   - Risk limits
-   - Performance thresholds
+3. **Dependencies**
+   - Python packages in requirements.txt
+   - Node packages for dashboard
+   - Smart contract dependencies
 
-3. configs/dex_config.json
-   - DEX-specific settings
-   - Contract addresses
-   - Protocol configurations
+### Build Process
+1. **Local Development**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # or venv\Scripts\activate on Windows
+   pip install -r requirements.txt
+   pip install -r requirements-dev.txt
+   ```
 
-## System Architecture
-
-### Core Components
-1. DEX Integration Layer
-   - base_dex.py: Base interface
-   - base_dex_v2.py: V2 protocol support
-   - base_dex_v3.py: V3 protocol support
-   - dex_manager.py: Multi-DEX coordination
-
-2. Market Analysis
-   - market_analyzer.py: Price analysis
-   - analytics_system.py: Performance tracking
-   - metrics_manager.py: System metrics
-
-3. Trade Execution
-   - trade_executor.py: Trade execution
-   - arbitrage_executor.py: Arbitrage logic
-   - gas_optimizer.py: Gas optimization
-
-4. Monitoring & Analytics
-   - transaction_monitor.py: Transaction tracking
-   - alert_system.py: System alerts
-   - websocket_server.py: Real-time updates with error handling
-   - websocket.js: Client-side WebSocket handler with reconnection logic
-
-### Supporting Systems
-1. Dashboard
-   - app.py: Main Flask application
-   - run.py: Dashboard server
-   - WebSocket on port 8771
-
-2. Machine Learning
-   - ml_system.py: ML predictions
-   - monte_carlo.py: Simulation system
-
-3. Data Management
-   - database.py: Local data storage
-   - Historical data in /data
-   - Analytics in /analytics
+2. **Running the System**
+   ```bash
+   # Start the dashboard
+   .\start_dashboard.bat
+   ```
 
 ## Technical Constraints
 
 ### Performance Requirements
-- Sub-second response time for price updates
-- Maximum 3-second latency for trade execution
-- Real-time WebSocket updates (< 100ms)
-- WebSocket reconnection within 2 seconds
-- Maximum 5 reconnection attempts with exponential backoff
-- Efficient memory usage (< 2GB RAM)
+1. **Latency**
+   - Sub-second opportunity detection
+   - Minimal execution delay
+   - Real-time price updates
 
-### Network Requirements
-- Stable connection to Web3 provider
-- WebSocket server capacity
-- MCP server connectivity
-- DEX API rate limits
+2. **Scalability**
+   - Selective DEX initialization
+   - Concurrent trade execution
+   - Efficient resource utilization
+
+3. **Reliability**
+   - Error recovery mechanisms
+   - Transaction validation
+   - System health monitoring
 
 ### Security Considerations
-- Private key management
-- Transaction signing
-- API key protection
-- Rate limiting
-- Error handling
+1. **Transaction Security**
+   - Private key management
+   - Signature validation
+   - Gas price optimization
 
-## Monitoring & Maintenance
+2. **System Security**
+   - Access control
+   - Rate limiting
+   - Data encryption
 
-### Health Checks
-- WebSocket connectivity and heartbeat monitoring
-- Connection state tracking and recovery
-- DEX connection status
-- Database integrity
-- Memory usage
-- Network latency
-- WebSocket error rate monitoring
+### Integration Points
+1. **Blockchain Networks**
+   - Base Network (Chain ID: 8453)
+   - RPC endpoint configuration
+   - Gas estimation
 
-### Logging
-- System logs in /logs
-- Transaction history
-- Performance metrics
-- Error tracking
+2. **DEX Integration**
+   - Enabled DEXes:
+     * BaseSwap (V2)
+     * SwapBased (V2)
+     * PancakeSwap (V3)
+   - Disabled DEXes:
+     * UniswapV3
+     * RocketSwap
+     * Aerodrome
+     * AerodromeV3
 
-### Backup & Recovery
-- Configuration backups
-- Database backups
-- State recovery procedures
-- Error handling protocols
+3. **External Services**
+   - Price feed integration
+   - Market data providers
+   - Analytics services
+
+## MCP Servers
+1. **crypto-price**
+   - Real-time cryptocurrency price data
+   - Multiple coin support
+   - 24h price change tracking
+
+2. **market-analysis**
+   - Arbitrage opportunity analysis
+   - Market condition assessment
+   - Risk factor evaluation
+
+3. **pool-insight**
+   - DEX pool analysis
+   - Trade quote assessment
+   - Impact analysis
+
+## Monitoring and Maintenance
+1. **System Health**
+   - Performance metrics
+   - Error tracking
+   - Resource utilization
+
+2. **Updates and Maintenance**
+   - Version control
+   - Dependency updates
+   - Security patches
+
+Last Updated: 2024-01-15

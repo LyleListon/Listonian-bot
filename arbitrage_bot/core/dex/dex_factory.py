@@ -1,5 +1,6 @@
 """Factory for creating DEX instances."""
 
+import logging
 from typing import Dict, Any, Optional, Type
 from enum import Enum
 
@@ -9,7 +10,12 @@ from .base_dex_v3 import BaseDEXV3
 from .pancakeswap import PancakeSwapDEX
 from .baseswap import BaseSwapDEX
 from .swapbased import SwapBasedDEX
+from .uniswap_v3 import UniswapV3DEX
+from .rocketswap import RocketSwapDEX
+from .aerodrome import AerodromeDEX
 from ..web3.web3_manager import Web3Manager
+
+logger = logging.getLogger(__name__)
 
 class DEXProtocol(Enum):
     """Supported DEX protocols."""
@@ -21,6 +27,9 @@ class DEXType(Enum):
     PANCAKESWAP = "pancakeswap"
     BASESWAP = "baseswap"
     SWAPBASED = "swapbased"
+    UNISWAP_V3 = "uniswap_v3"
+    ROCKETSWAP = "rocketswap"
+    AERODROME = "aerodrome"
 
 class DEXFactory:
     """Factory for creating and managing DEX instances."""
@@ -29,14 +38,20 @@ class DEXFactory:
     PROTOCOL_MAP = {
         DEXType.PANCAKESWAP: DEXProtocol.V3,
         DEXType.BASESWAP: DEXProtocol.V2,
-        DEXType.SWAPBASED: DEXProtocol.V2
+        DEXType.SWAPBASED: DEXProtocol.V2,
+        DEXType.UNISWAP_V3: DEXProtocol.V3,
+        DEXType.ROCKETSWAP: DEXProtocol.V2,
+        DEXType.AERODROME: DEXProtocol.V2
     }
 
     # Implementation mapping
     IMPLEMENTATION_MAP = {
         DEXType.PANCAKESWAP: PancakeSwapDEX,
         DEXType.BASESWAP: BaseSwapDEX,
-        DEXType.SWAPBASED: SwapBasedDEX
+        DEXType.SWAPBASED: SwapBasedDEX,
+        DEXType.UNISWAP_V3: UniswapV3DEX,
+        DEXType.ROCKETSWAP: RocketSwapDEX,
+        DEXType.AERODROME: AerodromeDEX
     }
 
     # Required config keys for each protocol
@@ -111,13 +126,21 @@ class DEXFactory:
         for dex_name, config in configs.items():
             try:
                 dex_type = DEXType(dex_name.lower())
-                dexes[dex_name] = cls.create_dex(
-                    dex_type,
-                    web3_manager,
-                    config
-                )
+                if not config.get('enabled', True):
+                    logger.info(f"Skipping disabled DEX {dex_name}")
+                    continue
+                    
+                if dex_type in cls.IMPLEMENTATION_MAP:
+                    dexes[dex_name] = cls.create_dex(
+                        dex_type,
+                        web3_manager,
+                        config
+                    )
+                else:
+                    logger.warning(f"Skipping unsupported DEX type: {dex_name}")
             except ValueError as e:
-                raise ValueError(f"Invalid config for {dex_name}: {str(e)}")
+                logger.warning(f"Skipping DEX {dex_name}: {str(e)}")
+                continue
         return dexes
 
     @classmethod

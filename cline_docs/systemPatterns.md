@@ -1,187 +1,144 @@
 # System Patterns
 
-## Architectural Patterns
+## Architecture Overview
 
-### 1. Core Architecture
-- **Layered Architecture**
-  - Presentation Layer (Dashboard)
-  - Business Logic Layer (Core)
-  - Data Access Layer (Utils)
-  - Integration Layer (DEX)
+### Component Structure
+1. **Blockchain Layer**
+   - Smart Contracts for trade execution
+   - DEX Registry for exchange management
+   - Price Feed Registry for market data
 
-- **Event-Driven Architecture**
-  - WebSocket server for real-time updates with error handling
-  - Event-based monitoring system with reconnection logic
-  - Asynchronous trade execution
-  - Robust WebSocket client with exponential backoff
+2. **Trading Layer**
+   - Arbitrage Detector for opportunity identification
+   - Trade Router for execution routing
+   - Risk Manager for trade validation
 
-### 2. Design Patterns
+3. **Analytics Layer**
+   - Predictive Models for market analysis
+   - Reinforcement Learning for strategy optimization
+   - Evolutionary Optimizer for parameter tuning
 
-#### Core Patterns
-- **Factory Pattern**
-  - DEX factory for protocol instantiation
-  - MCP server factory for tool creation
-  - Analytics system factory
+4. **Monitoring Layer**
+   - Dashboard Interface for system control
+   - Performance Tracking for metrics
+   - System Health Monitoring for reliability
 
-- **Strategy Pattern**
-  - Interchangeable DEX strategies
-  - Multiple gas optimization strategies
-  - Various arbitrage strategies
+## Design Patterns
 
-- **Observer Pattern**
-  - WebSocket notifications with error recovery
-  - Market price monitoring
-  - System alerts
-  - Heartbeat monitoring for connection health
+### Core Patterns
+1. **Dependency Injection**
+   - Abstract interfaces for core components
+   - Dependency container implementation
+   - Loose coupling between modules
 
-- **Singleton Pattern**
-  - Web3 manager
-  - Database connection
-  - Configuration loader
+2. **Event-Driven Architecture**
+   - Event bus for component communication
+   - Asynchronous operation handling
+   - Event tracking and monitoring
 
-#### Implementation Patterns
-- **Dependency Injection**
-  - Web3 manager injection
-  - Configuration injection
-  - Database context injection
+3. **Repository Pattern**
+   - Data access abstraction
+   - Blockchain interaction management
+   - Caching strategies
 
-- **Repository Pattern**
-  - Data access abstraction
-  - Transaction history
-  - Analytics storage
+4. **Factory Pattern**
+   - DEX Factory for exchange instantiation
+   - Configuration-driven initialization
+   - Dynamic protocol support (V2/V3)
 
-- **Adapter Pattern**
-  - DEX protocol adapters
-  - Web3 provider adapters
-  - MCP server adapters
+### Implementation Patterns
 
-### 3. Code Organization
+1. **Smart Contract Integration**
+   - Web3 interaction layer
+   - Contract ABI management
+   - Transaction handling and validation
 
-#### Module Structure
-```
-arbitrage_bot/
-├── core/           # Core business logic
-│   ├── dex/        # DEX integrations
-│   ├── execution/  # Trade execution
-│   ├── analytics/  # Analysis systems
-│   └── ml/         # Machine learning
-├── dashboard/      # Web interface
-├── utils/          # Shared utilities
-└── configs/        # Configuration
-```
+2. **Market Analysis**
+   - Price feed integration
+   - Opportunity detection algorithms
+   - Risk assessment calculations
 
-#### Component Isolation
-- Clear separation of concerns
-- Modular design
-- Minimal coupling
-- Maximum cohesion
+3. **System Monitoring**
+   - Real-time data collection
+   - Performance metric tracking
+   - Alert and notification system
 
-### 4. Technical Decisions
+4. **DEX Management**
+   - Factory pattern for DEX creation
+   - Manager pattern for lifecycle control
+   - Configuration-based enablement
+   - Protocol-specific implementations
+   - Error recovery and health monitoring
 
-#### Async Processing
-- **Async/Await Pattern**
-  - Web3 interactions
-  - Network requests
-  - Database operations
+## Error Handling
 
-- **Task Management**
-  - Parallel price monitoring
-  - Concurrent trade execution
-  - Background analytics
+1. **Exception Management**
+   - Custom exception hierarchy
+   - Error context tracking
+   - Recovery mechanisms
 
-#### Error Handling
-- **Error Propagation**
-  - Structured error hierarchy
-  - Contextual error messages
-  - Error recovery patterns
-  - WebSocket connection error handling
+2. **Validation**
+   - Input validation decorators
+   - Data sanitization
+   - Business rule validation
 
-- **Retry Mechanisms**
-  - Exponential backoff for reconnections
-  - Circuit breakers
-  - Fallback strategies
-  - WebSocket reconnection with attempt limits
+3. **DEX Error Handling**
+   - Initialization failure recovery
+   - Configuration validation
+   - Health check mechanisms
+   - Automatic retry and fallback
 
-#### State Management
-- **Immutable State**
-  - Configuration immutability
-  - Transaction records
-  - Historical data
+## Performance Optimization
 
-- **State Transitions**
-  - Trade state machine
-  - System status tracking
-  - Error state handling
+1. **Caching Strategy**
+   - In-memory caching
+   - Blockchain data caching
+   - Price feed optimization
 
-### 5. Integration Patterns
+2. **Computational Efficiency**
+   - Parallel processing
+   - Resource pooling
+   - Query optimization
 
-#### External Systems
-- **API Integration**
-  - RESTful endpoints
-  - WebSocket connections
-  - RPC interfaces
+3. **DEX Optimization**
+   - Selective DEX initialization
+   - Configuration-based enablement
+   - Resource cleanup on failure
 
-- **Protocol Integration**
-  - DEX protocol handlers
-  - Smart contract interaction
-  - Blockchain communication
+## Security Measures
 
-#### Data Flow
-- **Pipeline Pattern**
-  - Market data processing
-  - Trade execution flow
-  - Analytics pipeline
+1. **Transaction Security**
+   - Signature validation
+   - Gas price management
+   - Slippage protection
 
-- **Publisher/Subscriber**
-  - Price updates
-  - Trade notifications
-  - System alerts
+2. **System Security**
+   - Access control
+   - Rate limiting
+   - Data encryption
 
-### 6. Testing Patterns
+## Testing Strategy
 
-#### Test Organization
-- **Test Hierarchy**
-  - Unit tests
-  - Integration tests
-  - System tests
-  - Performance tests
+1. **Unit Testing**
+   - Component isolation
+   - Mock implementations
+   - Automated test suites
 
-- **Test Data**
-  - Mock providers
-  - Test fixtures
-  - Data generators
+2. **Integration Testing**
+   - Contract interaction tests
+   - System flow validation
+   - Performance benchmarking
 
-#### Monitoring Patterns
-- **Health Checks**
-  - Component status
-  - Connection health
-  - Resource usage
+## Deployment Process
 
-- **Metrics Collection**
-  - Performance metrics
-  - Business metrics
-  - System metrics
+1. **Continuous Integration**
+   - Automated builds
+   - Test execution
+   - Code quality checks
 
-### 7. Security Patterns
+2. **Deployment Pipeline**
+   - Environment configuration
+   - Version management
+   - Rollback procedures
 
-#### Access Control
-- **Authentication**
-  - API key management
-  - Private key handling
-  - Access tokens
-
-- **Authorization**
-  - Role-based access
-  - Permission management
-  - Action validation
-
-#### Data Protection
-- **Encryption**
-  - Sensitive data encryption
-  - Secure communication
-  - Key management
-
-- **Validation**
-  - Input sanitization
-  - Output encoding
-  - Parameter validation
+Last Updated: 2024-01-15

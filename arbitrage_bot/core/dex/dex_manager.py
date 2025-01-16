@@ -71,6 +71,11 @@ class DEXManager:
             # Create DEX instances
             for dex_name, config in self.configs.items():
                 try:
+                    # Skip disabled DEXes
+                    if not config.get('enabled', True):
+                        logger.info(f"Skipping disabled DEX {dex_name}")
+                        continue
+
                     # Create DEX instance
                     dex_type = DEXType(dex_name.lower())
                     protocol = DEXFactory.get_protocol(dex_type)
@@ -83,7 +88,7 @@ class DEXManager:
                         last_success=None,
                         error_count=0,
                         last_error=None,
-                        disabled=False
+                        disabled=not config.get('enabled', True)
                     )
                     
                     # Create and initialize DEX

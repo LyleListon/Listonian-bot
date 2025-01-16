@@ -1,77 +1,86 @@
 # Product Context
 
 ## Purpose
-The Arbitrage Bot is an advanced cryptocurrency trading system designed to identify and execute profitable arbitrage opportunities across multiple decentralized exchanges (DEXs). It combines real-time market analysis with machine learning to make informed trading decisions while managing risks effectively.
+The Listonian-bot is an advanced arbitrage trading system designed to identify and execute profitable trading opportunities across multiple decentralized exchanges (DEXes) on the Base network.
 
 ## Problems Solved
-1. Market Inefficiencies
-   - Identifies price discrepancies across different DEXs
-   - Executes trades to profit from these discrepancies
-   - Monitors multiple trading pairs simultaneously
-
-2. Execution Timing
-   - Real-time price monitoring via MCP servers
-   - Market condition assessment
-   - Dynamic gas optimization for timely execution
-
-3. Risk Management
-   - Sophisticated risk assessment
-   - ML-driven decision making
-   - Advanced monitoring and alerts
-
-4. Technical Complexity
-   - Unified interface for multiple DEX protocols
-   - Handles both V2 and V3 liquidity pools
-   - Automated gas optimization
+1. Market Inefficiencies: Capitalizes on price discrepancies between different DEXes
+2. Speed of Execution: Automates the detection and execution of trades
+3. Risk Management: Implements robust validation and safety checks
+4. Market Analysis: Utilizes ML models for predictive analysis
+5. Performance Monitoring: Provides real-time insights through a comprehensive dashboard
 
 ## Core Functionality
-1. Multi-DEX Integration
-   - PancakeSwap V3
-   - BaseSwap
-   - Extensible to other DEX protocols
-   - Unified trading interface
+1. **Arbitrage Detection**
+   - Monitors active DEXes:
+     * BaseSwap (V2)
+     * SwapBased (V2)
+     * PancakeSwap (V3)
+   - Identifies price discrepancies
+   - Calculates potential profit opportunities
 
-2. Market Analysis
-   - Real-time price tracking
-   - Liquidity depth monitoring
-   - Volatility analysis
-   - Market condition assessment
+2. **Trade Execution**
+   - Smart contract interaction for trade execution
+   - Configuration-based DEX management
+   - Selective DEX initialization
+   - Risk validation before trades
+   - Multi-DEX routing capabilities
 
-3. Trade Execution
-   - Gas-optimized transactions
-   - MEV protection
-   - Multi-hop trade routing
-   - Slippage management
+3. **Market Analysis**
+   - Machine learning-based price prediction
+   - Reinforcement learning for strategy optimization
+   - Real-time market data analysis
+   - DEX-specific performance tracking
 
-4. Monitoring & Analytics
-   - Real-time WebSocket updates with error recovery
-   - Reliable performance metrics delivery
-   - Continuous system health monitoring
-   - Historical data analysis
-   - Connection state monitoring
+4. **System Monitoring**
+   - Real-time price monitoring dashboard
+   - System health tracking
+   - Performance metrics and analytics
+   - Trade execution statistics
+   - DEX initialization monitoring
 
-## Expected Behavior
-1. Startup
-   - Load configurations
-   - Initialize connections to DEXs
-   - Start monitoring systems
-   - Launch dashboard interface
+## Success Criteria
+1. Profitable Trades
+   - Consistent identification of arbitrage opportunities
+   - Successful execution of trades
+   - Positive ROI after gas costs
+   - Optimal DEX selection
 
-2. Operation
-   - Continuously monitor prices
-   - Identify arbitrage opportunities
-   - Execute trades when profitable
-   - Update metrics and analytics
+2. System Performance
+   - Low latency in opportunity detection
+   - High reliability in trade execution
+   - Robust error handling and recovery
+   - Efficient DEX initialization
 
 3. Risk Management
-   - Monitor gas prices
-   - Track slippage
-   - Assess market conditions
-   - Enforce position limits
+   - Effective validation of trade opportunities
+   - Protection against market manipulation
+   - Proper handling of failed transactions
+   - DEX-specific risk assessment
 
-4. Reporting
-   - Real-time performance updates with reconnection handling
-   - Uninterrupted trade history tracking
-   - Accurate profit/loss calculations
-   - Comprehensive system health status
-   - Connection reliability metrics
+## Integration Points
+1. Blockchain Networks
+   - Base Network (Chain ID: 8453)
+   - Smart contract deployment and interaction
+   - Gas optimization
+   - DEX protocol support (V2/V3)
+
+2. External Services
+   - Price feed integration
+   - Market data providers
+   - Analytics and monitoring tools
+   - DEX status monitoring
+
+## DEX Strategy
+1. **Active DEXes**
+   - BaseSwap: Primary V2 liquidity source
+   - SwapBased: Additional V2 opportunities
+   - PancakeSwap: V3 concentrated liquidity
+
+2. **Configuration Management**
+   - Dynamic DEX enablement
+   - Protocol-specific implementations
+   - Health monitoring and recovery
+   - Performance optimization
+
+Last Updated: 2024-01-15

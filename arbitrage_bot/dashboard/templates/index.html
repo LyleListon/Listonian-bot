@@ -1,6 +1,104 @@
 {% extends "base.html" %}
 
 {% block content %}
+<!-- System Status Section -->
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">System Status</h5>
+                    <div>
+                        <span class="badge bg-secondary" id="connection-status">Connecting...</span>
+                        <span class="badge bg-secondary" id="data-status">Waiting for data...</span>
+                    </div>
+                </div>
+                <div id="error-container" class="alert alert-danger mt-3" style="display: none;">
+                    <strong>Error:</strong> <span id="error-message"></span>
+                </div>
+                <div id="warning-container" class="alert alert-warning mt-3" style="display: none;">
+                    <strong>Warning:</strong> <span id="warning-message"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h2>Live Arbitrage Opportunities</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Current Opportunities</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Token Pair</th>
+                                <th>Potential Profit</th>
+                                <th>Gas Cost</th>
+                                <th>Net Profit</th>
+                                <th>Price Impact</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="opportunities">
+                            <!-- Populated by WebSocket -->
+                            <tr><td colspan="6" class="text-center">Waiting for opportunities...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h2>Market Overview</h2>
+    </div>
+</div>
+
+<!-- Market Data Section -->
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">WETH/USDC Price</h5>
+                <div id="price-chart"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">DEX Status</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>DEX</th>
+                                <th>Status</th>
+                                <th>Liquidity</th>
+                                <th>24h Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dex-status">
+                            <!-- Populated by WebSocket -->
+                            <tr><td colspan="4" class="text-center">Loading DEX status...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-md-12 mb-4">
         <h2>Performance Overview</h2>
@@ -82,44 +180,45 @@
 <script>
 // Initialize charts when document is ready
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize WebSocket connection
-    if (window.wsHandler) {
-        // Subscribe to channels
-        window.wsHandler.socket.addEventListener('open', () => {
-            window.wsHandler.socket.send(JSON.stringify({
-                type: 'subscribe',
-                channels: ['metrics', 'performance']
-            }));
-        });
-
-        window.wsHandler.onMetrics((metrics) => {
-            // Update metrics display
-            document.getElementById('total-trades').textContent = metrics.total_trades;
-            document.getElementById('trades-24h').textContent = metrics.trades_24h;
-            document.getElementById('success-rate').textContent = `${(metrics.success_rate * 100).toFixed(1)}%`;
-            document.getElementById('total-profit').textContent = `$${metrics.total_profit.toFixed(2)}`;
-            document.getElementById('profit-24h').textContent = `$${metrics.profit_24h.toFixed(2)}`;
-            if (document.getElementById('active-opportunities')) {
-                document.getElementById('active-opportunities').textContent = metrics.active_opportunities;
+    // Price chart options
+    const priceChartOptions = {
+        series: [{
+            name: 'WETH/USDC',
+            data: []
+        }],
+        chart: {
+            type: 'line',
+            height: 350,
+            animations: {
+                enabled: true,
+                easing: 'easeinout',
+                dynamicAnimation: {
+                    speed: 1000
+                }
             }
-        });
-
-        window.wsHandler.onPerformance((data) => {
-            // Update charts
-            if (window.profitChart && data.profit_history) {
-                window.profitChart.updateSeries([{
-                    data: data.profit_history
-                }]);
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            type: 'datetime'
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(2);
+                }
             }
-            if (window.volumeChart && data.volume_history) {
-                window.volumeChart.updateSeries([{
-                    data: data.volume_history
-                }]);
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM yyyy HH:mm:ss'
             }
-        });
-    }
+        }
+    };
 
-    // Initialize charts
+    // Profit chart options
     const profitChartOptions = {
         series: [{
             name: 'Profit',
@@ -188,10 +287,12 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     // Create charts
+    window.priceChart = new ApexCharts(document.querySelector("#price-chart"), priceChartOptions);
     window.profitChart = new ApexCharts(document.querySelector("#profit-chart"), profitChartOptions);
     window.volumeChart = new ApexCharts(document.querySelector("#volume-chart"), volumeChartOptions);
 
     // Render charts
+    window.priceChart.render();
     window.profitChart.render();
     window.volumeChart.render();
 });

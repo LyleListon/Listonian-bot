@@ -38,8 +38,7 @@ async def main():
             level=log_level,
             format='%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)d)',
             handlers=[
-                logging.StreamHandler(),
-                logging.FileHandler('logs/dashboard.log')
+                logging.StreamHandler()
             ]
         )
         
@@ -59,12 +58,37 @@ async def main():
         host = os.getenv('DASHBOARD_HOST', '0.0.0.0')
         port = int(os.getenv('DASHBOARD_PORT', '5000'))
         
-        # Set WebSocket port for client
-        websocket_port = os.getenv('DASHBOARD_WEBSOCKET_PORT', '8771')
-        os.environ['DASHBOARD_WEBSOCKET_PORT'] = websocket_port
-        logger.debug(f"Setting WebSocket port: {websocket_port}")
+        # Set initial WebSocket port range
+        base_websocket_port = int(os.getenv('DASHBOARD_WEBSOCKET_PORT', '8771'))
+        max_port_attempts = 10
         
-        # Configure Hypercorn
+        # Function to check port availability
+        async def check_port(port):
+            try:
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+                return result != 0
+            except:
+                return False
+
+        # Find available port
+        websocket_port = None
+        for port_offset in range(max_port_attempts):
+            current_port = base_websocket_port + port_offset
+            if await check_port(current_port):
+                websocket_port = current_port
+                break
+        
+        if websocket_port is None:
+            raise RuntimeError("No available ports found in range 8771-8780")
+            
+        os.environ['DASHBOARD_WEBSOCKET_PORT'] = str(websocket_port)
+        logger.info(f"Selected WebSocket port: {websocket_port}")
+        
+        # Configure Hypercorn without SSL for development
         config = Config()
         config.bind = [f"{host}:{port}"]
         config.use_reloader = False

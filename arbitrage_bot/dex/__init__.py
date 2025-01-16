@@ -1,5 +1,21 @@
-"""DEX package initialization"""
+"""DEX package for arbitrage bot."""
 
-from .interfaces.dex_interface import DexInterface, create_dex_interface
+from .base_dex import BaseDEX
+from .aerodrome_v2 import AerodromeV2
+from .aerodrome_v3 import AerodromeV3
+from .factory import (
+    DEXRegistry,
+    registry,
+    create_dex,
+    initialize_dexes
+)
 
-__all__ = ["DexInterface", "create_dex_interface"]
+__all__ = [
+    'BaseDEX',
+    'AerodromeV2',
+    'AerodromeV3',
+    'DEXRegistry',
+    'registry',
+    'create_dex',
+    'initialize_dexes'
+]

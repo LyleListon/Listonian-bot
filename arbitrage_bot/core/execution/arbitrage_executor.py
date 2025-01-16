@@ -26,9 +26,13 @@ class ArbitrageExecutor:
         dex_manager: DEXManager,
         web3_manager: Web3Manager,
         gas_optimizer: GasOptimizer,
-        min_profit_usd: float = 10.0,  # Minimum profit in USD
-        max_price_impact: float = 0.02,  # Maximum 2% price impact
-        slippage_tolerance: float = 0.005,  # 0.5% slippage tolerance
+        min_profit_usd: float = 0.05,  # Minimum profit in USD (5 cents)
+        max_price_impact: float = 0.01,  # Maximum 1% price impact
+        slippage_tolerance: float = 0.001,  # 0.1% slippage tolerance
+        max_trade_size_usd: float = 1000.0,  # Maximum trade size in USD
+        min_liquidity_usd: float = 10000.0,  # Minimum pool liquidity in USD
+        max_gas_price_gwei: int = 100,  # Maximum gas price in gwei
+        tx_timeout_seconds: int = 30,  # Transaction timeout in seconds
         tx_monitor: Optional[Any] = None,
         market_analyzer: Optional[Any] = None
     ):
@@ -40,399 +44,50 @@ class ArbitrageExecutor:
         self.wallet_address = web3_manager.wallet_address
         self.max_price_impact = max_price_impact
         self.slippage_tolerance = slippage_tolerance
+        self.max_trade_size_usd = max_trade_size_usd
+        self.min_liquidity_usd = min_liquidity_usd
+        self.max_gas_price_gwei = max_gas_price_gwei
+        self.tx_timeout_seconds = tx_timeout_seconds
         self.tx_monitor = tx_monitor
         self.market_analyzer = market_analyzer
-
-    async def find_opportunities(
-        self,
-        base_tokens: Optional[List[str]] = None,
-        max_hops: int = 2
-    ) -> List[Dict[str, Any]]:
-        """
-        Find arbitrage opportunities across DEXs.
-        
-        Args:
-            base_tokens: List of base tokens to check (default: WETH, USDC)
-            max_hops: Maximum hops per DEX (default: 2)
-            
-        Returns:
-            List[Dict[str, Any]]: List of opportunities with details
-        """
-        if not base_tokens:
-            base_tokens = [
-                COMMON_TOKENS['WETH'],
-                COMMON_TOKENS['USDC']
-            ]
-            
-        opportunities = []
-        dexes = self.dex_manager.get_all_dexes()
-        
-        # Get current gas price
-        gas_price = await self.gas_optimizer.get_optimal_gas_price()
-        
-        # Check all token pairs across DEXs
-        for token_in in base_tokens:
-            for token_out in base_tokens:
-                if token_in == token_out:
-                    continue
-                    
-                # Get quotes from all DEXs
-                quotes = await asyncio.gather(*[
-                    self._get_dex_quote(dex, token_in, token_out, max_hops)
-                    for dex in dexes
-                ])
-                
-                # Find arbitrage opportunities
-                for i, buy_quote in enumerate(quotes):
-                    if not buy_quote:
-                        continue
-                        
-                    for j, sell_quote in enumerate(quotes):
-                        if i == j or not sell_quote:
-                            continue
-                            
-                        opportunity = await self._analyze_opportunity(
-                            buy_quote=buy_quote,
-                            sell_quote=sell_quote,
-                            gas_price=gas_price
-                        )
-                        
-                        if opportunity:
-                            opportunities.append(opportunity)
-        
-        # Sort by profit
-        opportunities.sort(key=lambda x: x['profit_usd'], reverse=True)
-        return opportunities
-
-    async def execute_opportunity(
-        self,
-        opportunity: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Execute an arbitrage opportunity.
-        
-        Args:
-            opportunity: Opportunity details from find_opportunities
-            
-        Returns:
-            Optional[Dict[str, Any]]: Execution results if successful
-        """
-        try:
-            # Verify opportunity is still valid
-            current_profit = await self._verify_opportunity(opportunity)
-            if not current_profit or current_profit['profit_usd'] < self.min_profit_usd:
-                logger.info("Opportunity no longer profitable")
-                return None
-            
-            # Get DEX instances
-            buy_dex = self.dex_manager.get_dex(opportunity['buy_dex'])
-            sell_dex = self.dex_manager.get_dex(opportunity['sell_dex'])
-            if not buy_dex or not sell_dex:
-                logger.error("DEX not available")
-                return None
-            
-            # Execute trades
-            buy_tx = await buy_dex.swap_exact_tokens_for_tokens(
-                amount_in=opportunity['amount_in'],
-                amount_out_min=int(opportunity['buy_amount_out'] * (1 - self.slippage_tolerance)),
-                path=opportunity['buy_path'],
-                to=self.web3_manager.wallet_address,
-                deadline=self._get_deadline()
-            )
-            
-            if not buy_tx:
-                logger.error("Buy transaction failed")
-                return None
-            
-            # Wait for buy transaction
-            buy_receipt = await self.web3_manager.wait_for_transaction(buy_tx)
-            if not buy_receipt or not buy_receipt['status']:
-                logger.error("Buy transaction reverted")
-                return None
-            
-            # Execute sell
-            sell_tx = await sell_dex.swap_exact_tokens_for_tokens(
-                amount_in=opportunity['buy_amount_out'],
-                amount_out_min=int(opportunity['sell_amount_out'] * (1 - self.slippage_tolerance)),
-                path=opportunity['sell_path'],
-                to=self.web3_manager.wallet_address,
-                deadline=self._get_deadline()
-            )
-            
-            if not sell_tx:
-                logger.error("Sell transaction failed")
-                return None
-            
-            # Wait for sell transaction
-            sell_receipt = await self.web3_manager.wait_for_transaction(sell_tx)
-            if not sell_receipt or not sell_receipt['status']:
-                logger.error("Sell transaction reverted")
-                return None
-            
-            # Calculate actual profit
-            actual_profit = await self._calculate_actual_profit(
-                buy_receipt=buy_receipt,
-                sell_receipt=sell_receipt,
-                opportunity=opportunity
-            )
-            
-            return {
-                'success': True,
-                'buy_tx': buy_tx,
-                'sell_tx': sell_tx,
-                'profit_usd': actual_profit,
-                'gas_used': buy_receipt['gasUsed'] + sell_receipt['gasUsed'],
-                'timestamp': self.web3_manager.w3.eth.get_block('latest')['timestamp']
-            }
-            
-        except Exception as e:
-            logger.error(f"Error executing opportunity: {e}")
-            return None
-
-    async def _get_dex_quote(
-        self,
-        dex: Any,
-        token_in: str,
-        token_out: str,
-        max_hops: int
-    ) -> Optional[Dict[str, Any]]:
-        """Get quote from a DEX."""
-        try:
-            # Find best path
-            path = await dex.get_best_path(
-                token_in=token_in,
-                token_out=token_out,
-                amount_in=1000000,  # 1M units for price impact calculation
-                max_hops=max_hops
-            )
-            
-            if not path:
-                return None
-            
-            # Get quote with impact
-            quote = await dex.get_quote_with_impact(
-                amount_in=path['amounts'][0],
-                path=path['path']
-            )
-            
-            if not quote:
-                return None
-            
-            return {
-                'dex_name': dex.name,
-                'path': path['path'],
-                'amounts': path['amounts'],
-                'price_impact': quote['price_impact'],
-                'gas_estimate': quote['estimated_gas']
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting quote from {dex.name}: {e}")
-            return None
-
-    async def _analyze_opportunity(
-        self,
-        buy_quote: Dict[str, Any],
-        sell_quote: Dict[str, Any],
-        gas_price: int
-    ) -> Optional[Dict[str, Any]]:
-        """Analyze potential arbitrage opportunity."""
-        try:
-            # Check price impact
-            total_impact = buy_quote['price_impact'] + sell_quote['price_impact']
-            if total_impact > self.max_price_impact:
-                return None
-            
-            # Calculate gas cost
-            total_gas = buy_quote['gas_estimate'] + sell_quote['gas_estimate']
-            gas_cost_wei = total_gas * gas_price
-            gas_cost_usd = await self._convert_wei_to_usd(gas_cost_wei)
-            
-            # Calculate profit
-            amount_out = sell_quote['amounts'][-1]
-            amount_in = buy_quote['amounts'][0]
-            profit_wei = amount_out - amount_in
-            profit_usd = await self._convert_wei_to_usd(profit_wei)
-            
-            # Subtract gas cost
-            net_profit_usd = profit_usd - gas_cost_usd
-            
-            if net_profit_usd < self.min_profit_usd:
-                return None
-            
-            return {
-                'buy_dex': buy_quote['dex_name'],
-                'sell_dex': sell_quote['dex_name'],
-                'buy_path': buy_quote['path'],
-                'sell_path': sell_quote['path'],
-                'amount_in': amount_in,
-                'buy_amount_out': buy_quote['amounts'][-1],
-                'sell_amount_out': amount_out,
-                'profit_usd': net_profit_usd,
-                'gas_cost_usd': gas_cost_usd,
-                'price_impact': total_impact,
-                'gas_estimate': total_gas,
-                'timestamp': self.web3_manager.w3.eth.get_block('latest')['timestamp']
-            }
-            
-        except Exception as e:
-            logger.error(f"Error analyzing opportunity: {e}")
-            return None
-
-    async def _verify_opportunity(
-        self,
-        opportunity: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """Verify opportunity is still valid and profitable."""
-        try:
-            # Get current quotes
-            buy_dex = self.dex_manager.get_dex(opportunity['buy_dex'])
-            sell_dex = self.dex_manager.get_dex(opportunity['sell_dex'])
-            
-            if not buy_dex or not sell_dex:
-                return None
-            
-            # Get new quotes
-            buy_quote = await buy_dex.get_quote_with_impact(
-                amount_in=opportunity['amount_in'],
-                path=opportunity['buy_path']
-            )
-            
-            if not buy_quote:
-                return None
-            
-            sell_quote = await sell_dex.get_quote_with_impact(
-                amount_in=buy_quote['amount_out'],
-                path=opportunity['sell_path']
-            )
-            
-            if not sell_quote:
-                return None
-            
-            # Get current gas price
-            gas_price = await self.gas_optimizer.get_optimal_gas_price()
-            
-            # Analyze with current prices
-            return await self._analyze_opportunity(
-                buy_quote=buy_quote,
-                sell_quote=sell_quote,
-                gas_price=gas_price
-            )
-            
-        except Exception as e:
-            logger.error(f"Error verifying opportunity: {e}")
-            return None
-
-    async def _calculate_actual_profit(
-        self,
-        buy_receipt: Dict[str, Any],
-        sell_receipt: Dict[str, Any],
-        opportunity: Dict[str, Any]
-    ) -> float:
-        """Calculate actual profit from transaction receipts."""
-        try:
-            # Get token transfers from receipts
-            buy_transfer = self._get_token_transfer(
-                receipt=buy_receipt,
-                token=opportunity['buy_path'][-1]
-            )
-            sell_transfer = self._get_token_transfer(
-                receipt=sell_receipt,
-                token=opportunity['sell_path'][-1]
-            )
-            
-            if not buy_transfer or not sell_transfer:
-                return 0.0
-            
-            # Calculate profit
-            profit_wei = sell_transfer['value'] - buy_transfer['value']
-            
-            # Subtract gas costs
-            total_gas = buy_receipt['gasUsed'] + sell_receipt['gasUsed']
-            gas_cost_wei = total_gas * buy_receipt['effectiveGasPrice']
-            
-            net_profit_wei = profit_wei - gas_cost_wei
-            return await self._convert_wei_to_usd(net_profit_wei)
-            
-        except Exception as e:
-            logger.error(f"Error calculating actual profit: {e}")
-            return 0.0
-
-    def _get_token_transfer(
-        self,
-        receipt: Dict[str, Any],
-        token: str
-    ) -> Optional[Dict[str, Any]]:
-        """Get token transfer details from transaction receipt."""
-        try:
-            # Find Transfer event for target token
-            for log in receipt['logs']:
-                if (
-                    log['address'].lower() == token.lower() and
-                    len(log['topics']) == 3 and
-                    log['topics'][0].hex() == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'  # Transfer
-                ):
-                    return {
-                        'from': '0x' + log['topics'][1].hex()[-40:],
-                        'to': '0x' + log['topics'][2].hex()[-40:],
-                        'value': int(log['data'], 16)
-                    }
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error parsing token transfer: {e}")
-            return None
-
-    async def _convert_wei_to_usd(self, amount_wei: int) -> float:
-        """Convert wei amount to USD value."""
-        try:
-            # Get ETH price from crypto-price server
-            response = await self.web3_manager.use_mcp_tool(
-                "crypto-price",
-                "get_prices",
-                {
-                    "coins": ["ethereum"],
-                    "include_24h_change": False
-                }
-            )
-            
-            if not response or "ethereum" not in response:
-                self.logger.error("Failed to get ETH price from MCP server")
-                return 0.0
-                
-            eth_price = float(response["ethereum"]["usd"])
-            eth_amount = amount_wei / 1e18
-            return eth_amount * eth_price
-            
-        except Exception as e:
-            self.logger.error(f"Error converting wei to USD: {e}")
-            return 0.0
-
-    def _get_deadline(self) -> int:
-        """Get transaction deadline timestamp."""
-        current_block = self.web3_manager.w3.eth.get_block('latest')
-        return current_block['timestamp'] + 300  # 5 minutes
+        self.last_error = None
+        self._cached_eth_price = None
+        self._last_price_update = 0
+        self._price_cache_duration = 10  # Cache price for 10 seconds
 
     async def initialize(self) -> bool:
         """Initialize arbitrage executor."""
         try:
+            # Reset error state
+            self.last_error = None
+
             # Connect to Web3
             await self.web3_manager.connect()
 
             # Initialize DEX manager
             if not await self.dex_manager.initialize():
-                logger.error("Failed to initialize DEX manager")
+                self.last_error = "Failed to initialize DEX manager"
                 return False
 
             # Initialize gas optimizer
             if not await self.gas_optimizer.initialize():
-                logger.error("Failed to initialize gas optimizer")
+                self.last_error = "Failed to initialize gas optimizer"
                 return False
 
             # Check wallet balance
             balance = await self.web3_manager.get_eth_balance()
             if balance == 0:
-                logger.warning("Wallet has no ETH balance")
+                self.last_error = "Wallet has no ETH balance"
+                return False
+
+            # Verify gas price is within limits
+            gas_price_gwei = self.web3_manager.w3.from_wei(
+                await self.web3_manager.w3.eth.gas_price,
+                'gwei'
+            )
+            if gas_price_gwei > self.max_gas_price_gwei:
+                self.last_error = f"Current gas price {gas_price_gwei} gwei exceeds maximum {self.max_gas_price_gwei}"
+                return False
 
             logger.info("Arbitrage executor initialized")
             return True
@@ -441,9 +96,121 @@ class ArbitrageExecutor:
             logger.error(f"Failed to initialize arbitrage executor: {e}")
             return False
 
-    # Alias for find_opportunities to maintain compatibility
-    detect_opportunities = find_opportunities
-
+    async def start_execution(self):
+        """Start arbitrage execution loop."""
+        try:
+            while True:
+                try:
+                    # Get current gas price
+                    gas_price = await self.web3_manager.w3.eth.gas_price
+                    gas_price_gwei = self.web3_manager.w3.from_wei(gas_price, 'gwei')
+                    
+                    # Check if gas price is too high
+                    if gas_price_gwei > self.max_gas_price_gwei:
+                        logger.warning(f"Gas price {gas_price_gwei} gwei too high")
+                        await asyncio.sleep(10)
+                        continue
+                        
+                    # Get opportunities from market analyzer
+                    if self.market_analyzer:
+                        opportunities = await self.market_analyzer.get_opportunities()
+                        for opp in opportunities:
+                            try:
+                                # Validate opportunity
+                                if opp['profit_usd'] < self.min_profit_usd:
+                                    continue
+                                    
+                                # Execute trade
+                                logger.info(f"Executing trade with {opp['profit_usd']:.2f} USD profit")
+                                
+                                # Get DEX instances
+                                dex_from = self.dex_manager.get_dex(opp['dex_from'])
+                                if not dex_from:
+                                    logger.error(f"DEX {opp['dex_from']} not found")
+                                    continue
+                                
+                                # Validate gas costs
+                                estimated_gas = await dex_from.estimate_gas(
+                                    amount_in=Decimal(str(opp['amount_in'])),
+                                    amount_out_min=Decimal(str(opp['amount_out'] * (1 - self.slippage_tolerance))),
+                                    path=opp['token_path'],
+                                    to=self.wallet_address
+                                )
+                                
+                                gas_price = await self.web3_manager.w3.eth.gas_price
+                                gas_cost_wei = estimated_gas * gas_price
+                                gas_cost_eth = self.web3_manager.w3.from_wei(gas_cost_wei, 'ether')
+                                
+                                # Get ETH price from market analyzer
+                                eth_price = await self.market_analyzer.get_market_condition("WETH")
+                                if not eth_price:
+                                    logger.error("Failed to get ETH price")
+                                    continue
+                                    
+                                gas_cost_usd = float(gas_cost_eth) * float(eth_price['price'])
+                                
+                                # Verify profit after gas
+                                net_profit = opp['profit_usd'] - gas_cost_usd
+                                if net_profit < self.min_profit_usd:
+                                    logger.info(f"Trade not profitable after gas: ${net_profit:.2f}")
+                                    continue
+                                
+                                # Build and send transaction
+                                try:
+                                    # Get deadline
+                                    deadline = (await self.web3_manager.w3.eth.get_block('latest')).timestamp + self.tx_timeout_seconds
+                                    
+                                    # Build transaction
+                                    tx = await dex_from.build_swap_transaction(
+                                        amount_in=Decimal(str(opp['amount_in'])),
+                                        amount_out_min=Decimal(str(opp['amount_out'] * (1 - self.slippage_tolerance))),
+                                        path=opp['token_path'],
+                                        to=self.wallet_address,
+                                        deadline=deadline
+                                    )
+                                    
+                                    # Send transaction
+                                    tx_hash = await self.web3_manager.send_transaction(tx)
+                                    logger.info(f"Transaction sent: {tx_hash.hex()}")
+                                    
+                                    # Monitor transaction
+                                    if self.tx_monitor:
+                                        await self.tx_monitor.add_transaction(
+                                            tx_hash=tx_hash.hex(),
+                                            dex=opp['dex_from'],
+                                            amount_in=opp['amount_in'],
+                                            amount_out_min=opp['amount_out'] * (1 - self.slippage_tolerance),
+                                            expected_profit=net_profit,
+                                            gas_cost=gas_cost_usd
+                                        )
+                                    
+                                    # Wait for transaction receipt
+                                    receipt = await self.web3_manager.w3.eth.wait_for_transaction_receipt(
+                                        tx_hash,
+                                        timeout=self.tx_timeout_seconds
+                                    )
+                                    
+                                    if receipt['status'] == 1:
+                                        logger.info(f"Trade executed successfully. Net profit: ${net_profit:.2f}")
+                                    else:
+                                        logger.error("Transaction failed")
+                                        
+                                except Exception as e:
+                                    logger.error(f"Failed to execute trade: {e}")
+                                
+                            except Exception as e:
+                                logger.error(f"Error executing trade: {e}")
+                                
+                    await asyncio.sleep(1)  # Sleep between checks
+                    
+                except Exception as e:
+                    logger.error(f"Error in execution loop: {e}")
+                    await asyncio.sleep(5)
+                    
+        except asyncio.CancelledError:
+            logger.info("Arbitrage execution cancelled")
+        except Exception as e:
+            logger.error(f"Fatal error in execution loop: {e}")
 
 async def create_arbitrage_executor(
     web3_manager: Optional[Web3Manager] = None,
@@ -478,7 +245,7 @@ async def create_arbitrage_executor(
     if not gas_optimizer:
         gas_optimizer = await create_gas_optimizer(dex_manager=dex_manager, web3_manager=web3_manager)
 
-    return ArbitrageExecutor(
+    executor = ArbitrageExecutor(
         dex_manager=dex_manager,
         web3_manager=web3_manager,
         gas_optimizer=gas_optimizer,
@@ -488,3 +255,8 @@ async def create_arbitrage_executor(
         tx_monitor=tx_monitor,
         market_analyzer=market_analyzer
     )
+    await executor.initialize()
+    return executor
+
+# Export the create function
+__all__ = ['create_arbitrage_executor']
