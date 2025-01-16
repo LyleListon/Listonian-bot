@@ -36,7 +36,7 @@ class PancakeSwapDEX(BaseDEXV3):
 
     async def get_pool_fee(self, token0: str, token1: str) -> Optional[int]:
         """
-        Get the fee tier for a specific pool.
+        Get the optimal fee tier based on market conditions.
         
         Args:
             token0: First token address
@@ -46,19 +46,64 @@ class PancakeSwapDEX(BaseDEXV3):
             Optional[int]: Fee in basis points (e.g., 2500 for 0.25%) or None if pool doesn't exist
         """
         try:
-            # Common fee tiers in PancakeSwap V3
-            fee_tiers = [100, 500, 2500, 10000]  # 0.01%, 0.05%, 0.25%, 1%
+            # Get token symbols
+            token0_symbol = self.TOKEN_SYMBOLS.get(token0)
+            token1_symbol = self.TOKEN_SYMBOLS.get(token1)
             
-            for fee in fee_tiers:
-                pool = await self.factory.functions.getPool(
-                    token0,
-                    token1,
-                    fee
-                ).call()
+            # If we don't have symbols, use default fee
+            if not token0_symbol or not token1_symbol:
+                return self.fee
+            
+            # Get market conditions from market-analysis server
+            market_conditions = await self.web3_manager.use_mcp_tool(
+                "market-analysis",
+                "assess_market_conditions",
+                {
+                    "token": token0_symbol.lower(),
+                    "metrics": ["volatility", "volume", "liquidity"]
+                }
+            )
+            
+            # Determine optimal fee tier based on market conditions
+            volatility = market_conditions['metrics']['volatility']
+            volume = market_conditions['metrics']['volume']
+            liquidity = market_conditions['metrics']['liquidity']
+            
+            # High volume, low volatility -> lowest fee
+            if volume > 1000000 and volatility < 0.1:
+                fee = 100  # 0.01%
+            # High volume, medium volatility -> low fee
+            elif volume > 500000 and volatility < 0.3:
+                fee = 500  # 0.05%
+            # Medium conditions -> medium fee
+            elif volume > 100000 and volatility < 0.5:
+                fee = 2500  # 0.25%
+            # High volatility or low volume -> high fee
+            else:
+                fee = 10000  # 1%
                 
-                if pool != "0x0000000000000000000000000000000000000000":
-                    return fee
-                    
+            # Verify pool exists with selected fee
+            pool = await self.factory.functions.getPool(
+                token0,
+                token1,
+                fee
+            ).call()
+            
+            if pool != "0x0000000000000000000000000000000000000000":
+                return fee
+                
+            # If pool doesn't exist with optimal fee, try other tiers
+            fee_tiers = [100, 500, 2500, 10000]
+            for alt_fee in fee_tiers:
+                if alt_fee != fee:
+                    pool = await self.factory.functions.getPool(
+                        token0,
+                        token1,
+                        alt_fee
+                    ).call()
+                    if pool != "0x0000000000000000000000000000000000000000":
+                        return alt_fee
+                        
             return None
             
         except Exception as e:
@@ -67,7 +112,7 @@ class PancakeSwapDEX(BaseDEXV3):
 
     async def get_best_pool(self, token0: str, token1: str) -> Optional[Dict[str, Any]]:
         """
-        Find the pool with the best liquidity for a pair.
+        Find the pool with the best liquidity using market analysis.
         
         Args:
             token0: First token address
@@ -81,39 +126,59 @@ class PancakeSwapDEX(BaseDEXV3):
                 - sqrt_price_x96: Current sqrt price
         """
         try:
-            best_pool = None
-            max_liquidity = 0
+            # Get token symbols
+            token0_symbol = self.TOKEN_SYMBOLS.get(token0)
+            token1_symbol = self.TOKEN_SYMBOLS.get(token1)
             
-            # Check all fee tiers
-            fee_tiers = [100, 500, 2500, 10000]
+            # If we don't have symbols, use default fee
+            if not token0_symbol or not token1_symbol:
+                return None
             
-            for fee in fee_tiers:
-                pool_address = await self.factory.functions.getPool(
-                    token0,
-                    token1,
-                    fee
-                ).call()
+            # Analyze opportunities using market-analysis server
+            analysis = await self.web3_manager.use_mcp_tool(
+                "market-analysis",
+                "analyze_opportunities",
+                {
+                    "token": token0_symbol.lower(),
+                    "days": 1,
+                    "min_profit_threshold": 0.1
+                }
+            )
+            
+            # Get current market conditions
+            market_conditions = await self.web3_manager.use_mcp_tool(
+                "market-analysis",
+                "assess_market_conditions",
+                {
+                    "token": token0_symbol.lower(),
+                    "metrics": ["liquidity", "volume"]
+                }
+            )
+            
+            # Use the analysis to determine best fee tier
+            if market_conditions['metrics']['volume'] > 1000000:  # High volume
+                fee = 100  # 0.01% for high volume
+            elif market_conditions['metrics']['volume'] > 100000:  # Medium volume
+                fee = 500  # 0.05% for medium volume
+            else:
+                fee = 2500  # 0.25% for low volume
                 
-                if pool_address == "0x0000000000000000000000000000000000000000":
-                    continue
-                    
-                pool = self.w3.eth.contract(
-                    address=pool_address,
-                    abi=self.pool_abi
-                )
+            # Get pool address
+            pool_address = await self.factory.functions.getPool(
+                token0,
+                token1,
+                fee
+            ).call()
+            
+            if pool_address == "0x0000000000000000000000000000000000000000":
+                return None
                 
-                liquidity = await pool.functions.liquidity().call()
-                if liquidity > max_liquidity:
-                    slot0 = await pool.functions.slot0().call()
-                    best_pool = {
-                        'address': pool_address,
-                        'fee': fee,
-                        'liquidity': liquidity,
-                        'sqrt_price_x96': slot0[0]
-                    }
-                    max_liquidity = liquidity
-                    
-            return best_pool
+            return {
+                'address': pool_address,
+                'fee': fee,
+                'liquidity': market_conditions['metrics']['liquidity'],
+                'sqrt_price_x96': analysis['current_price'] * (2 ** 96)  # Convert to sqrtPriceX96
+            }
             
         except Exception as e:
             self._handle_error(e, "Best pool lookup")
@@ -147,13 +212,24 @@ class PancakeSwapDEX(BaseDEXV3):
         """Get list of common base tokens for routing."""
         return get_common_base_tokens()
 
+    # Token address to symbol mapping
+    TOKEN_SYMBOLS = {
+        # Common Base tokens
+        "0x4200000000000000000000000000000000000006": "WETH",  # WETH on Base
+        "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": "USDC",  # USDC on Base
+        "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb": "DAI",   # DAI on Base
+        "0x4A3A6Dd60A34bB2Aba60D73B4C88315E9CeB6A3D": "USDT",  # USDT on Base
+        # Add more token mappings as needed
+    }
+
     async def get_quote_with_impact(
         self,
         amount_in: int,
         path: List[str]
     ) -> Optional[Dict[str, Any]]:
         """
-        Get quote including price impact and liquidity depth analysis.
+        Get quote including price impact and liquidity depth analysis using MCP servers.
+        Falls back to base V3 implementation if MCP servers fail.
         
         Args:
             amount_in: Input amount in wei
@@ -170,55 +246,68 @@ class PancakeSwapDEX(BaseDEXV3):
                 - min_out: Minimum output with slippage
         """
         try:
-            if not self.quoter_address:
-                raise ValueError("Quoter address not configured")
-                
-            # Get pool info
-            pool_address = await self.factory.functions.getPool(
-                path[0],
-                path[1],
-                self.fee
-            ).call()
+            # Get token symbols from addresses
+            token_in_symbol = self.TOKEN_SYMBOLS.get(path[0])
+            token_out_symbol = self.TOKEN_SYMBOLS.get(path[1])
             
-            if pool_address == "0x0000000000000000000000000000000000000000":
-                return None
-                
-            # Get pool contract
-            pool = self.w3.eth.contract(
-                address=pool_address,
-                abi=self.pool_abi
+            # If we don't have symbols for the tokens, fall back to base implementation
+            if not token_in_symbol or not token_out_symbol:
+                return await super().get_quote_with_impact(amount_in, path)
+            
+            # Get current prices from crypto-price server
+            prices_response = await self.web3_manager.use_mcp_tool(
+                "crypto-price",
+                "get_prices",
+                {
+                    "coins": [token_in_symbol.lower(), token_out_symbol.lower()],
+                    "include_24h_change": True
+                }
             )
             
-            # Get pool state
-            slot0 = await pool.functions.slot0().call()
-            liquidity = await pool.functions.liquidity().call()
-            
-            # Get quote from quoter
-            encoded_path = self._encode_path(path)
-            quote = await self.quoter.functions.quoteExactInput(
-                encoded_path,
-                amount_in
-            ).call()
-            
-            # Calculate price impact using shared utility
-            price_impact = calculate_price_impact(
-                amount_in=amount_in,
-                amount_out=quote,
-                reserve_in=liquidity,  # Use liquidity as reserve proxy
-                reserve_out=liquidity,
-                sqrt_price_x96=slot0[0]
+            # Get market conditions from market-analysis server
+            market_response = await self.web3_manager.use_mcp_tool(
+                "market-analysis",
+                "assess_market_conditions",
+                {
+                    "token": token_in_symbol.lower(),
+                    "metrics": ["volatility", "volume", "liquidity", "trend"]
+                }
             )
+            
+            # Validate MCP responses
+            if not prices_response or not market_response:
+                return await super().get_quote_with_impact(amount_in, path)
+            
+            # Extract prices from response
+            token_in_price = prices_response.get(token_in_symbol.lower(), {}).get('price')
+            token_out_price = prices_response.get(token_out_symbol.lower(), {}).get('price')
+            
+            if not token_in_price or not token_out_price:
+                return await super().get_quote_with_impact(amount_in, path)
+            
+            # Calculate output amount based on price ratio
+            price_ratio = float(token_out_price) / float(token_in_price)
+            amount_out = int(amount_in * price_ratio)
+            
+            # Extract market metrics
+            metrics = market_response.get('metrics', {})
+            price_impact = float(metrics.get('volatility', 0)) / 100
+            liquidity = int(metrics.get('liquidity', 0))
+            
+            # Validate metrics
+            if price_impact <= 0 or liquidity <= 0:
+                return await super().get_quote_with_impact(amount_in, path)
             
             return {
                 'amount_in': amount_in,
-                'amount_out': quote,
+                'amount_out': amount_out,
                 'price_impact': price_impact,
                 'liquidity_depth': liquidity,
                 'fee_rate': self.fee / 1000000,  # Convert from basis points
                 'estimated_gas': estimate_gas_cost(path, 'v3'),
-                'min_out': int(quote * 0.995)  # 0.5% slippage default
+                'min_out': int(amount_out * 0.995)  # 0.5% slippage default
             }
             
         except Exception as e:
-            self._handle_error(e, "V3 quote calculation")
-            return None
+            self.logger.warning(f"MCP quote failed, falling back to base implementation: {e}")
+            return await super().get_quote_with_impact(amount_in, path)

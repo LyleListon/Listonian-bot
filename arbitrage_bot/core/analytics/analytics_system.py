@@ -1,328 +1,495 @@
-"""Analytics system for tracking and analyzing trading performance."""
+"""Analytics system for monitoring and analyzing trading performance."""
 
 import logging
-import json
 import asyncio
-from typing import Dict, List, Any, Optional
+import time
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from decimal import Decimal
-import pandas as pd
-import numpy as np
-from pathlib import Path
+import json
+from json import JSONEncoder
 
-from ..dex.dex_manager import DEXManager
-from ..dex.utils import format_amount_with_decimals, COMMON_TOKENS
+from ..web3.web3_manager import Web3Manager
+from ..execution.trade_executor import TradeExecutor
+from ..metrics.portfolio_tracker import PortfolioTracker
+from ..gas.gas_optimizer import GasOptimizer
+from ...utils.database import Database, DateTimeEncoder
 
 logger = logging.getLogger(__name__)
 
 class AnalyticsSystem:
-    """System for collecting and analyzing trading metrics."""
+    """System for analyzing trading performance and market conditions."""
 
     def __init__(
         self,
-        dex_manager: DEXManager,
-        metrics_dir: str = "metrics",
-        analysis_window: int = 24  # Hours
+        web3_manager: Web3Manager,
+        tx_monitor: Any,
+        market_analyzer: Any,
+        portfolio_tracker: PortfolioTracker,
+        gas_optimizer: GasOptimizer,
+        config: Dict[str, Any],
+        db: Optional[Database] = None
     ):
-        """Initialize analytics system."""
-        self.dex_manager = dex_manager
-        self.metrics_dir = Path(metrics_dir)
-        self.metrics_dir.mkdir(exist_ok=True)
-        self.analysis_window = analysis_window
-        
-        # Initialize metrics containers
-        self.trade_metrics: List[Dict[str, Any]] = []
-        self.dex_metrics: Dict[str, Dict[str, Any]] = {}
-        self.token_metrics: Dict[str, Dict[str, Any]] = {}
-        
-        # Performance thresholds
-        self.min_success_rate = 0.95  # 95% success rate required
-        self.min_profit_threshold = 10.0  # $10 minimum profit
-        self.max_slippage = 0.02  # 2% maximum slippage
-        self.max_gas_usage = 500000  # Maximum gas units per trade
-
-    async def record_trade(
-        self,
-        trade_result: Dict[str, Any],
-        opportunity: Dict[str, Any]
-    ) -> None:
         """
-        Record trade execution metrics.
-        
+        Initialize analytics system.
+
         Args:
-            trade_result: Execution result from arbitrage executor
-            opportunity: Original opportunity details
+            web3_manager: Web3Manager instance
+            tx_monitor: Transaction monitor instance
+            market_analyzer: Market analyzer instance
+            portfolio_tracker: Portfolio tracker instance
+            gas_optimizer: Gas optimizer instance
+            config: Configuration dictionary
+            db: Optional Database instance
+        """
+        self.web3_manager = web3_manager
+        self.tx_monitor = tx_monitor
+        self.market_analyzer = market_analyzer
+        self.portfolio_tracker = portfolio_tracker
+        self.gas_optimizer = gas_optimizer
+        self.config = config
+        self.db = db if db else Database()
+        
+        # Initialize analytics
+        self.performance_metrics: Dict[str, Any] = {}
+        self.market_metrics: Dict[str, Any] = {}
+        self.gas_metrics: Dict[str, Any] = {}
+        self.risk_metrics: Dict[str, Any] = {}
+        
+        # WebSocket server reference
+        self.websocket_server = None
+        
+        # Update intervals
+        self.update_interval = config.get('analytics', {}).get('update_interval', 60)
+        self.history_window = config.get('analytics', {}).get('history_window', 24 * 60 * 60)
+        
+        # Initialize tracking
+        self.start_time = datetime.now()
+        self._running = False
+        self._update_task = None
+
+    async def initialize(self) -> bool:
+        """Initialize analytics system."""
+        try:
+            # Wait for market analyzer to start
+            if not hasattr(self.market_analyzer, '_monitoring_started'):
+                await self.market_analyzer.start_monitoring()
+                self.market_analyzer._monitoring_started = True
+            
+            # Wait for initial market data
+            start_time = time.time()
+            while not self.market_analyzer.market_conditions and time.time() - start_time < 30:
+                await asyncio.sleep(1)
+            
+            if not self.market_analyzer.market_conditions:
+                logger.warning("Market analyzer initialized but no data available yet")
+            
+            # Load historical data
+            await self._load_historical_data()
+            
+            # Start analytics update loop
+            self._running = True
+            self._update_task = asyncio.create_task(self._update_loop())
+            
+            # Wait for first metrics update
+            await self._update_metrics()
+            
+            logger.info("Analytics system initialized")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize analytics system: {e}")
+            return False
+
+    def set_websocket_server(self, server: Any) -> None:
+        """Set WebSocket server reference."""
+        self.websocket_server = server
+
+    async def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get current performance metrics."""
+        if not self.performance_metrics:
+            # Return default metrics while waiting for data
+            return {
+                'total_trades': 0,
+                'trades_24h': 0,
+                'success_rate': 0.0,
+                'failed_trades': 0,
+                'total_profit_usd': 0.0,
+                'profit_24h': 0.0,
+                'portfolio_change_24h': 0.0,
+                'profit_history': [],
+                'volume_history': [],
+                'timestamp': datetime.now().isoformat()
+            }
+        return self.performance_metrics.copy()
+
+    async def get_market_metrics(self) -> Dict[str, Any]:
+        """Get current market metrics."""
+        return self.market_metrics.copy()
+
+    async def get_gas_metrics(self) -> Dict[str, Any]:
+        """Get current gas metrics."""
+        return self.gas_metrics.copy()
+
+    async def get_risk_metrics(self) -> Dict[str, Any]:
+        """Get current risk metrics."""
+        return self.risk_metrics.copy()
+
+    async def get_all_metrics(self) -> Dict[str, Any]:
+        """Get all current metrics."""
+        def convert_datetime(obj):
+            if isinstance(obj, dict):
+                return {k: convert_datetime(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_datetime(x) for x in obj]
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            return obj
+
+        metrics = {
+            'performance': self.performance_metrics,
+            'market': self.market_metrics,
+            'gas': self.gas_metrics,
+            'risk': self.risk_metrics,
+            'timestamp': datetime.now().isoformat()
+        }
+        return convert_datetime(metrics)
+
+    async def get_historical_metrics(
+        self,
+        category: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get historical metrics data.
+
+        Args:
+            category: Metrics category
+            start_time: Start time for historical data
+            end_time: End time for historical data
+
+        Returns:
+            List[Dict[str, Any]]: Historical metrics data
         """
         try:
-            timestamp = datetime.fromtimestamp(trade_result['timestamp'])
+            if not start_time:
+                start_time = self.start_time
+            if not end_time:
+                end_time = datetime.now()
+                
+            query = {
+                "category": category,
+                "timestamp": {
+                    "$gte": start_time,
+                    "$lte": end_time
+                }
+            }
+            
+            metrics = await self.db.get_metrics(query)
+            return sorted(metrics, key=lambda x: x['timestamp'])
+            
+        except Exception as e:
+            logger.error(f"Failed to get historical metrics: {e}")
+            return []
+
+    async def analyze_trade(self, trade_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze a completed trade.
+
+        Args:
+            trade_data: Trade details
+
+        Returns:
+            Dict[str, Any]: Analysis results
+        """
+        try:
+            # Get trade metrics
+            gas_cost = int(trade_data['gas_used']) * int(trade_data['gas_price'])
+            profit = (
+                int(trade_data['amount_out']) -
+                int(trade_data['amount_in']) -
+                gas_cost
+            )
             
             # Calculate metrics
-            profit_usd = trade_result['profit_usd']
-            gas_cost = trade_result['gas_used'] * trade_result.get('effectiveGasPrice', 0)
-            execution_time = trade_result.get('execution_time', 0)
-            
-            # Create trade record
-            trade_record = {
-                'timestamp': timestamp.isoformat(),
-                'buy_dex': opportunity['buy_dex'],
-                'sell_dex': opportunity['sell_dex'],
-                'token_in': opportunity['buy_path'][0],
-                'token_out': opportunity['buy_path'][-1],
-                'amount_in': opportunity['amount_in'],
-                'amount_out': opportunity['sell_amount_out'],
-                'profit_usd': profit_usd,
-                'gas_used': trade_result['gas_used'],
-                'gas_cost_usd': trade_result.get('gas_cost_usd', 0),
-                'execution_time': execution_time,
-                'success': trade_result['success'],
-                'price_impact': opportunity['price_impact']
+            analysis = {
+                'profit': profit,
+                'gas_cost': gas_cost,
+                'gas_efficiency': profit / gas_cost if gas_cost > 0 else 0,
+                'execution_time': (
+                    trade_data['completion_time'] -
+                    trade_data['start_time']
+                ).total_seconds(),
+                'slippage': (
+                    (int(trade_data['expected_out']) - int(trade_data['amount_out'])) /
+                    int(trade_data['expected_out'])
+                ) if int(trade_data['expected_out']) > 0 else 0
             }
+            
+            # Save analysis
+            trade_data['analysis'] = analysis
+            await self.db.update_trade(trade_data['id'], trade_data)
             
             # Update metrics
-            self.trade_metrics.append(trade_record)
-            self._update_dex_metrics(trade_record)
-            self._update_token_metrics(trade_record)
+            await self._update_metrics()
             
-            # Save metrics
-            await self._save_metrics()
-            
-        except Exception as e:
-            logger.error(f"Error recording trade metrics: {e}")
-
-    async def analyze_performance(
-        self,
-        time_window: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """
-        Analyze trading performance metrics.
-        
-        Args:
-            time_window: Analysis window in hours (default: self.analysis_window)
-            
-        Returns:
-            Dict[str, Any]: Performance analysis results
-        """
-        try:
-            window = time_window or self.analysis_window
-            cutoff = datetime.now() - timedelta(hours=window)
-            
-            # Filter recent trades
-            recent_trades = [
-                trade for trade in self.trade_metrics
-                if datetime.fromisoformat(trade['timestamp']) > cutoff
-            ]
-            
-            if not recent_trades:
-                return {
-                    'trades': 0,
-                    'success_rate': 0,
-                    'total_profit': 0,
-                    'avg_profit': 0,
-                    'avg_gas': 0,
-                    'recommendations': ["No trades in analysis window"]
-                }
-            
-            # Calculate metrics
-            df = pd.DataFrame(recent_trades)
-            
-            total_trades = len(df)
-            successful_trades = len(df[df['success']])
-            success_rate = successful_trades / total_trades
-            
-            total_profit = df['profit_usd'].sum()
-            avg_profit = df['profit_usd'].mean()
-            avg_gas = df['gas_used'].mean()
-            
-            # DEX performance
-            dex_stats = {}
-            for dex_name in self.dex_metrics:
-                dex_trades = df[
-                    (df['buy_dex'] == dex_name) | 
-                    (df['sell_dex'] == dex_name)
-                ]
-                if not dex_trades.empty:
-                    dex_stats[dex_name] = {
-                        'trades': len(dex_trades),
-                        'success_rate': len(dex_trades[dex_trades['success']]) / len(dex_trades),
-                        'avg_profit': dex_trades['profit_usd'].mean(),
-                        'avg_gas': dex_trades['gas_used'].mean()
-                    }
-            
-            # Generate recommendations
-            recommendations = self._generate_recommendations(
-                success_rate=success_rate,
-                avg_profit=avg_profit,
-                avg_gas=avg_gas,
-                dex_stats=dex_stats
-            )
-            
-            return {
-                'trades': total_trades,
-                'success_rate': success_rate,
-                'total_profit': total_profit,
-                'avg_profit': avg_profit,
-                'avg_gas': avg_gas,
-                'dex_performance': dex_stats,
-                'recommendations': recommendations
-            }
+            # Broadcast update if WebSocket server available
+            if self.websocket_server:
+                await self.websocket_server.broadcast_trade(trade_data)
+                
+            return analysis
             
         except Exception as e:
-            logger.error(f"Error analyzing performance: {e}")
+            logger.error(f"Failed to analyze trade: {e}")
             return {}
 
-    async def get_dex_metrics(self, dex_name: str) -> Optional[Dict[str, Any]]:
-        """Get metrics for specific DEX."""
-        return self.dex_metrics.get(dex_name)
-
-    async def get_token_metrics(self, token: str) -> Optional[Dict[str, Any]]:
-        """Get metrics for specific token."""
-        return self.token_metrics.get(token)
-
-    def _update_dex_metrics(self, trade: Dict[str, Any]) -> None:
-        """Update DEX-specific metrics."""
-        for dex_name in [trade['buy_dex'], trade['sell_dex']]:
-            if dex_name not in self.dex_metrics:
-                self.dex_metrics[dex_name] = {
-                    'total_trades': 0,
-                    'successful_trades': 0,
-                    'total_profit': 0,
-                    'total_gas': 0,
-                    'avg_execution_time': 0
-                }
-            
-            metrics = self.dex_metrics[dex_name]
-            metrics['total_trades'] += 1
-            if trade['success']:
-                metrics['successful_trades'] += 1
-            metrics['total_profit'] += trade['profit_usd']
-            metrics['total_gas'] += trade['gas_used']
-            
-            # Update moving average of execution time
-            n = metrics['total_trades']
-            old_avg = metrics['avg_execution_time']
-            new_time = trade['execution_time']
-            metrics['avg_execution_time'] = ((n - 1) * old_avg + new_time) / n
-
-    def _update_token_metrics(self, trade: Dict[str, Any]) -> None:
-        """Update token-specific metrics."""
-        for token in [trade['token_in'], trade['token_out']]:
-            if token not in self.token_metrics:
-                self.token_metrics[token] = {
-                    'total_volume': 0,
-                    'successful_trades': 0,
-                    'failed_trades': 0,
-                    'total_profit': 0,
-                    'avg_price_impact': 0
-                }
-            
-            metrics = self.token_metrics[token]
-            if trade['success']:
-                metrics['successful_trades'] += 1
-            else:
-                metrics['failed_trades'] += 1
-            
-            # Update volume and profit
-            metrics['total_volume'] += trade['amount_in']
-            metrics['total_profit'] += trade['profit_usd']
-            
-            # Update moving average of price impact
-            n = metrics['successful_trades'] + metrics['failed_trades']
-            old_avg = metrics['avg_price_impact']
-            new_impact = trade['price_impact']
-            metrics['avg_price_impact'] = ((n - 1) * old_avg + new_impact) / n
-
-    def _generate_recommendations(
-        self,
-        success_rate: float,
-        avg_profit: float,
-        avg_gas: float,
-        dex_stats: Dict[str, Dict[str, Any]]
-    ) -> List[str]:
-        """Generate trading recommendations based on metrics."""
-        recommendations = []
-        
-        # Check success rate
-        if success_rate < self.min_success_rate:
-            recommendations.append(
-                f"Success rate ({success_rate:.2%}) below threshold. "
-                "Consider increasing safety margins."
-            )
-        
-        # Check profitability
-        if avg_profit < self.min_profit_threshold:
-            recommendations.append(
-                f"Average profit (${avg_profit:.2f}) below threshold. "
-                "Consider adjusting minimum profit requirements."
-            )
-        
-        # Check gas usage
-        if avg_gas > self.max_gas_usage:
-            recommendations.append(
-                f"Average gas usage ({avg_gas:.0f}) above threshold. "
-                "Consider optimizing execution paths."
-            )
-        
-        # DEX-specific recommendations
-        for dex_name, stats in dex_stats.items():
-            if stats['success_rate'] < 0.9:  # 90% threshold for individual DEXs
-                recommendations.append(
-                    f"{dex_name} success rate ({stats['success_rate']:.2%}) concerning. "
-                    "Consider reviewing DEX configuration."
-                )
-        
-        return recommendations
-
-    async def _save_metrics(self) -> None:
-        """Save metrics to disk."""
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
         try:
-            # Create metrics file path
-            date_str = datetime.now().strftime("%Y%m%d")
-            file_path = self.metrics_dir / f"trades_{date_str}.json"
+            self._running = False
+            if self._update_task:
+                self._update_task.cancel()
+                try:
+                    await self._update_task
+                except asyncio.CancelledError:
+                    pass
+                
+            logger.info("Analytics system cleaned up")
             
-            # Save trade metrics
-            metrics = {
-                'trades': self.trade_metrics,
-                'dex_metrics': self.dex_metrics,
-                'token_metrics': self.token_metrics,
-                'updated_at': datetime.now().isoformat()
+        except Exception as e:
+            logger.error(f"Error during analytics system cleanup: {e}")
+
+    async def _update_loop(self) -> None:
+        """Background analytics update loop."""
+        while self._running:
+            try:
+                # Update all metrics
+                await self._update_metrics()
+                
+                # Save snapshot
+                await self._save_metrics_snapshot()
+                
+                # Broadcast update if WebSocket server available
+                if self.websocket_server:
+                    await self.websocket_server.broadcast_metrics(
+                        await self.get_all_metrics()
+                    )
+                
+                # Wait for next update
+                await asyncio.sleep(self.update_interval)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in analytics update loop: {e}")
+                await asyncio.sleep(self.update_interval)
+
+    async def _update_metrics(self) -> None:
+        """Update all metrics."""
+        try:
+            # Get performance metrics
+            self.performance_metrics = await self.portfolio_tracker.get_performance_metrics()
+            
+            # Get market metrics from analyzer
+            try:
+                # Ensure market analyzer is monitoring
+                if not hasattr(self.market_analyzer, '_monitoring_started'):
+                    await self.market_analyzer.start_monitoring()
+                    self.market_analyzer._monitoring_started = True
+                
+                # First try get_market_metrics for detailed metrics
+                if hasattr(self.market_analyzer, 'get_market_metrics'):
+                    metrics = await self.market_analyzer.get_market_metrics()
+                    if metrics:
+                        self.market_metrics = metrics
+                    else:
+                        # Provide default metrics while waiting for data
+                        self.market_metrics = {
+                            'WETH': {
+                                'price': 0.0,
+                                'volume_24h': 0.0,
+                                'liquidity': 0.0,
+                                'volatility': 0.0,
+                                'trend': {
+                                    'direction': 'sideways',
+                                    'strength': 0.0,
+                                    'confidence': 0.0
+                                }
+                            },
+                            'USDC': {
+                                'price': 1.0,
+                                'volume_24h': 0.0,
+                                'liquidity': 0.0,
+                                'volatility': 0.0,
+                                'trend': {
+                                    'direction': 'sideways',
+                                    'strength': 0.0,
+                                    'confidence': 0.0
+                                }
+                            }
+                        }
+                
+                # Fall back to get_metrics for basic metrics
+                elif hasattr(self.market_analyzer, 'get_metrics'):
+                    metrics = await self.market_analyzer.get_metrics()
+                    market_condition = await self.market_analyzer.get_market_condition()
+                    
+                    # Convert basic metrics to market metrics format
+                    self.market_metrics = {
+                        'system_metrics': metrics or {},
+                        'market_conditions': market_condition or {
+                            'trend': 'sideways',
+                            'volatility': 0.0,
+                            'volume': 0.0,
+                            'liquidity': 0.0
+                        },
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+                else:
+                    raise AttributeError("Market analyzer has no metrics methods available")
+                    
+            except Exception as e:
+                if isinstance(e, AttributeError):
+                    logger.error(f"Market analyzer configuration error: {e}")
+                else:
+                    logger.warning(f"Failed to get market metrics: {e}")
+                # Provide default metrics on error
+                if not self.market_metrics:
+                    self.market_metrics = {
+                        'system_metrics': {},
+                        'market_conditions': {
+                            'trend': 'sideways',
+                            'volatility': 0.0,
+                            'volume': 0.0,
+                            'liquidity': 0.0
+                        },
+                        'timestamp': datetime.now().isoformat()
+                    }
+            
+            # Get gas metrics
+            gas_analysis = await self.gas_optimizer.analyze_gas_usage()
+            self.gas_metrics = {
+                'current_gas_price': gas_analysis['current_gas_price'],
+                'dex_stats': gas_analysis['dex_stats'],
+                'protocol_stats': gas_analysis['protocol_stats'],
+                'recommendations': gas_analysis['recommendations']
             }
             
-            with open(file_path, 'w') as f:
-                json.dump(metrics, f, indent=2)
-                
-        except Exception as e:
-            logger.error(f"Error saving metrics: {e}")
-
-    async def load_historical_metrics(self) -> None:
-        """Load historical metrics from disk."""
-        try:
-            # Find all metrics files
-            metric_files = list(self.metrics_dir.glob("trades_*.json"))
+            # Calculate risk metrics
+            self.risk_metrics = await self._calculate_risk_metrics()
             
-            for file_path in metric_files:
-                with open(file_path, 'r') as f:
-                    data = json.load(f)
-                    
-                # Update metrics
-                self.trade_metrics.extend(data.get('trades', []))
+        except Exception as e:
+            logger.error(f"Failed to update metrics: {e}")
+
+    async def _calculate_risk_metrics(self) -> Dict[str, Any]:
+        """Calculate current risk metrics."""
+        try:
+            # Get recent trades
+            trades = await self.portfolio_tracker.get_trade_history(
+                start_time=datetime.now() - timedelta(hours=24)
+            )
+            
+            if not trades:
+                return {}
                 
-                for dex_name, metrics in data.get('dex_metrics', {}).items():
-                    if dex_name not in self.dex_metrics:
-                        self.dex_metrics[dex_name] = metrics
-                    else:
-                        # Merge metrics
-                        for key, value in metrics.items():
-                            if key in self.dex_metrics[dex_name]:
-                                self.dex_metrics[dex_name][key] += value
-                
-                for token, metrics in data.get('token_metrics', {}).items():
-                    if token not in self.token_metrics:
-                        self.token_metrics[token] = metrics
-                    else:
-                        # Merge metrics
-                        for key, value in metrics.items():
-                            if key in self.token_metrics[token]:
-                                self.token_metrics[token][key] += value
+            # Calculate metrics
+            total_value = sum(float(t['amount_in']) for t in trades)
+            failed_trades = len([t for t in trades if t['status'] != 'completed'])
+            
+            return {
+                'failure_rate': failed_trades / len(trades),
+                'avg_trade_value': total_value / len(trades),
+                'max_trade_value': max(float(t['amount_in']) for t in trades),
+                'active_pairs': len(set(
+                    (t['token_in'], t['token_out'])
+                    for t in trades
+                )),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate risk metrics: {e}")
+            return {}
+
+    async def _save_metrics_snapshot(self) -> None:
+        """Save current metrics to database."""
+        try:
+            # Convert all metrics to JSON-serializable format
+            snapshot = {
+                'timestamp': datetime.now().isoformat(),
+                'performance': json.loads(json.dumps(self.performance_metrics, cls=DateTimeEncoder)),
+                'market': json.loads(json.dumps(self.market_metrics, cls=DateTimeEncoder)),
+                'gas': json.loads(json.dumps(self.gas_metrics, cls=DateTimeEncoder)),
+                'risk': json.loads(json.dumps(self.risk_metrics, cls=DateTimeEncoder))
+            }
+            
+            # Save metrics
+            await self.db.save_metrics(snapshot)
+            
+        except Exception as e:
+            logger.error(f"Failed to save metrics snapshot: {e}")
+
+    async def _load_historical_data(self) -> None:
+        """Load historical metrics data."""
+        try:
+            # Get recent metrics
+            start_time = datetime.now() - timedelta(seconds=self.history_window)
+            metrics = await self.get_historical_metrics('all', start_time)
+            
+            if metrics:
+                # Use most recent snapshot
+                latest = metrics[-1]
+                self.performance_metrics = latest.get('performance', {})
+                self.market_metrics = latest.get('market', {})
+                self.gas_metrics = latest.get('gas', {})
+                self.risk_metrics = latest.get('risk', {})
                 
         except Exception as e:
-            logger.error(f"Error loading historical metrics: {e}")
+            logger.error(f"Failed to load historical data: {e}")
+
+
+async def create_analytics_system(
+    web3_manager: Web3Manager,
+    tx_monitor: Any,
+    market_analyzer: Any,
+    portfolio_tracker: PortfolioTracker,
+    gas_optimizer: GasOptimizer,
+    config: Dict[str, Any],
+    db: Optional[Database] = None
+) -> Optional[AnalyticsSystem]:
+    """
+    Create analytics system instance.
+
+    Args:
+        web3_manager: Web3Manager instance
+        tx_monitor: Transaction monitor instance
+        market_analyzer: Market analyzer instance
+        portfolio_tracker: Portfolio tracker instance
+        gas_optimizer: Gas optimizer instance
+        config: Configuration dictionary
+        db: Optional Database instance
+
+    Returns:
+        Optional[AnalyticsSystem]: Analytics system instance
+    """
+    try:
+        system = AnalyticsSystem(
+            web3_manager=web3_manager,
+            tx_monitor=tx_monitor,
+            market_analyzer=market_analyzer,
+            portfolio_tracker=portfolio_tracker,
+            gas_optimizer=gas_optimizer,
+            config=config,
+            db=db
+        )
+        
+        success = await system.initialize()
+        if not success:
+            raise ValueError("Failed to initialize analytics system")
+            
+        return system
+        
+    except Exception as e:
+        logger.error(f"Failed to create analytics system: {e}")
+        return None

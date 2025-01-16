@@ -234,7 +234,7 @@ class AlertSystem:
     async def _check_price_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check price alert condition."""
         try:
-            market = self.market_analyzer.get_market_condition(condition.symbol)
+            market = await self.market_analyzer.get_market_condition(condition.symbol)
             if not market:
                 return False, "", "info"
                 
@@ -254,7 +254,7 @@ class AlertSystem:
     async def _check_volume_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check volume alert condition."""
         try:
-            market = self.market_analyzer.get_market_condition(condition.symbol)
+            market = await self.market_analyzer.get_market_condition(condition.symbol)
             if not market:
                 return False, "", "info"
                 
@@ -274,22 +274,17 @@ class AlertSystem:
     async def _check_gas_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check gas alert condition."""
         try:
-            # Get latest gas metrics from analytics
-            gas_metrics = self.analytics.get_gas_metrics()
-            if not gas_metrics:
+            # Get gas metrics from gas optimizer
+            gas_price = await self.analytics.gas_optimizer.get_optimal_gas_price()
+            if not gas_price:
                 return False, "", "info"
                 
-            # Get most recent gas price
-            latest_gas = gas_metrics[-1] if gas_metrics else None
-            if not latest_gas:
-                return False, "", "info"
-                
-            gas_price = latest_gas.avg_gas_price / 10**9  # Convert to GWEI
+            gas_price_gwei = gas_price / 10**9  # Convert to GWEI
             
-            if condition.operator == "above" and gas_price > condition.value:
-                return True, f"Gas price above {condition.value:.0f} GWEI", "warning"
-            elif condition.operator == "below" and gas_price < condition.value:
-                return True, f"Gas price below {condition.value:.0f} GWEI", "info"
+            if condition.operator == "above" and gas_price_gwei > condition.value:
+                return True, f"Gas price above {condition.value:.0f} GWEI ({gas_price_gwei:.0f} GWEI)", "warning"
+            elif condition.operator == "below" and gas_price_gwei < condition.value:
+                return True, f"Gas price below {condition.value:.0f} GWEI ({gas_price_gwei:.0f} GWEI)", "info"
                 
             return False, "", "info"
             
@@ -300,7 +295,7 @@ class AlertSystem:
     async def _check_trend_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check trend alert condition."""
         try:
-            market = self.market_analyzer.get_market_condition(condition.symbol)
+            market = await self.market_analyzer.get_market_condition(condition.symbol)
             if not market:
                 return False, "", "info"
                 
@@ -321,7 +316,7 @@ class AlertSystem:
     async def _check_success_rate_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check success rate alert condition."""
         try:
-            metrics = self.tx_monitor.get_metrics()
+            metrics = await self.tx_monitor.get_metrics()
             if not metrics:
                 return False, "", "info"
                 

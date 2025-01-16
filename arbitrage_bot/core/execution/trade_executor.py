@@ -1,5 +1,6 @@
 """Trade execution module."""
 
+import os
 import logging
 import asyncio
 from typing import Dict, Any, Optional
@@ -13,14 +14,15 @@ logger = logging.getLogger(__name__)
 class TradeExecutor:
     """Handles trade execution and monitoring."""
 
-    def __init__(self, testing: bool = False):
+    def __init__(self, testing: bool = None):
         """
         Initialize trade executor.
 
         Args:
             testing (bool, optional): Whether to use mock providers for testing.
         """
-        self.db = Database()
+        testing = testing if testing is not None else os.getenv('TESTING', '').lower() == 'true'
+        self.db = Database(testing=testing)
         self.market_analyzer = MarketAnalyzer()
         self.web3 = create_web3_manager(testing=testing)
         self._trade_queue = asyncio.Queue()
@@ -60,7 +62,7 @@ class TradeExecutor:
                 "transaction_hash": tx_hash,
                 "status": "completed",
             }
-            await self.db.save_trade(trade_record)
+            self.db.save_trade(trade_record)
 
             # Add to notification queue
             await self._trade_queue.put(trade_record)
@@ -74,7 +76,7 @@ class TradeExecutor:
             if "trade_record" in locals():
                 trade_record["status"] = "failed"
                 trade_record["error"] = str(e)
-                await self.db.save_trade(trade_record)
+                self.db.save_trade(trade_record)
 
             return {"success": False, "error": str(e)}
 

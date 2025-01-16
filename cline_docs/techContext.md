@@ -1,148 +1,150 @@
 # Technical Context
 
-## Core Technologies
+## Technology Stack
 
-### Languages & Frameworks
-- Python 3.9+
-- Web3.py for blockchain interaction
-- NumPy/Pandas for data analysis
-- Scikit-learn for ML models
-- AsyncIO for async operations
+### Core Technologies
+1. **Programming Languages**
+   - Python (Primary language)
+   - Solidity (Smart Contracts)
+   - JavaScript (Dashboard)
 
-### Blockchain Integration
-- Web3 Provider: Infura/Alchemy
-- Networks: Base, Ethereum
-- Contract Standards: ERC20, UniswapV2/V3
-- Gas Management: EIP-1559
+2. **Blockchain Integration**
+   - Web3.py for blockchain interaction
+   - Active DEXes: BaseSwap, SwapBased, PancakeSwap
+   - Smart contract ABIs in /abi directory
 
-### Data Storage
-- SQLite for local storage
-- JSON files for configuration
-- Metrics files for performance data
-- Model persistence with joblib
+3. **Machine Learning**
+   - Predictive models for market analysis
+   - Reinforcement learning for strategy optimization
+   - Model persistence and versioning
 
-## System Components
+### Infrastructure
 
-### DEX Integration
-- Base DEX abstraction
-- V2/V3 protocol support
-- Shared utilities
-- Factory/Manager patterns
+1. **Development Environment**
+   - Windows 11 Operating System
+   - VSCode as primary IDE
+   - Git for version control
 
-### ML System
-- Predictive models
-- Feature engineering
-- Real-time predictions
-- Model persistence
+2. **Runtime Environment**
+   - Python virtual environment
+   - Node.js for dashboard
+   - Local blockchain nodes
 
-### Analytics
-- Performance tracking
-- Risk metrics
-- Historical analysis
-- Real-time monitoring
+3. **Monitoring**
+   - Flask-based dashboard
+   - Real-time WebSocket updates
+   - Performance tracking system
 
-### Transaction Management
-- Mempool monitoring
-- Block analysis
-- Gas optimization
-- Transaction bundling
+## Development Setup
 
-## Development Tools
+### Prerequisites
+1. **System Requirements**
+   - Python 3.x
+   - Node.js
+   - Git
 
-### Testing
-- Pytest for unit tests
-- AsyncIO testing utilities
-- Mock objects for blockchain
-- Performance benchmarks
+2. **Environment Configuration**
+   - Virtual environment setup
+   - Environment variables
+   - Configuration files in /configs
+   - DEX configuration in configs/data/dex_config.json
 
-### Monitoring
-- Custom logging system
-- Performance metrics
-- Error tracking
-- Health checks
+3. **Dependencies**
+   - Python packages in requirements.txt
+   - Node packages for dashboard
+   - Smart contract dependencies
 
-### Development Environment
-- VSCode
-- Git for version control
-- Python virtual environments
-- Local blockchain for testing
+### Build Process
+1. **Local Development**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # or venv\Scripts\activate on Windows
+   pip install -r requirements.txt
+   pip install -r requirements-dev.txt
+   ```
 
-## Performance Considerations
+2. **Running the System**
+   ```bash
+   # Start the dashboard
+   .\start_dashboard.bat
+   ```
 
-### Optimization Targets
-- Transaction speed < 2s
-- Success rate > 95%
-- Profit margin > 0.1%
-- Gas efficiency > 90%
+## Technical Constraints
 
-### Resource Management
-- Memory usage < 1GB
-- CPU usage < 50%
-- Network connections < 100
-- Database connections < 10
+### Performance Requirements
+1. **Latency**
+   - Sub-second opportunity detection
+   - Minimal execution delay
+   - Real-time price updates
 
-### Scalability
-- Horizontal scaling ready
-- Multi-chain support
-- Load balancing capable
-- Resource pooling
+2. **Scalability**
+   - Selective DEX initialization
+   - Concurrent trade execution
+   - Efficient resource utilization
 
-## Security Measures
+3. **Reliability**
+   - Error recovery mechanisms
+   - Transaction validation
+   - System health monitoring
 
-### Transaction Safety
-- Slippage protection
-- Revert detection
-- MEV protection
-- Gas limits
+### Security Considerations
+1. **Transaction Security**
+   - Private key management
+   - Signature validation
+   - Gas price optimization
 
-### System Security
-- Input validation
-- Rate limiting
-- Access control
-- Error handling
+2. **System Security**
+   - Access control
+   - Rate limiting
+   - Data encryption
 
-### Data Protection
-- Secure configuration
-- Private key management
-- API key protection
-- Logging security
+### Integration Points
+1. **Blockchain Networks**
+   - Base Network (Chain ID: 8453)
+   - RPC endpoint configuration
+   - Gas estimation
 
-## Deployment
+2. **DEX Integration**
+   - Enabled DEXes:
+     * BaseSwap (V2)
+     * SwapBased (V2)
+     * PancakeSwap (V3)
+   - Disabled DEXes:
+     * UniswapV3
+     * RocketSwap
+     * Aerodrome
+     * AerodromeV3
 
-### Requirements
-- Python 3.9+
-- 2GB RAM minimum
-- SSD storage
-- Stable network
+3. **External Services**
+   - Price feed integration
+   - Market data providers
+   - Analytics services
 
-### Environment Variables
-- Node URLs
-- API keys
-- Network settings
-- Security parameters
+## MCP Servers
+1. **crypto-price**
+   - Real-time cryptocurrency price data
+   - Multiple coin support
+   - 24h price change tracking
 
-### Monitoring Setup
-- Performance metrics
-- Error alerts
-- Health checks
-- Resource monitoring
+2. **market-analysis**
+   - Arbitrage opportunity analysis
+   - Market condition assessment
+   - Risk factor evaluation
 
-## Maintenance
+3. **pool-insight**
+   - DEX pool analysis
+   - Trade quote assessment
+   - Impact analysis
 
-### Regular Tasks
-- Model retraining
-- Data cleanup
-- Performance tuning
-- Security updates
+## Monitoring and Maintenance
+1. **System Health**
+   - Performance metrics
+   - Error tracking
+   - Resource utilization
 
-### Backup Procedures
-- Configuration backup
-- Database backup
-- Model backup
-- Metrics backup
+2. **Updates and Maintenance**
+   - Version control
+   - Dependency updates
+   - Security patches
 
-### Update Process
-- Version control
-- Testing procedure
-- Deployment steps
-- Rollback plan
+Last Updated: 2024-01-15

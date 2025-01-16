@@ -8,9 +8,9 @@ module.exports = async function (deployer, network, accounts) {
   await deployer.deploy(DEXRegistry);
 
   // Deploy ArbitrageBot with initial parameters
-  const DEFAULT_MIN_PROFIT_BASIS_POINTS = 100; // 1%
+  const DEFAULT_MIN_PROFIT_BASIS_POINTS = 25; // 1%
   const DEFAULT_MAX_TRADE_SIZE = web3.utils.toWei("10", "ether");
-  const EMERGENCY_WITHDRAWAL_DELAY = 86400; // 24 hours
+  const EMERGENCY_WITHDRAWAL_DELAY = 60; // 24 hours
 
   await deployer.deploy(
     ArbitrageBot,

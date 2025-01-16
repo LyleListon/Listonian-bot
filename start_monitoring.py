@@ -5,11 +5,23 @@ This allows safe testing of opportunity detection and validation.
 
 import asyncio
 import logging
+import os
 from typing import List, Dict, Any
-from arbitrage_bot.core.execution.detect_opportunities import OpportunityDetector, ArbitrageOpportunity
+from datetime import datetime
+from arbitrage_bot.core.execution.detect_opportunities import (
+    OpportunityDetector,
+    ArbitrageOpportunity
+)
 from arbitrage_bot.utils.config_loader import create_config_loader
 from arbitrage_bot.core.web3.web3_manager import create_web3_manager
-from arbitrage_bot.core.metrics.metrics_manager import create_metrics_manager
+from arbitrage_bot.core.metrics.metrics_manager import MetricsManager
+from arbitrage_bot.core.balance_manager import BalanceManager
+from arbitrage_bot.core.analytics.analytics_system import AnalyticsSystem, create_analytics_system
+from arbitrage_bot.core.ml.ml_system import MLSystem
+from arbitrage_bot.core.monitoring.transaction_monitor import TransactionMonitor
+from arbitrage_bot.core.dex.dex_manager import DEXManager
+from arbitrage_bot.core.metrics.portfolio_tracker import PortfolioTracker
+from arbitrage_bot.core.gas.gas_optimizer import GasOptimizer
 
 # Configure logging
 logging.basicConfig(
@@ -26,25 +38,152 @@ async def monitor_opportunities():
         config = config_loader.get_config()
         
         # Initialize Web3
-        network_config = config.get('network', {})
-        web3_manager = await create_web3_manager(
-            provider_url=network_config.get('rpc_url'),
-            chain_id=network_config.get('chain_id')
-        )
+        web3_config = config.get('web3', {})
+        os.environ['BASE_RPC_URL'] = web3_config.get('provider_url')
+        os.environ['CHAIN_ID'] = str(web3_config.get('chain_id', 8453))
+        # Set wallet credentials
+        os.environ['WALLET_ADDRESS'] = '0xc9eC57087138210a8cbbDD430D5763b94C6122b1'
+        os.environ['PRIVATE_KEY'] = 'd074e6511a5b422283d2f652070299f9c557f07aedf8e52b130c7f8830f9382b'
+        
+        web3_manager = await create_web3_manager()  # Use real network connection
         
         # Initialize metrics
-        metrics_manager = create_metrics_manager(config)
+        metrics_manager = MetricsManager(config=config)
+        await metrics_manager.initialize()
         
-        # Create opportunity detector
-        detector = OpportunityDetector(
-            config=config,
+        # Initialize components for monitoring mode
+        from arbitrage_bot.core.metrics.portfolio_tracker import create_portfolio_tracker
+        portfolio_tracker = await create_portfolio_tracker(
             web3_manager=web3_manager,
-            balance_manager=None  # Not needed for monitoring only
+            wallet_address=os.environ['WALLET_ADDRESS'],
+            config=config
         )
+        if not portfolio_tracker:
+            raise ValueError("Failed to create portfolio tracker")
+        logger.info("Portfolio tracker initialized successfully")
+        
+        # Initialize DEX manager first
+        from arbitrage_bot.core.dex.dex_manager import create_dex_manager
+        dex_manager = await create_dex_manager(
+            web3_manager=web3_manager,
+            configs=config.get('dexes', {})
+        )
+        if not dex_manager:
+            raise ValueError("Failed to create DEX manager")
+        logger.info("DEX manager initialized successfully")
+        
+        # Initialize gas optimizer with DEX manager
+        from arbitrage_bot.core.gas.gas_optimizer import create_gas_optimizer
+        gas_optimizer = await create_gas_optimizer(dex_manager=dex_manager)
+        if not gas_optimizer:
+            raise ValueError("Failed to create gas optimizer")
+        logger.info("Gas optimizer initialized successfully")
+        
+        # Initialize market analyzer
+        from arbitrage_bot.core.analysis.market_analyzer import create_market_analyzer
+        market_analyzer = await create_market_analyzer(
+            web3_manager=web3_manager,
+            config=config
+        )
+        if not market_analyzer:
+            raise ValueError("Failed to create market analyzer")
+        logger.info("Market analyzer initialized successfully")
+        
+        # Initialize analytics system before ML
+        analytics = await create_analytics_system(
+            web3_manager=web3_manager,
+            tx_monitor=None,  # Will be set later
+            market_analyzer=market_analyzer,
+            portfolio_tracker=portfolio_tracker,
+            gas_optimizer=gas_optimizer,
+            config=config
+        )
+        if not analytics:
+            raise ValueError("Failed to create analytics system")
+        logger.info("Analytics system initialized successfully")
+        
+        # Initialize ML system with required dependencies
+        from arbitrage_bot.core.ml.ml_system import create_ml_system
+        ml_system = await create_ml_system(
+            analytics=analytics,
+            market_analyzer=market_analyzer,
+            config=config
+        )
+        if not ml_system:
+            raise ValueError("Failed to create ML system")
+        logger.info("ML system initialized successfully")
+        
+        # Initialize monitor and update analytics with monitor
+        monitor = None
+        balance_manager = None
+        detector = None
+        
+        try:
+            # Initialize monitor
+            from arbitrage_bot.core.monitoring.transaction_monitor import create_transaction_monitor
+            monitor = await create_transaction_monitor(
+                web3_manager=web3_manager,
+                analytics=analytics,
+                ml_system=ml_system,
+                dex_manager=dex_manager
+            )
+            # Start monitoring in background task
+            monitoring_task = asyncio.create_task(monitor.start_monitoring())
+            logger.info("Monitor initialized and started monitoring")
+            
+            # Update analytics with monitor
+            analytics.tx_monitor = monitor
+            
+            # Initialize balance manager singleton
+            balance_manager = await BalanceManager.get_instance(
+                web3_manager=web3_manager,
+                analytics=analytics,
+                ml_system=ml_system,
+                monitor=monitor,
+                dex_manager=dex_manager,
+                max_position_size=float(config["risk"]["max_position_size"]),
+                min_reserve_ratio=float(config["trading"]["balance_targets"]["rebalance_threshold_percent"]) / 100,
+                rebalance_threshold=float(config["trading"]["balance_targets"]["rebalance_threshold_percent"]) / 100,
+                risk_per_trade=float(config["trading"]["safety"]["max_price_impact"])
+            )
+            logger.info("Balance manager singleton initialized successfully")
+            
+            # Initialize opportunity detector
+            detector = OpportunityDetector(
+                config=config,
+                web3_manager=web3_manager
+            )
+            await detector.ensure_initialized()
+            logger.info("Detector initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize components: {e}")
+            # Cleanup in reverse order of initialization
+            if detector:
+                try:
+                    await detector.cleanup()
+                except Exception as cleanup_error:
+                    logger.error(f"Error cleaning up detector: {cleanup_error}")
+            if balance_manager:
+                try:
+                    await balance_manager.cleanup()
+                except Exception as cleanup_error:
+                    logger.error(f"Error cleaning up balance manager: {cleanup_error}")
+            if analytics:
+                try:
+                    await analytics.cleanup()
+                except Exception as cleanup_error:
+                    logger.error(f"Error cleaning up analytics: {cleanup_error}")
+            if monitor:
+                try:
+                    await monitor.cleanup()
+                except Exception as cleanup_error:
+                    logger.error(f"Error cleaning up monitor: {cleanup_error}")
+            raise
         
         logger.info(
             "Starting opportunity monitor:\n"
-            f"  Network: {network_config.get('name')}\n"
+            f"  Network: Base\n"
             f"  Primary DEX: Aerodrome\n"
             f"  Pair: WETH/USDC\n"
             f"  Min Profit: ${config['trading']['min_profit_usd']}\n"
@@ -54,8 +193,8 @@ async def monitor_opportunities():
         opportunity_count = 0
         total_profit_potential = 0
         
-        # Start metrics saving task
-        metrics_save_task = asyncio.create_task(metrics_manager.save_metrics())
+        # Start metrics update task
+        metrics_update_task = asyncio.create_task(metrics_manager._update_loop())
         
         while True:
             try:
@@ -89,15 +228,16 @@ async def monitor_opportunities():
                             )
                         
                         # Record opportunity metrics
-                        await metrics_manager.record_opportunity({
+                        await metrics_manager.update_metrics('performance', {
                             'pair': opp.token_pair,
-                            'profit_usd': opp.net_profit,
-                            'profit_percent': opp.profit_percent,
-                            'gas_cost': opp.estimated_gas,
-                            'confidence_score': opp.confidence_score,
+                            'profit_usd': float(opp.net_profit),
+                            'profit_percent': float(opp.profit_percent),
+                            'gas_cost': float(opp.estimated_gas),
+                            'confidence_score': float(opp.confidence_score),
                             'route_type': opp.route_type,
                             'buy_dex': opp.buy_dex,
-                            'sell_dex': opp.sell_dex
+                            'sell_dex': opp.sell_dex,
+                            'timestamp': datetime.now().isoformat()
                         })
                 
                 # Log summary every minute
@@ -120,13 +260,15 @@ async def monitor_opportunities():
         logger.error(f"Fatal error in monitor: {e}")
         raise
     finally:
-        # Cancel metrics saving task
-        if 'metrics_save_task' in locals():
-            metrics_save_task.cancel()
+        # Cancel metrics update task
+        if 'metrics_update_task' in locals():
+            metrics_update_task.cancel()
             try:
-                await metrics_save_task
+                await metrics_update_task
             except asyncio.CancelledError:
                 pass
+        if metrics_manager:
+            await metrics_manager.cleanup()
 
 if __name__ == "__main__":
     try:

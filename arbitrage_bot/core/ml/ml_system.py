@@ -1,90 +1,122 @@
-"""Machine learning system for optimizing arbitrage strategies."""
+"""Machine learning system for predicting trading opportunities."""
 
 import logging
+import asyncio
+from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
 import joblib
 from pathlib import Path
 
 from ..analytics.analytics_system import AnalyticsSystem
-from ..dex.dex_manager import DEXManager
-from ..dex.utils import COMMON_TOKENS
+from ...utils.database import Database
 
 logger = logging.getLogger(__name__)
 
 class MLSystem:
-    """Machine learning system for trade optimization."""
+    """Machine learning system for market analysis and predictions."""
 
     def __init__(
         self,
         analytics: AnalyticsSystem,
-        dex_manager: DEXManager,
-        models_dir: str = "models",
-        min_training_samples: int = 1000,
-        retraining_interval: int = 24  # hours
+        market_analyzer: Any,
+        config: Dict[str, Any],
+        db: Optional[Database] = None,
+        models_dir: str = "ml_models"
     ):
-        """Initialize ML system."""
+        """
+        Initialize ML system.
+
+        Args:
+            analytics: Analytics system instance
+            market_analyzer: Market analyzer instance
+            config: Configuration dictionary
+            db: Optional Database instance
+            models_dir: Directory for saving models
+        """
         self.analytics = analytics
-        self.dex_manager = dex_manager
+        self.market_analyzer = market_analyzer
+        self.config = config
+        self.db = db if db else Database()
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(exist_ok=True)
-        self.min_training_samples = min_training_samples
-        self.retraining_interval = retraining_interval
         
         # Initialize models
-        self.success_classifier = None
-        self.profit_regressor = None
-        self.scaler = StandardScaler()
+        self.success_predictor: Optional[RandomForestClassifier] = None
+        self.profit_predictor: Optional[GradientBoostingRegressor] = None
+        self.feature_scaler: Optional[StandardScaler] = None
         
-        # Track last training time
-        self.last_training = datetime.min
+        # Model performance metrics
+        self.metrics = {
+            'success_accuracy': 0.0,
+            'profit_rmse': 0.0,
+            'feature_importance': {}
+        }
         
-        # Feature importance tracking
-        self.feature_importance: Dict[str, float] = {}
+        # Training settings
+        self.min_training_samples = 1000
+        self.retraining_interval = timedelta(hours=6)
+        self.last_training_time = datetime.min
+
+    async def initialize(self) -> bool:
+        """Initialize ML system."""
+        try:
+            # Load saved models if available
+            success_model_path = self.models_dir / "success_predictor.joblib"
+            profit_model_path = self.models_dir / "profit_predictor.joblib"
+            scaler_path = self.models_dir / "feature_scaler.joblib"
+            
+            if all(p.exists() for p in [success_model_path, profit_model_path, scaler_path]):
+                self.success_predictor = joblib.load(success_model_path)
+                self.profit_predictor = joblib.load(profit_model_path)
+                self.feature_scaler = joblib.load(scaler_path)
+                logger.info("Loaded existing ML models")
+            else:
+                # Train new models
+                await self._train_models()
+            
+            logger.info("ML system initialized")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize ML system: {e}")
+            return False
 
     async def predict_trade_success(
         self,
-        opportunity: Dict[str, Any]
-    ) -> Tuple[float, Dict[str, Any]]:
+        features: Dict[str, Any]
+    ) -> Tuple[float, Dict[str, float]]:
         """
         Predict probability of trade success.
-        
+
         Args:
-            opportunity: Trade opportunity details
-            
+            features: Trade features
+
         Returns:
-            Tuple[float, Dict[str, Any]]: Success probability and feature importances
+            Tuple[float, Dict[str, float]]: Success probability and feature importance
         """
         try:
-            # Check if models need training
-            await self._ensure_models_trained()
-            
-            if not self.success_classifier:
-                return 0.5, {}  # Default to 50% if no model
-            
-            # Extract features
-            features = self._extract_features(opportunity)
-            if not features:
+            if not self.success_predictor or not self.feature_scaler:
                 return 0.5, {}
-            
-            # Scale features
-            scaled_features = self.scaler.transform([features])
-            
-            # Get prediction probability
-            prob = self.success_classifier.predict_proba(scaled_features)[0][1]
+                
+            # Prepare features
+            feature_vector = self._prepare_features(features)
+            if feature_vector is None:
+                return 0.5, {}
+                
+            # Make prediction
+            success_prob = self.success_predictor.predict_proba(feature_vector)[0][1]
             
             # Get feature importance
             importance = dict(zip(
-                self.feature_importance.keys(),
-                self.success_classifier.feature_importances_
+                self.success_predictor.feature_names_in_,
+                self.success_predictor.feature_importances_
             ))
             
-            return float(prob), importance
+            return float(success_prob), importance
             
         except Exception as e:
             logger.error(f"Error predicting trade success: {e}")
@@ -92,290 +124,263 @@ class MLSystem:
 
     async def predict_profit(
         self,
-        opportunity: Dict[str, Any]
-    ) -> Tuple[float, Dict[str, Any]]:
+        features: Dict[str, Any]
+    ) -> Tuple[float, Dict[str, float]]:
         """
-        Predict expected profit for trade.
-        
+        Predict expected profit.
+
         Args:
-            opportunity: Trade opportunity details
-            
+            features: Trade features
+
         Returns:
-            Tuple[float, Dict[str, Any]]: Predicted profit and feature importances
+            Tuple[float, Dict[str, float]]: Expected profit and feature importance
         """
         try:
-            # Check if models need training
-            await self._ensure_models_trained()
-            
-            if not self.profit_regressor:
-                return opportunity.get('profit_usd', 0.0), {}
-            
-            # Extract features
-            features = self._extract_features(opportunity)
-            if not features:
-                return opportunity.get('profit_usd', 0.0), {}
-            
-            # Scale features
-            scaled_features = self.scaler.transform([features])
-            
-            # Get prediction
-            profit = self.profit_regressor.predict(scaled_features)[0]
+            if not self.profit_predictor or not self.feature_scaler:
+                return 0.0, {}
+                
+            # Prepare features
+            feature_vector = self._prepare_features(features)
+            if feature_vector is None:
+                return 0.0, {}
+                
+            # Make prediction
+            profit = self.profit_predictor.predict(feature_vector)[0]
             
             # Get feature importance
             importance = dict(zip(
-                self.feature_importance.keys(),
-                self.profit_regressor.feature_importances_
+                self.profit_predictor.feature_names_in_,
+                self.profit_predictor.feature_importances_
             ))
             
             return float(profit), importance
             
         except Exception as e:
             logger.error(f"Error predicting profit: {e}")
-            return opportunity.get('profit_usd', 0.0), {}
+            return 0.0, {}
 
     async def analyze_market_conditions(self) -> Dict[str, Any]:
         """Analyze current market conditions."""
         try:
-            conditions = {
-                'volatility': {},
-                'liquidity': {},
-                'competition': {},
-                'recommendations': []
-            }
-            
-            # Get recent trades
-            trades = self.analytics.trade_metrics[-100:]  # Last 100 trades
-            if not trades:
-                return conditions
+            # Get market metrics
+            market_metrics = await self.market_analyzer.get_market_metrics()
             
             # Calculate volatility
-            for dex_name in self.dex_manager.get_dex_names():
-                dex_trades = [t for t in trades if t['buy_dex'] == dex_name]
-                if dex_trades:
-                    prices = [t['amount_out'] / t['amount_in'] for t in dex_trades]
-                    conditions['volatility'][dex_name] = np.std(prices)
-            
-            # Analyze liquidity
-            for token in COMMON_TOKENS.values():
-                token_trades = [t for t in trades if t['token_in'] == token]
-                if token_trades:
-                    volumes = [t['amount_in'] for t in token_trades]
-                    conditions['liquidity'][token] = np.mean(volumes)
+            volatility = {
+                dex: self._calculate_volatility(metrics['price_history'])
+                for dex, metrics in market_metrics.items()
+            }
             
             # Analyze competition
-            failed_trades = [t for t in trades if not t['success']]
-            competition_rate = len(failed_trades) / len(trades)
-            conditions['competition']['rate'] = competition_rate
+            competition = await self._analyze_competition()
             
-            # Generate recommendations
-            if competition_rate > 0.2:  # >20% failed trades
-                conditions['recommendations'].append(
-                    "High competition detected. Consider increasing gas prices."
-                )
-            
-            high_vol_dexes = [
-                dex for dex, vol in conditions['volatility'].items()
-                if vol > np.mean(list(conditions['volatility'].values()))
-            ]
-            if high_vol_dexes:
-                conditions['recommendations'].append(
-                    f"High volatility on {', '.join(high_vol_dexes)}. "
-                    "Consider adjusting slippage tolerance."
-                )
-            
-            return conditions
+            return {
+                'volatility': volatility,
+                'competition': competition,
+                'timestamp': datetime.now().isoformat()
+            }
             
         except Exception as e:
             logger.error(f"Error analyzing market conditions: {e}")
-            return {
-                'volatility': {},
-                'liquidity': {},
-                'competition': {},
-                'recommendations': [f"Error: {e}"]
-            }
+            return {}
 
-    async def _ensure_models_trained(self) -> None:
-        """Ensure ML models are trained with recent data."""
+    async def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get current model performance metrics."""
+        return self.metrics.copy()
+
+    async def retrain_if_needed(self) -> bool:
+        """Check if retraining is needed and retrain if necessary."""
         try:
-            now = datetime.now()
             if (
-                self.success_classifier and
-                now - self.last_training < timedelta(hours=self.retraining_interval)
+                datetime.now() - self.last_training_time > self.retraining_interval or
+                not self.success_predictor or
+                not self.profit_predictor
             ):
-                return
+                return await self._train_models()
+            return True
             
+        except Exception as e:
+            logger.error(f"Error checking retraining need: {e}")
+            return False
+
+    def _prepare_features(self, features: Dict[str, Any]) -> Optional[np.ndarray]:
+        """Prepare features for prediction."""
+        try:
+            # Convert to DataFrame
+            df = pd.DataFrame([features])
+            
+            # Scale features
+            if self.feature_scaler:
+                return self.feature_scaler.transform(df)
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error preparing features: {e}")
+            return None
+
+    async def _train_models(self) -> bool:
+        """Train ML models."""
+        try:
             # Get training data
-            trades = self.analytics.trade_metrics
+            trades = await self.db.get_trades({})
             if len(trades) < self.min_training_samples:
-                logger.warning(
-                    f"Insufficient training data: {len(trades)} samples, "
-                    f"need {self.min_training_samples}"
-                )
-                return
+                logger.warning("Insufficient training data")
+                return False
+                
+            # Prepare training data
+            X, y_success, y_profit = self._prepare_training_data(trades)
             
-            # Prepare features and labels
+            # Train success predictor
+            self.success_predictor = RandomForestClassifier(
+                n_estimators=100,
+                max_depth=10,
+                random_state=42
+            )
+            self.success_predictor.fit(X, y_success)
+            
+            # Train profit predictor
+            self.profit_predictor = GradientBoostingRegressor(
+                n_estimators=100,
+                max_depth=5,
+                random_state=42
+            )
+            self.profit_predictor.fit(X, y_profit)
+            
+            # Update metrics
+            self.metrics['success_accuracy'] = self.success_predictor.score(X, y_success)
+            self.metrics['profit_rmse'] = np.sqrt(np.mean(
+                (y_profit - self.profit_predictor.predict(X)) ** 2
+            ))
+            
+            # Save models
+            joblib.dump(self.success_predictor, self.models_dir / "success_predictor.joblib")
+            joblib.dump(self.profit_predictor, self.models_dir / "profit_predictor.joblib")
+            joblib.dump(self.feature_scaler, self.models_dir / "feature_scaler.joblib")
+            
+            self.last_training_time = datetime.now()
+            logger.info("Successfully trained ML models")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error training models: {e}")
+            return False
+
+    def _prepare_training_data(
+        self,
+        trades: List[Dict[str, Any]]
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare training data from trades."""
+        try:
+            # Extract features and labels
             features = []
             success_labels = []
             profit_labels = []
             
             for trade in trades:
-                trade_features = self._extract_features(trade)
-                if not trade_features:
-                    continue
-                
+                # Extract features
+                trade_features = {
+                    'gas_price': trade['gas_price'],
+                    'gas_limit': trade['gas'],
+                    'value': trade['value'],
+                    'input_length': len(trade['input']),
+                    'market_volatility': trade.get('market_volatility', 0),
+                    'competition_rate': trade.get('competition_rate', 0)
+                }
                 features.append(trade_features)
-                success_labels.append(1 if trade['success'] else 0)
-                profit_labels.append(trade['profit_usd'])
+                
+                # Extract labels
+                success_labels.append(trade['status'] == 'completed')
+                profit_labels.append(float(trade.get('profit', 0)))
             
-            if not features:
-                return
+            # Convert to DataFrame and scale features
+            X = pd.DataFrame(features)
+            self.feature_scaler = StandardScaler()
+            X_scaled = self.feature_scaler.fit_transform(X)
             
-            # Split data
-            X = np.array(features)
-            y_success = np.array(success_labels)
-            y_profit = np.array(profit_labels)
-            
-            X_train, X_test, y_success_train, y_success_test = train_test_split(
-                X, y_success, test_size=0.2
-            )
-            _, _, y_profit_train, y_profit_test = train_test_split(
-                X, y_profit, test_size=0.2
-            )
-            
-            # Scale features
-            X_train_scaled = self.scaler.fit_transform(X_train)
-            X_test_scaled = self.scaler.transform(X_test)
-            
-            # Train success classifier
-            self.success_classifier = RandomForestClassifier(
-                n_estimators=100,
-                max_depth=10,
-                random_state=42
-            )
-            self.success_classifier.fit(X_train_scaled, y_success_train)
-            
-            # Train profit regressor
-            self.profit_regressor = GradientBoostingRegressor(
-                n_estimators=100,
-                max_depth=5,
-                random_state=42
-            )
-            self.profit_regressor.fit(X_train_scaled, y_profit_train)
-            
-            # Update feature importance
-            feature_names = [
-                'amount_in',
-                'price_impact',
-                'gas_cost',
-                'path_length',
-                'market_volatility',
-                'competition_rate',
-                'historical_success',
-                'liquidity_depth'
-            ]
-            self.feature_importance = dict(zip(
-                feature_names,
-                self.success_classifier.feature_importances_
-            ))
-            
-            # Save models
-            self._save_models()
-            
-            # Update training timestamp
-            self.last_training = now
-            
-            # Log performance metrics
-            success_score = self.success_classifier.score(X_test_scaled, y_success_test)
-            profit_score = self.profit_regressor.score(X_test_scaled, y_profit_test)
-            logger.info(
-                f"Models trained - Success accuracy: {success_score:.2f}, "
-                f"Profit R2: {profit_score:.2f}"
+            return (
+                X_scaled,
+                np.array(success_labels),
+                np.array(profit_labels)
             )
             
         except Exception as e:
-            logger.error(f"Error training models: {e}")
+            logger.error(f"Error preparing training data: {e}")
+            return np.array([]), np.array([]), np.array([])
 
-    def _extract_features(self, trade: Dict[str, Any]) -> Optional[List[float]]:
-        """Extract features from trade data."""
+    def _calculate_volatility(self, price_history: List[float]) -> float:
+        """Calculate price volatility."""
         try:
-            # Basic features
-            features = [
-                float(trade['amount_in']),
-                float(trade.get('price_impact', 0)),
-                float(trade.get('gas_cost_usd', 0)),
-                len(trade.get('buy_path', [])),
-            ]
-            
-            # Market features
-            market_conditions = self.analyze_market_conditions()
-            dex_name = trade.get('buy_dex', '')
-            token = trade.get('token_in', '')
-            
-            features.extend([
-                float(market_conditions['volatility'].get(dex_name, 0)),
-                float(market_conditions['competition']['rate']),
-                float(self._get_historical_success_rate(dex_name)),
-                float(market_conditions['liquidity'].get(token, 0))
-            ])
-            
-            return features
-            
-        except Exception as e:
-            logger.error(f"Error extracting features: {e}")
-            return None
-
-    def _get_historical_success_rate(self, dex_name: str) -> float:
-        """Get historical success rate for DEX."""
-        try:
-            dex_stats = self.analytics.dex_metrics.get(dex_name, {})
-            total = dex_stats.get('total_trades', 0)
-            if total == 0:
+            if len(price_history) < 2:
                 return 0.0
-            return dex_stats.get('successful_trades', 0) / total
+                
+            returns = np.diff(price_history) / price_history[:-1]
+            return float(np.std(returns))
             
         except Exception as e:
-            logger.error(f"Error getting historical success rate: {e}")
+            logger.error(f"Error calculating volatility: {e}")
             return 0.0
 
-    def _save_models(self) -> None:
-        """Save ML models to disk."""
+    async def _analyze_competition(self) -> Dict[str, Any]:
+        """Analyze competition level."""
         try:
-            if self.success_classifier:
-                joblib.dump(
-                    self.success_classifier,
-                    self.models_dir / 'success_classifier.joblib'
-                )
+            # Get recent trades
+            recent_trades = await self.db.get_trades({
+                'timestamp': {
+                    '$gte': datetime.now() - timedelta(hours=1)
+                }
+            })
             
-            if self.profit_regressor:
-                joblib.dump(
-                    self.profit_regressor,
-                    self.models_dir / 'profit_regressor.joblib'
-                )
-            
-            if self.scaler:
-                joblib.dump(
-                    self.scaler,
-                    self.models_dir / 'scaler.joblib'
-                )
+            if not recent_trades:
+                return {'rate': 0.0, 'active_traders': 0}
                 
+            # Count unique traders
+            unique_traders = len(set(t['from'] for t in recent_trades))
+            
+            # Calculate competition rate
+            trades_per_minute = len(recent_trades) / 60
+            
+            return {
+                'rate': float(trades_per_minute),
+                'active_traders': unique_traders
+            }
+            
         except Exception as e:
-            logger.error(f"Error saving models: {e}")
+            logger.error(f"Error analyzing competition: {e}")
+            return {'rate': 0.0, 'active_traders': 0}
 
-    def _load_models(self) -> None:
-        """Load ML models from disk."""
-        try:
-            classifier_path = self.models_dir / 'success_classifier.joblib'
-            regressor_path = self.models_dir / 'profit_regressor.joblib'
-            scaler_path = self.models_dir / 'scaler.joblib'
+
+async def create_ml_system(
+    analytics: AnalyticsSystem,
+    market_analyzer: Any,
+    config: Dict[str, Any],
+    db: Optional[Database] = None
+) -> Optional[MLSystem]:
+    """
+    Create ML system instance.
+
+    Args:
+        analytics: Analytics system instance
+        market_analyzer: Market analyzer instance
+        config: Configuration dictionary
+        db: Optional Database instance
+
+    Returns:
+        Optional[MLSystem]: ML system instance
+    """
+    try:
+        system = MLSystem(
+            analytics=analytics,
+            market_analyzer=market_analyzer,
+            config=config,
+            db=db
+        )
+        
+        success = await system.initialize()
+        if not success:
+            raise ValueError("Failed to initialize ML system")
             
-            if classifier_path.exists():
-                self.success_classifier = joblib.load(classifier_path)
-            
-            if regressor_path.exists():
-                self.profit_regressor = joblib.load(regressor_path)
-            
-            if scaler_path.exists():
-                self.scaler = joblib.load(scaler_path)
-                
-        except Exception as e:
-            logger.error(f"Error loading models: {e}")
+        return system
+        
+    except Exception as e:
+        logger.error(f"Failed to create ML system: {e}")
+        return None

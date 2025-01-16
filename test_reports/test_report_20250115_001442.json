@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-01-15T00:14:42.046559",
+  "duration": 8.109933137893677,
+  "results": {
+    "integration": [
+      {
+        "file": "test_aerodrome.py",
+        "status": "failed",
+        "exit_code": 1
+      },
+      {
+        "file": "test_performance.py",
+        "status": "failed",
+        "exit_code": 2
+      },
+      {
+        "file": "test_process.py",
+        "status": "failed",
+        "exit_code": 1
+      }
+    ]
+  },
+  "summary": {
+    "total": 3,
+    "passed": 0,
+    "failed": 3,
+    "error": 0
+  }
+}

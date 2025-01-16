@@ -195,6 +195,16 @@ def load_config(testing: bool = False) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Configuration data
     """
+    def merge_configs(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge two configurations."""
+        merged = base.copy()
+        for key, value in overlay.items():
+            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                merged[key] = merge_configs(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
     if testing:
         return {
             "network": "test",
@@ -248,7 +258,8 @@ def load_config(testing: bool = False) -> Dict[str, Any]:
             },
         }
 
-    # Check common config file locations
+    # Load main config
+    config = None
     config_paths = [
         Path("config.json"),
         Path("configs/config.json"),
@@ -258,21 +269,43 @@ def load_config(testing: bool = False) -> Dict[str, Any]:
         Path(os.getcwd()) / "arbitrage_bot" / "configs" / "config.json",
     ]
 
-    logger.debug("Checking config paths:")
+    logger.debug("Checking main config paths:")
     for path in config_paths:
         logger.debug(f"- {path} ({'exists' if path.exists() else 'not found'})")
         if path.exists():
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     config = json.load(f)
-                logger.info(f"Loading config from: {path}")
-                logger.debug(f"Config content: {json.dumps(config, indent=2)}")
-                logger.info(f"Config loaded successfully: {len(config)} top-level keys")
-                return config
+                logger.info(f"Loading main config from: {path}")
+                break
             except Exception as e:
-                logger.error(f"Failed to load config from {path}: {e}")
+                logger.error(f"Failed to load main config from {path}: {e}")
 
-    raise FileNotFoundError("No configuration file found")
+    if not config:
+        raise FileNotFoundError("No main configuration file found")
+
+    # Load DEX config
+    dex_config_paths = [
+        Path("arbitrage_bot/configs/data/dex_config.json"),
+        Path(os.getcwd()) / "arbitrage_bot" / "configs" / "data" / "dex_config.json",
+    ]
+
+    logger.debug("Checking DEX config paths:")
+    for path in dex_config_paths:
+        logger.debug(f"- {path} ({'exists' if path.exists() else 'not found'})")
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    dex_config = json.load(f)
+                logger.info(f"Loading DEX config from: {path}")
+                config = merge_configs(config, dex_config)
+                break
+            except Exception as e:
+                logger.error(f"Failed to load DEX config from {path}: {e}")
+
+    logger.debug(f"Final merged config: {json.dumps(config, indent=2)}")
+    logger.info(f"Config loaded successfully: {len(config)} top-level keys")
+    return config
 
 
 def get_config_value(key: str, default: Any = None, testing: bool = False) -> Any:

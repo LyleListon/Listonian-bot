@@ -1,97 +1,38 @@
 {% extends "base.html" %}
 
-{% block title %}Opportunities{% endblock %}
-
 {% block content %}
-<div class="container">
-    <h1>Current Opportunities</h1>
-    <div id="opportunities-container">
-        <div class="row" id="opportunities-list">
-            <!-- Opportunities will be loaded here -->
-        </div>
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h2>Arbitrage Opportunities</h2>
     </div>
 </div>
 
-<template id="opportunity-template">
-    <div class="col-md-6 mb-4">
+<div class="row">
+    <div class="col-md-12 mb-4">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <span class="pair"></span>
-                    <small class="text-muted dex"></small>
-                </h5>
-                <span class="badge validation-badge"></span>
-            </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-6">
-                        <p class="mb-1">Price: <span class="price"></span></p>
-                        <p class="mb-1">Type: <span class="type"></span></p>
-                    </div>
-                    <div class="col-6">
-                        <p class="mb-1">Volatility: <span class="volatility"></span></p>
-                        <p class="mb-1">Volume: <span class="volume"></span></p>
-                        <p class="mb-1">Trend: <span class="trend"></span></p>
-                    </div>
+                <h5 class="card-title">Current Opportunities</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Token Pair</th>
+                                <th>Potential Profit</th>
+                                <th>Gas Cost</th>
+                                <th>Net Profit</th>
+                                <th>Price Impact</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="opportunities-detailed">
+                            <!-- Populated by WebSocket -->
+                            <tr><td colspan="7" class="text-center">Waiting for opportunities...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
-</template>
-
-<script>
-async function loadOpportunities() {
-    try {
-        const response = await fetch('/api/opportunities');
-        const data = await response.json();
-        
-        if (data.success) {
-            const container = document.getElementById('opportunities-list');
-            container.innerHTML = '';
-            
-            const template = document.getElementById('opportunity-template');
-            
-            data.opportunities.forEach(opportunity => {
-                const clone = template.content.cloneNode(true);
-                
-                // Set basic info
-                clone.querySelector('.pair').textContent = opportunity.pair;
-                clone.querySelector('.dex').textContent = opportunity.dex;
-                clone.querySelector('.price').textContent = `$${opportunity.price.toFixed(2)}`;
-                clone.querySelector('.type').textContent = opportunity.type;
-                
-                // Set market conditions
-                const conditions = opportunity.market_conditions;
-                clone.querySelector('.volatility').textContent = `${(conditions.volatility * 100).toFixed(1)}%`;
-                clone.querySelector('.volume').textContent = `$${(conditions.volume / 1000000).toFixed(1)}M`;
-                clone.querySelector('.trend').textContent = conditions.trend;
-                
-                // Set validation badge
-                const badge = clone.querySelector('.validation-badge');
-                if (opportunity.validation.mcp_validated) {
-                    badge.classList.add('bg-success');
-                    badge.textContent = `MCP Validated (${(opportunity.validation.confidence * 100).toFixed(0)}%)`;
-                } else {
-                    badge.classList.add('bg-warning');
-                    badge.textContent = 'Not Validated';
-                }
-                
-                container.appendChild(clone);
-            });
-        }
-    } catch (error) {
-        console.error('Error loading opportunities:', error);
-    }
-}
-
-// Load opportunities immediately and refresh every 5 seconds
-loadOpportunities();
-setInterval(loadOpportunities, 5000);
-</script>
-
-<style>
-.validation-badge {
-    font-size: 0.8rem;
-}
-</style>
+</div>
 {% endblock %}

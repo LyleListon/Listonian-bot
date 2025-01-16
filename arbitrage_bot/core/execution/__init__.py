@@ -1,5 +1,5 @@
-"""Execution package initialization."""
+"""Arbitrage execution module."""
 
-from .trade_executor import TradeExecutor
+from .arbitrage_executor import ArbitrageExecutor, create_arbitrage_executor
 
-__all__ = ["TradeExecutor"]
+__all__ = ['ArbitrageExecutor', 'create_arbitrage_executor']

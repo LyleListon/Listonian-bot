@@ -6,8 +6,24 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import statistics
 
-from ..dex.dex_manager import DEXManager
-from ..dex.utils import GAS_COSTS
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..dex.dex_manager import DEXManager
+    from ..web3.web3_manager import Web3Manager
+# Gas cost constants
+GAS_COSTS = {
+    'v2': {
+        'base_cost': 100000,  # Base cost for v2 protocol
+        'hop_cost': 50000,    # Additional cost per hop for v2
+        'buffer': 1.2         # Safety buffer for v2 gas estimates
+    },
+    'v3': {
+        'base_cost': 150000,  # Base cost for v3 protocol
+        'hop_cost': 75000,    # Additional cost per hop for v3
+        'buffer': 1.3         # Safety buffer for v3 gas estimates
+    }
+}
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +32,8 @@ class GasOptimizer:
 
     def __init__(
         self,
-        dex_manager: DEXManager,
+        dex_manager: 'DEXManager',
+        web3_manager: Optional['Web3Manager'] = None,
         base_gas_limit: int = 500000,  # 500k gas units
         max_gas_price: int = 100000000000,  # 100 gwei
         min_gas_price: int = 5000000000,  # 5 gwei
@@ -25,6 +42,7 @@ class GasOptimizer:
     ):
         """Initialize gas optimizer."""
         self.dex_manager = dex_manager
+        self.web3_manager = web3_manager
         self.base_gas_limit = base_gas_limit
         self.max_gas_price = max_gas_price
         self.min_gas_price = min_gas_price
@@ -41,6 +59,17 @@ class GasOptimizer:
             'v2': {'base': GAS_COSTS['v2']['base_cost'], 'hop': GAS_COSTS['v2']['hop_cost']},
             'v3': {'base': GAS_COSTS['v3']['base_cost'], 'hop': GAS_COSTS['v3']['hop_cost']}
         }
+
+    async def initialize(self) -> bool:
+        """Initialize gas optimizer."""
+        try:
+            # Update initial gas history
+            await self._update_gas_history()
+            logger.info("Gas optimizer initialized")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize gas optimizer: {e}")
+            return False
 
     async def get_optimal_gas_price(self) -> int:
         """
@@ -208,6 +237,31 @@ class GasOptimizer:
             logger.error(f"Error optimizing path gas: {e}")
             return paths
 
+    def get_web3_instance(self) -> Optional[Any]:
+        """
+        Safely retrieves the Web3 instance (w3) from web3_manager or dex_manager.
+        Handles potential None values and logs errors.
+        
+        Returns:
+            Web3 instance if found, otherwise None.
+        """
+        try:
+            if self.web3_manager and hasattr(self.web3_manager, 'w3') and self.web3_manager.w3:
+                return self.web3_manager.w3
+        except Exception as e:
+            logger.debug(f"Failed to get w3 from web3_manager: {e}")
+
+        try:
+            if self.dex_manager and hasattr(self.dex_manager, 'web3_manager'):
+                web3_manager = self.dex_manager.web3_manager
+                if hasattr(web3_manager, 'w3') and web3_manager.w3:
+                    return web3_manager.w3
+        except Exception as e:
+            logger.debug(f"Failed to get w3 from dex_manager.web3_manager: {e}")
+
+        logger.warning("No valid Web3 instance found")
+        return None
+
     async def _update_gas_history(self) -> None:
         """Update gas price history."""
         try:
@@ -215,18 +269,23 @@ class GasOptimizer:
             if (now - self.last_update) < timedelta(seconds=15):
                 return
                 
-            # Get recent blocks
-            w3 = self.dex_manager.web3_manager.w3
-            latest = w3.eth.block_number
-            start = max(0, latest - self.gas_history_window)
+            # Get gas price from Web3 instance
+            try:
+                w3 = self.get_web3_instance()
+                if not w3:
+                    raise ValueError("No Web3 instance available")
+                    
+                current_gas = await w3.eth.gas_price
+            except Exception as e:
+                logger.error(f"Failed to get gas price: {e}")
+                current_gas = self.min_gas_price
+
+            # Update gas price history
+            if not self.gas_prices:
+                self.gas_prices = [current_gas] * self.gas_history_window
+            else:
+                self.gas_prices = self.gas_prices[1:] + [current_gas]
             
-            prices = []
-            for block_num in range(start, latest + 1):
-                block = w3.eth.get_block(block_num)
-                if 'baseFeePerGas' in block:
-                    prices.append(block['baseFeePerGas'])
-            
-            self.gas_prices = prices
             self.last_update = now
             
         except Exception as e:
@@ -281,3 +340,52 @@ class GasOptimizer:
                 'protocol_stats': {},
                 'recommendations': [f"Error analyzing gas usage: {e}"]
             }
+
+
+async def create_gas_optimizer(
+    dex_manager: Optional['DEXManager'] = None,
+    web3_manager: Optional['Web3Manager'] = None,
+    base_gas_limit: int = 500000,
+    max_gas_price: int = 100000000000,
+    min_gas_price: int = 5000000000,
+    gas_price_buffer: float = 1.1,
+    gas_history_window: int = 200
+) -> GasOptimizer:
+    """
+    Create gas optimizer instance.
+
+    Args:
+        dex_manager: Optional DEXManager instance
+        base_gas_limit: Base gas limit
+        max_gas_price: Maximum gas price
+        min_gas_price: Minimum gas price
+        gas_price_buffer: Gas price buffer
+        gas_history_window: Gas history window
+
+    Returns:
+        GasOptimizer: Gas optimizer instance
+    """
+    # Removed dynamic imports to avoid circular dependencies
+    if not dex_manager:
+        logger.warning("No dex_manager provided, gas optimizer may have limited functionality")
+
+    # If no web3_manager provided, try to get it from dex_manager
+    if not web3_manager and dex_manager:
+        try:
+            web3_manager = dex_manager.web3_manager
+            if not web3_manager or not hasattr(web3_manager, 'w3') or not web3_manager.w3:
+                logger.warning("No valid web3_manager available from dex_manager")
+                web3_manager = None
+        except Exception as e:
+            logger.error(f"Error accessing web3_manager from dex_manager: {e}")
+            web3_manager = None
+
+    return GasOptimizer(
+        dex_manager=dex_manager,
+        web3_manager=web3_manager,
+        base_gas_limit=base_gas_limit,
+        max_gas_price=max_gas_price,
+        min_gas_price=min_gas_price,
+        gas_price_buffer=gas_price_buffer,
+        gas_history_window=gas_history_window
+    )

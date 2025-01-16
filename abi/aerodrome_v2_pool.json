@@ -1,0 +1,107 @@
+[
+  {
+    "inputs": [],
+    "name": "getReserves",
+    "outputs": [
+      {
+        "internalType": "uint112",
+        "name": "_reserve0",
+        "type": "uint112"
+      },
+      {
+        "internalType": "uint112",
+        "name": "_reserve1",
+        "type": "uint112"
+      },
+      {
+        "internalType": "uint32",
+        "name": "_blockTimestampLast",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "stable",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "token0",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "token1",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "metadata",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "dec0",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "dec1",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "r0",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "r1",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "st",
+        "type": "bool"
+      },
+      {
+        "internalType": "address",
+        "name": "t0",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "t1",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

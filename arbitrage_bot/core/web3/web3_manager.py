@@ -12,6 +12,38 @@ from eth_account import Account
 from ...utils.config_loader import load_config
 from ...utils.mcp_client import use_mcp_tool as mcp_tool
 
+# Web3 utility functions moved from web3_utils.py
+async def get_web3(testing: bool = False) -> 'Web3Manager':
+    """Get Web3 manager instance."""
+    return await create_web3_manager(testing=testing)
+
+async def get_contract(web3: 'Web3Manager', address: str, abi: Dict[str, Any]) -> Any:
+    """Get contract instance."""
+    return await web3.get_contract(address, abi)
+
+async def estimate_gas(web3: 'Web3Manager', transaction: Dict[str, Any]) -> int:
+    """Estimate gas for transaction."""
+    return await web3.estimate_gas(transaction)
+
+def validate_address(address: str) -> bool:
+    """Validate Ethereum address."""
+    return AsyncWeb3.is_address(address)
+
+async def get_token_balance(web3: 'Web3Manager', token_address: str, wallet_address: str) -> float:
+    """Get token balance for address."""
+    try:
+        contract = await web3.get_contract(token_address, [])  # TODO: Add ERC20 ABI
+        balance = await contract.functions.balanceOf(wallet_address).call()
+        decimals = await contract.functions.decimals().call()
+        return float(balance) / (10**decimals)
+    except Exception as e:
+        logger.error(f"Failed to get token balance: {e}")
+        return 0.0
+
+async def get_eth_balance(web3: 'Web3Manager', address: str) -> float:
+    """Get ETH balance for address."""
+    return await web3.get_balance(address)
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +57,7 @@ class Web3Manager:
     """Manages Web3 connection and interactions."""
 
     def __init__(
-        self, provider_url: Optional[str] = None, chain_id: Optional[int] = None
+        self, provider_url: Optional[str] = None, chain_id: Optional[int] = None, testing: bool = None
     ):
         """
         Initialize Web3 manager.
@@ -33,10 +65,15 @@ class Web3Manager:
         Args:
             provider_url (str, optional): Web3 provider URL
             chain_id (int, optional): Chain ID
+            testing (bool, optional): Whether to use mock providers for testing
         """
         self.provider_url = provider_url
         self.chain_id = chain_id
         self._web3 = None
+        self.testing = testing if testing is not None else os.getenv('TESTING', '').lower() == 'true'
+        self.wallet_address = os.getenv("WALLET_ADDRESS")
+        if not self.wallet_address:
+            raise ValueError("WALLET_ADDRESS environment variable not set")
         logger.info("Web3 manager initialized")
 
     def load_abi(self, name: str) -> Dict[str, Any]:
@@ -65,6 +102,12 @@ class Web3Manager:
     async def connect(self):
         """Initialize Web3 connection."""
         try:
+            if self.testing:
+                logger.info("Running in test mode - using mock Web3 connection")
+                self._web3 = AsyncWeb3(AsyncWeb3.AsyncEthereumTesterProvider())
+                self.chain_id = 8453  # Base chain ID
+                return
+
             # Get provider URL from environment or config
             if not self.provider_url:
                 self.provider_url = os.getenv("BASE_RPC_URL")
@@ -128,6 +171,24 @@ class Web3Manager:
     def w3(self) -> AsyncWeb3:
         """Get Web3 instance."""
         return self._web3
+
+    def get_token_contract(self, address: str) -> Any:
+        """
+        Get ERC20 token contract instance.
+
+        Args:
+            address (str): Token contract address
+
+        Returns:
+            Contract: Web3 contract instance
+        """
+        try:
+            # Load ERC20 ABI
+            abi = self.load_abi('ERC20')
+            return self.get_contract(address, abi)
+        except Exception as e:
+            logger.error(f"Failed to get token contract at {address}: {e}")
+            return None
 
     def get_contract(self, address: str, abi: Dict[str, Any]) -> Any:
         """
@@ -331,6 +392,10 @@ class Web3Manager:
             logger.error(f"Failed to estimate gas: {e}")
             raise
 
+    async def get_eth_balance(self) -> float:
+        """Get ETH balance for the wallet address."""
+        return await self.get_balance(self.wallet_address)
+
     async def get_balance(self, address: str) -> float:
         """
         Get ETH balance for address.
@@ -424,16 +489,23 @@ class Web3Manager:
                 "min_output": int(amount * price * 0.995)  # 0.5% slippage
             }
             
+            if self.testing:
+                # Mock successful swap in testing mode
+                return f"0x{''.join(['0123456789abcdef'[i % 16] for i in range(64)])}"
+                
             # TODO: Implement actual swap logic with selected route
-            raise NotImplementedError("Swap execution not implemented")
+            raise NotImplementedError("Swap execution not implemented in production mode")
         except Exception as e:
             logger.error(f"Failed to execute swap: {e}")
             raise
 
 
-async def create_web3_manager() -> Web3Manager:
+async def create_web3_manager(testing: bool = None) -> Web3Manager:
     """
     Create Web3Manager instance using environment variables.
+
+    Args:
+        testing (bool, optional): Whether to use mock providers for testing
 
     Returns:
         Web3Manager: Web3 manager instance
@@ -448,7 +520,7 @@ async def create_web3_manager() -> Web3Manager:
         chain_id = int(os.getenv("CHAIN_ID", "8453"))
         
         # Create manager with primary RPC URL
-        manager = Web3Manager(provider_url=provider_url, chain_id=chain_id)
+        manager = Web3Manager(provider_url=provider_url, chain_id=chain_id, testing=testing)
         
         try:
             await manager.connect()
@@ -458,7 +530,7 @@ async def create_web3_manager() -> Web3Manager:
             backup_url = os.getenv("BACKUP_RPC_URL")
             if backup_url:
                 logger.warning(f"Primary RPC failed: {primary_error}. Trying backup RPC...")
-                manager = Web3Manager(provider_url=backup_url, chain_id=chain_id)
+                manager = Web3Manager(provider_url=backup_url, chain_id=chain_id, testing=testing)
                 await manager.connect()
                 return manager
             else:

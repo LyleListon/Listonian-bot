@@ -1,5 +1,6 @@
 """BaseSwap V2 DEX implementation."""
 
+import sys
 from typing import Dict, Any, Optional, List
 from web3.types import TxReceipt
 
@@ -11,6 +12,9 @@ from .utils import (
     calculate_price_impact,
     get_common_base_tokens
 )
+
+# Increase recursion limit
+sys.setrecursionlimit(10000)
 
 class BaseSwapDEX(BaseDEXV2):
     """Implementation of BaseSwap V2 DEX."""
@@ -69,7 +73,7 @@ class BaseSwapDEX(BaseDEXV2):
             }
             
         except Exception as e:
-            self._handle_error(e, "Reserve lookup")
+            logger.error(f"Failed to get reserves: {e}")
             return None
 
     async def get_best_path(

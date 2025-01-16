@@ -6,6 +6,33 @@
         "name": "Base"
     },
     "dexes": {
+        "uniswap_v3": {
+            "enabled": true,
+            "priority": 1,
+            "min_liquidity_usd": 10000,
+            "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
+            "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+            "fee": 3000
+        },
+        "baseswap": {
+            "enabled": true,
+            "priority": 1,
+            "min_liquidity_usd": 10000,
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+            "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
+            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
+            "fee": 3000
+        },
+        "pancakeswap": {
+            "enabled": true,
+            "priority": 1,
+            "min_liquidity_usd": 10000,
+            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
+            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
+            "fee": 2500
+        },
         "aerodrome": {
             "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
             "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
@@ -21,12 +48,12 @@
         "USDC": {
             "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "decimals": 6,
-            "min_amount": 100.0
+            "min_amount": 10
         },
         "DAI": {
             "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
             "decimals": 18,
-            "min_amount": 100.0
+            "min_amount": 10
         }
     },
     "pairs": [
@@ -38,19 +65,19 @@
                 "aerodrome_Volatile": "0xcDAC0d6c6C59727a65F871236188350531885C43",
                 "aerodrome_Stable": "0x3548029694fbB241D45FB24Ba0cd9c9d4E745f16"
             },
-            "max_trade_size": 0.1,
+            "max_trade_size": 0.05,
             "historical_profit": 0,
             "historical_success_rate": 0.8
         }
     ],
     "trading": {
-        "min_profit_usd": 0.5,
-        "max_trade_size_usd": 10.0,
+        "min_profit_usd": 0.10,
+        "max_trade_size_usd": "0.005",
         "slippage_tolerance": 0.005,
         "use_live_price_feed": true,
         "balance_targets": {
             "usdc_target_percent": 80,
-            "min_eth_for_gas_usd": 10.0,
+            "min_eth_for_gas_usd": "0.0050",
             "rebalance_threshold_percent": 5,
             "rebalance_check_interval": 60
         },

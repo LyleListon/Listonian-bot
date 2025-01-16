@@ -1,170 +1,86 @@
 # Product Context
 
-## Project Overview
+## Purpose
+The Listonian-bot is an advanced arbitrage trading system designed to identify and execute profitable trading opportunities across multiple decentralized exchanges (DEXes) on the Base network.
 
-### Purpose
-Build a high-performance arbitrage bot that maximizes profit while maintaining strict risk controls through ML-driven decision making and advanced monitoring.
+## Problems Solved
+1. Market Inefficiencies: Capitalizes on price discrepancies between different DEXes
+2. Speed of Execution: Automates the detection and execution of trades
+3. Risk Management: Implements robust validation and safety checks
+4. Market Analysis: Utilizes ML models for predictive analysis
+5. Performance Monitoring: Provides real-time insights through a comprehensive dashboard
 
-### Core Value Proposition
-- Automated arbitrage execution
-- ML-powered decision making
-- Real-time market analysis
-- Advanced risk management
-- Multi-DEX support
+## Core Functionality
+1. **Arbitrage Detection**
+   - Monitors active DEXes:
+     * BaseSwap (V2)
+     * SwapBased (V2)
+     * PancakeSwap (V3)
+   - Identifies price discrepancies
+   - Calculates potential profit opportunities
 
-## Key Features
+2. **Trade Execution**
+   - Smart contract interaction for trade execution
+   - Configuration-based DEX management
+   - Selective DEX initialization
+   - Risk validation before trades
+   - Multi-DEX routing capabilities
 
-### Trading Engine
-- Multi-DEX integration (V2/V3)
-- Dynamic path finding
-- Gas optimization
-- MEV protection
-- Transaction bundling
+3. **Market Analysis**
+   - Machine learning-based price prediction
+   - Reinforcement learning for strategy optimization
+   - Real-time market data analysis
+   - DEX-specific performance tracking
 
-### ML System
-- Trade success prediction
-- Profit prediction
-- Market condition analysis
-- Continuous learning
-- Feature importance tracking
+4. **System Monitoring**
+   - Real-time price monitoring dashboard
+   - System health tracking
+   - Performance metrics and analytics
+   - Trade execution statistics
+   - DEX initialization monitoring
 
-### Risk Management
-- Dynamic position sizing
-- Portfolio rebalancing
-- Drawdown protection
-- Risk-adjusted returns
-- Performance monitoring
+## Success Criteria
+1. Profitable Trades
+   - Consistent identification of arbitrage opportunities
+   - Successful execution of trades
+   - Positive ROI after gas costs
+   - Optimal DEX selection
 
-### Market Analysis
-- Mempool monitoring
-- Competitor analysis
-- Block reorganization detection
-- Liquidity analysis
-- Price impact calculation
+2. System Performance
+   - Low latency in opportunity detection
+   - High reliability in trade execution
+   - Robust error handling and recovery
+   - Efficient DEX initialization
 
-## Success Metrics
+3. Risk Management
+   - Effective validation of trade opportunities
+   - Protection against market manipulation
+   - Proper handling of failed transactions
+   - DEX-specific risk assessment
 
-### Performance Targets
-- Minimum 95% trade success rate
-- Maximum 10% drawdown
-- Minimum 1.5 Sharpe ratio
-- Maximum 2s execution time
-- Minimum 0.1% profit per trade
+## Integration Points
+1. Blockchain Networks
+   - Base Network (Chain ID: 8453)
+   - Smart contract deployment and interaction
+   - Gas optimization
+   - DEX protocol support (V2/V3)
 
-### Risk Controls
-- Maximum 10% position size
-- Minimum 20% reserve ratio
-- Maximum 2% price impact
-- Maximum 50% gas increase
-- Minimum 70% success probability
+2. External Services
+   - Price feed integration
+   - Market data providers
+   - Analytics and monitoring tools
+   - DEX status monitoring
 
-### System Health
-- 99.9% uptime
-- <100ms response time
-- <1GB memory usage
-- <50% CPU usage
-- <100 concurrent connections
+## DEX Strategy
+1. **Active DEXes**
+   - BaseSwap: Primary V2 liquidity source
+   - SwapBased: Additional V2 opportunities
+   - PancakeSwap: V3 concentrated liquidity
 
-## Development Priorities
+2. **Configuration Management**
+   - Dynamic DEX enablement
+   - Protocol-specific implementations
+   - Health monitoring and recovery
+   - Performance optimization
 
-### Current Focus
-1. Price Feed Integration
-   - Real-time price data
-   - Price validation
-   - USD calculations
-
-2. Cross-Chain Support
-   - Multi-chain monitoring
-   - Bridge detection
-   - Cross-chain arbitrage
-
-3. Advanced Execution
-   - Flashbots integration
-   - MEV protection
-   - Bundle optimization
-
-4. Dashboard Enhancement
-   - ML insights visualization
-   - Risk metrics display
-   - Performance analytics
-
-### Future Roadmap
-1. Additional DEX Support
-   - More V3 protocols
-   - Specialized DEXs
-   - Cross-chain DEXs
-
-2. Enhanced ML Capabilities
-   - Deep learning models
-   - Network effect analysis
-   - Pattern recognition
-
-3. Advanced Risk Features
-   - Portfolio optimization
-   - Hedging strategies
-   - Insurance mechanisms
-
-4. System Scaling
-   - Multi-node support
-   - Load balancing
-   - Geographic distribution
-
-## Operational Requirements
-
-### Performance
-- Sub-second trade execution
-- Real-time market data
-- Continuous monitoring
-- Instant alerts
-- Automated recovery
-
-### Security
-- Private key protection
-- API security
-- Rate limiting
-- Access control
-- Audit logging
-
-### Reliability
-- Automatic failover
-- Data backup
-- Error recovery
-- Health monitoring
-- Performance tracking
-
-### Maintainability
-- Clear documentation
-- Modular design
-- Testing coverage
-- Easy deployment
-- Simple updates
-
-## User Requirements
-
-### Configuration
-- Easy setup
-- Clear parameters
-- Safe defaults
-- Validation checks
-- Environment specific
-
-### Monitoring
-- Real-time dashboard
-- Performance metrics
-- Risk indicators
-- Alert system
-- Historical analysis
-
-### Control
-- Emergency stop
-- Parameter adjustment
-- Strategy selection
-- Position management
-- Manual override
-
-### Reporting
-- Performance reports
-- Risk analysis
-- Market insights
-- System health
-- Audit trails
+Last Updated: 2024-01-15
