@@ -6,7 +6,7 @@
     },
     "wallet": {
         "wallet_address": "0xc9eC57087138210a8cbbDD430D5763b94C6122b1",
-        "private_key": "d074e6511a5b422283d2f652070299f9c557f07aedf8e52b130c7f8830f9382b"
+        "private_key": "/////"
     },
     "arbitrage": {
         "min_profit_usd": 0.05,
