@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Failed Attempts: Price Monitoring</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .failed-attempt {
+            background: #fee8e7;
+            border-left: 3px solid #e74c3c;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .solution {
+            background: #e9ffe7;
+            border-left: 3px solid #2ecc71;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .attempt-header {
+            font-weight: bold;
+            color: #c0392b;
+            margin-bottom: 5px;
+        }
+        .solution-header {
+            font-weight: bold;
+            color: #27ae60;
+            margin-bottom: 5px;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #666;
+            font-style: italic;
+        }
+        .note {
+            background: #fff3cd;
+            border-left: 3px solid #ffc107;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .code-block {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Failed Attempts: Price Monitoring</h1>
+        
+        <div class="failed-attempt">
+            <div class="attempt-header">Attempt #1: Direct Web3 Price Fetching</div>
+            <div class="timestamp">2024-01-15</div>
+            <p><strong>Problem:</strong> High RPC costs and rate limiting when fetching prices directly from blockchain</p>
+            <p><strong>Attempted Solution:</strong> Implemented direct Web3 calls to DEX contracts for price data</p>
+            <div class="code-block">
+                <pre>
+async function getPrice(tokenAddress, routerContract) {
+    const path = [WETH_ADDRESS, tokenAddress];
+    const amountIn = ethers.utils.parseEther("1");
+    return await routerContract.getAmountsOut(amountIn, path);
+}
+                </pre>
+            </div>
+            <p><strong>Why It Failed:</strong></p>
+            <ul>
+                <li>Too many RPC calls required (one per price check)</li>
+                <li>High latency (200-500ms per call)</li>
+                <li>Frequent rate limiting from RPC providers</li>
+                <li>High costs at scale ($50-100/day for frequent checks)</li>
+            </ul>
+            <p><strong>Error Messages:</strong></p>
+            <div class="code-block">
+                <pre>
+Error: Too Many Requests
+Error: Request failed with status code 429
+Error: Max rate limit reached
+                </pre>
+            </div>
+        </div>
+
+        <div class="failed-attempt">
+            <div class="attempt-header">Attempt #2: Centralized API Integration</div>
+            <div class="timestamp">2024-01-20</div>
+            <p><strong>Problem:</strong> Reliability issues with third-party price APIs</p>
+            <p><strong>Attempted Solution:</strong> Integrated with CoinGecko and other price APIs</p>
+            <div class="code-block">
+                <pre>
+async function getPriceFromAPI(tokenSymbol) {
+    const response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${tokenSymbol}&vs_currencies=usd`
+    );
+    return response.data[tokenSymbol].usd;
+}
+                </pre>
+            </div>
+            <p><strong>Why It Failed:</strong></p>
+            <ul>
+                <li>API rate limits too restrictive (10-50 calls/minute free tier)</li>
+                <li>Price data often stale (30s+ delay)</li>
+                <li>Inconsistent availability during high volatility</li>
+                <li>Expensive API plans for higher limits</li>
+            </ul>
+        </div>
+
+        <div class="solution">
+            <div class="solution-header">Final Solution: MCP Integration</div>
+            <div class="timestamp">2024-01-25</div>
+            <p><strong>Solution:</strong> Implemented custom MCP servers for price data</p>
+            <div class="code-block">
+                <pre>
+// Using MCP tool for price data
+const prices = await use_mcp_tool({
+    server_name: "crypto-price",
+    tool_name: "get_prices",
+    arguments: {
+        coins: ["bitcoin", "ethereum"],
+        include_24h_change: true
+    }
+});
+                </pre>
+            </div>
+            <p><strong>Why It Works:</strong></p>
+            <ul>
+                <li>Local price aggregation reduces API calls</li>
+                <li>Custom rate limiting control</li>
+                <li>Flexible data source management</li>
+                <li>Better error handling and fallback options</li>
+                <li>No external rate limits or costs</li>
+            </ul>
+            <p><strong>Implementation:</strong> See crypto-price MCP server documentation</p>
+        </div>
+
+        <div class="note">
+            <strong>Lessons Learned:</strong>
+            <ul>
+                <li>Direct blockchain queries don't scale well for frequent price checks</li>
+                <li>External APIs introduce too many dependencies and limitations</li>
+                <li>Local aggregation with custom control is more reliable</li>
+                <li>Having multiple fallback sources is crucial</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

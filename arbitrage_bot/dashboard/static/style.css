@@ -1,0 +1,84 @@
+/* Dashboard styles */
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar {
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border: none;
+    margin-bottom: 20px;
+}
+
+.card-title {
+    color: #495057;
+    font-weight: 600;
+}
+
+.badge {
+    font-size: 0.9em;
+    padding: 0.5em 0.8em;
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    color: #495057;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+#error-container, #warning-container {
+    display: none;
+    margin-top: 1rem;
+}
+
+/* Chart containers */
+#price-chart, #profit-chart, #volume-chart {
+    min-height: 300px;
+}
+
+/* Metrics cards */
+.card h2.card-text {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #0d6efd;
+    margin: 0;
+    padding: 10px 0;
+}
+
+/* Status badges */
+#connection-status, #data-status {
+    font-size: 0.8rem;
+    padding: 0.4em 0.8em;
+}
+
+/* Responsive tables */
+.table-responsive {
+    margin: 0;
+    padding: 0;
+}
+
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 15px;
+    }
+    
+    .card h2.card-text {
+        font-size: 1.5rem;
+    }
+    
+    .table th, .table td {
+        font-size: 0.9rem;
+    }
+}

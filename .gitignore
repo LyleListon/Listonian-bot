@@ -1,0 +1,111 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.env.*
+.venv
+env/
+venv/
+ENV/
+.env.mainnet
+.env.production
+.conda/
+
+# IDE
+.idea/
+.vscode/
+.vs/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+logs/
+historical_data/
+
+# Test coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Project specific
+models/
+simulation_results/
+backtest_results/
+benchmark_results/
+metrics/
+reports/
+temp_contracts/
+cache/
+artifacts/
+.frontmatter/
+
+# Node
+node_modules/
+package-lock.json
+
+# Temporary files
+*.pid
+*.tmp
+temp.txt
+output.txt
+*.temp
+MAINNET_WALLET.json
+
+# Documentation
+docs/images/
+docs/failed_attempts/
+
+# Deployment
+deployments - Copy/
+
+# Security and Sensitive Data
+secure/
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+*.enc
+*_API_KEY*
+*_WEBHOOK_*
+*_SECRET*
+addresses.env
+addresses.txt
+*private*
+*wallet*
+ssl/
+.secrets/
+*PASSWORD*
+*MNEMONIC*

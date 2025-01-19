@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arbitrage_bot"
+version = "0.1.0"
+authors = [
+    { name = "Your Name", email = "your.email@example.com" },
+]
+description = "Arbitrage trading bot for Base network"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "web3>=7.0.0",
+    "flask>=3.0.0",
+    "python-dotenv>=1.0.0",
+    "aiohttp>=3.8.0",
+    "websockets>=10.0",
+]
+
+[tool.setuptools]
+packages = ["arbitrage_bot"]
+package-dir = { "" = "." }
+
+[tool.setuptools.package-data]
+arbitrage_bot = ["configs/*.json", "abi/*.json"]

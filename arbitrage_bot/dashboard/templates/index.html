@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- System Status Section -->
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">System Status</h5>
+                    <div>
+                        <span class="badge bg-secondary" id="connection-status">Connecting...</span>
+                        <span class="badge bg-secondary" id="data-status">Waiting for data...</span>
+                        <span class="badge bg-warning" id="rate-limit-status" style="display: none;">Rate Limited</span>
+                    </div>
+                    <div id="rate-limit-info" class="mt-2" style="display: none;">
+                        <small class="text-muted">
+                            Rate limit backoff: <span id="backoff-time">0</span>s
+                        </small>
+                    </div>
+                </div>
+                <div id="error-container" class="alert alert-danger mt-3" style="display: none;">
+                    <strong>Error:</strong> <span id="error-message"></span>
+                </div>
+                <div id="warning-container" class="alert alert-warning mt-3" style="display: none;">
+                    <strong>Warning:</strong> <span id="warning-message"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h2>Live Arbitrage Opportunities</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Current Opportunities</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Token Pair</th>
+                                <th>Potential Profit</th>
+                                <th>Gas Cost</th>
+                                <th>Net Profit</th>
+                                <th>Price Impact</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="opportunities">
+                            <!-- Populated by WebSocket -->
+                            <tr><td colspan="6" class="text-center">Waiting for opportunities...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h2>Market Overview</h2>
+    </div>
+</div>
+
+<!-- Market Data Section -->
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">WETH/USDC Price</h5>
+                <div id="price-chart"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">DEX Status</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>DEX</th>
+                                <th>Status</th>
+                                <th>Liquidity</th>
+                                <th>24h Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dex-status">
+                            <!-- Populated by WebSocket -->
+                            <tr><td colspan="4" class="text-center">Loading DEX status...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h2>Performance Overview</h2>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Metrics Cards -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total Trades</h5>
+                <h2 class="card-text" id="total-trades">{{ metrics.get('total_trades', 0) }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">24h Trades</h5>
+                <h2 class="card-text" id="trades-24h">{{ metrics.get('trades_24h', 0) }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Success Rate</h5>
+                <h2 class="card-text" id="success-rate">{{ "%.1f"|format(metrics.get('success_rate', 0) * 100) }}%</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total Profit</h5>
+                <h2 class="card-text" id="total-profit">${{ "%.2f"|format(metrics.get('total_profit', 0)) }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">24h Profit</h5>
+                <h2 class="card-text" id="profit-24h">${{ "%.2f"|format(metrics.get('profit_24h', 0)) }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Charts -->
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Profit History</h5>
+                <div id="profit-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Trade Volume History</h5>
+                <div id="volume-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialize charts when document is ready
+function updateRateLimitStatus(metrics) {
+    const rateLimitStatus = document.getElementById('rate-limit-status');
+    const rateLimitInfo = document.getElementById('rate-limit-info');
+    const backoffTime = document.getElementById('backoff-time');
+    
+    if (metrics.system_status === 'backoff') {
+        rateLimitStatus.style.display = 'inline-block';
+        rateLimitInfo.style.display = 'block';
+        backoffTime.textContent = metrics.backoff_time;
+        rateLimitStatus.classList.remove('bg-secondary');
+        rateLimitStatus.classList.add('bg-warning');
+    } else {
+        rateLimitStatus.style.display = 'none';
+        rateLimitInfo.style.display = 'none';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait for WebSocket handler to be initialized
+    const waitForWsHandler = setInterval(() => {
+        if (window.wsHandler) {
+            clearInterval(waitForWsHandler);
+            
+            // Add custom message handler for metrics
+            const originalHandler = window.wsHandler.handleMessage.bind(window.wsHandler);
+            window.wsHandler.handleMessage = function(data) {
+                originalHandler(data);
+                if (data.type === 'metrics') {
+                    updateRateLimitStatus(data.metrics);
+                }
+            };
+        }
+    }, 100);
+
+    // Price chart options
+    const priceChartOptions = {
+        series: [{
+            name: 'WETH/USDC',
+            data: []
+        }],
+        chart: {
+            type: 'line',
+            height: 350,
+            animations: {
+                enabled: true,
+                easing: 'easeinout',
+                dynamicAnimation: {
+                    speed: 1000
+                }
+            }
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            type: 'datetime'
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(2);
+                }
+            }
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM yyyy HH:mm:ss'
+            }
+        }
+    };
+
+    // Profit chart options
+    const profitChartOptions = {
+        series: [{
+            name: 'Profit',
+            data: []
+        }],
+        chart: {
+            type: 'line',
+            height: 350,
+            animations: {
+                enabled: true,
+                easing: 'easeinout',
+                dynamicAnimation: {
+                    speed: 1000
+                }
+            }
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            type: 'datetime'
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(2);
+                }
+            }
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM yyyy HH:mm'
+            }
+        }
+    };
+
+    // Volume chart options
+    const volumeChartOptions = {
+        series: [{
+            name: 'Volume',
+            data: []
+        }],
+        chart: {
+            type: 'bar',
+            height: 350,
+            animations: {
+                enabled: true
+            }
+        },
+        xaxis: {
+            type: 'datetime'
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return Math.round(val);
+                }
+            }
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM yyyy HH:mm'
+            }
+        }
+    };
+
+    // Create charts
+    window.priceChart = new ApexCharts(document.querySelector("#price-chart"), priceChartOptions);
+    window.profitChart = new ApexCharts(document.querySelector("#profit-chart"), profitChartOptions);
+    window.volumeChart = new ApexCharts(document.querySelector("#volume-chart"), volumeChartOptions);
+
+    // Render charts
+    window.priceChart.render();
+    window.profitChart.render();
+    window.volumeChart.render();
+});
+</script>
+{% endblock %}

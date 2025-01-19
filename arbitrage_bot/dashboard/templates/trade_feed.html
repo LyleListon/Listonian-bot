@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}Trade Feed{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Trade Feed</h2>
+    
+    <div class="mb-4">
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link active" href="#opportunities" data-bs-toggle="tab">Opportunities</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#history" data-bs-toggle="tab">History</a>
+            </li>
+        </ul>
+    </div>
+    
+    <div class="tab-content">
+        <!-- Opportunities Tab -->
+        <div class="tab-pane fade show active" id="opportunities">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="mb-0">Current Opportunities</h5>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-primary" id="opportunity-count">0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="error-message" class="alert alert-danger d-none"></div>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Trading Pair</th>
+                                    <th>DEX</th>
+                                    <th>Expected Output</th>
+                                    <th>Profit</th>
+                                    <th>Market Info</th>
+                                </tr>
+                            </thead>
+                            <tbody id="opportunities-table">
+                                <tr>
+                                    <td colspan="5" class="text-center">Loading opportunities...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- History Tab -->
+        <div class="tab-pane fade" id="history">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col">
+                            <h5 class="mb-0">Trade History</h5>
+                        </div>
+                        <div class="col-auto">
+                            <div class="btn-group">
+                                <select class="form-select form-select-sm" id="status-filter">
+                                    <option value="all">All Status</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="failed">Failed</option>
+                                </select>
+                                <select class="form-select form-select-sm ms-2" id="pair-filter">
+                                    <option value="all">All Pairs</option>
+                                </select>
+                                <input type="date" class="form-control form-control-sm ms-2" id="date-filter">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Pair</th>
+                                    <th>Amount</th>
+                                    <th>Profit</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-table">
+                                <tr>
+                                    <td colspan="5" class="text-center">Loading trade history...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let updateTimer = null;
+    let errorCount = 0;
+    const MAX_ERRORS = 3;
+    const INITIAL_INTERVAL = 5000;
+    const MAX_INTERVAL = 30000;
+
+    function showError(message) {
+        const errorDiv = document.getElementById('error-message');
+        errorDiv.textContent = message;
+        errorDiv.classList.remove('d-none');
+        setTimeout(() => {
+            errorDiv.classList.add('d-none');
+        }, 5000);
+    }
+
+    function formatNumber(num, decimals = 2) {
+        return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        }).format(num);
+    }
+
+    function getTrendBadgeColor(trend) {
+        switch(trend.toLowerCase()) {
+            case 'bullish':
+                return 'success';
+            case 'bearish':
+                return 'danger';
+            case 'neutral':
+                return 'warning';
+            default:
+                return 'secondary';
+        }
+    }
+
+    function updateOpportunities() {
+        fetch('/api/opportunities')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(opportunities => {
+                // Reset error count on successful fetch
+                errorCount = 0;
+                
+                const tableBody = document.getElementById('opportunities-table');
+                const opportunityCount = document.getElementById('opportunity-count');
+                
+                // Update opportunity count
+                opportunityCount.textContent = opportunities.length;
+                
+                if (!Array.isArray(opportunities) || opportunities.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center">No opportunities available</td></tr>';
+                    return;
+                }
+                
+                let html = '';
+                opportunities.forEach(opp => {
+                    const profitDisplay = opp.profit_percentage 
+                        ? `<span class="text-success">+${formatNumber(opp.profit_percentage)}%</span>`
+                        : 'N/A';
+                        
+                    const marketInfo = [];
+                    if (opp.volume_24h) marketInfo.push(`Vol: $${formatNumber(opp.volume_24h, 0)}`);
+                    if (opp.liquidity_score) marketInfo.push(`Liq: ${formatNumber(opp.liquidity_score * 100)}%`);
+                    if (opp.trend) {
+                        marketInfo.push(`<span class="badge bg-${getTrendBadgeColor(opp.trend)}">${opp.trend}</span>`);
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td>${opp.token_in}/${opp.token_out}</td>
+                            <td><span class="badge bg-info">${opp.base_dex}</span></td>
+                            <td>${formatNumber(opp.expected_out)}</td>
+                            <td>${profitDisplay}</td>
+                            <td>${marketInfo.join(' | ')}</td>
+                        </tr>
+                    `;
+                });
+                tableBody.innerHTML = html;
+                
+                // Reset update interval on successful fetch
+                resetUpdateInterval();
+            })
+            .catch(error => {
+                console.error('Error fetching opportunities:', error);
+                errorCount++;
+                
+                showError('Failed to update opportunities. Retrying...');
+                
+                // Increase interval on error
+                if (errorCount >= MAX_ERRORS) {
+                    increaseUpdateInterval();
+                }
+            });
+    }
+    
+    function resetUpdateInterval() {
+        if (updateTimer) {
+            clearInterval(updateTimer);
+        }
+        updateTimer = setInterval(updateOpportunities, INITIAL_INTERVAL);
+    }
+    
+    function increaseUpdateInterval() {
+        if (updateTimer) {
+            clearInterval(updateTimer);
+        }
+        const newInterval = Math.min(INITIAL_INTERVAL * Math.pow(2, errorCount - MAX_ERRORS), MAX_INTERVAL);
+        updateTimer = setInterval(updateOpportunities, newInterval);
+        console.log(`Update interval increased to ${newInterval}ms due to errors`);
+    }
+    
+    // Start polling for opportunities
+    updateOpportunities();
+    resetUpdateInterval();
+    
+    // Initialize filters
+    document.querySelectorAll('#status-filter, #pair-filter, #date-filter').forEach(filter => {
+        filter.addEventListener('change', () => {
+            // TODO: Implement trade history filtering
+        });
+    });
+    
+    // Clean up on page unload
+    window.addEventListener('unload', () => {
+        if (updateTimer) {
+            clearInterval(updateTimer);
+        }
+    });
+</script>
+{% endblock %}

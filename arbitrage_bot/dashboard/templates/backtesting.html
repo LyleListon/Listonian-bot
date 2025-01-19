@@ -1,0 +1,558 @@
+{% extends "base.html" %}
+
+{% block title %}Backtesting{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.min.css">
+<style>
+.backtest-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chart-container {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.metric-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.metric-title {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.metric-value {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.metric-change {
+    font-size: 14px;
+}
+
+.positive-change {
+    color: #4caf50;
+}
+
+.negative-change {
+    color: #f44336;
+}
+
+.param-slider {
+    width: 100%;
+    margin: 8px 0;
+}
+
+.param-value {
+    font-size: 14px;
+    color: #666;
+}
+
+.trade-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.trade-item {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.trade-item:last-child {
+    border-bottom: none;
+}
+
+.trade-success {
+    color: #4caf50;
+}
+
+.trade-failure {
+    color: #f44336;
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Configuration Section -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="backtest-card">
+                <h4>Backtest Configuration</h4>
+                <form id="backtest-form">
+                    <div class="mb-3">
+                        <label class="form-label">Token</label>
+                        <select class="form-select" id="token-selector" required>
+                            <!-- Token options will be inserted here -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Range</label>
+                        <div class="row">
+                            <div class="col">
+                                <input type="date" class="form-control" id="start-date" required>
+                            </div>
+                            <div class="col">
+                                <input type="date" class="form-control" id="end-date" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Initial Balance (USD)</label>
+                        <input type="number" class="form-control" id="initial-balance" value="10000" required>
+                    </div>
+                    <div class="mb-3">
+                        <h5>Strategy Parameters</h5>
+                        <div id="strategy-params">
+                            <!-- Parameter sliders will be inserted here -->
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <button type="submit" class="btn btn-primary">Run Backtest</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="optimizeStrategy()">
+                            Optimize Strategy
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="backtest-card">
+                <h4>Performance Metrics</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <div class="metric-title">Total Trades</div>
+                            <div class="metric-value" id="total-trades">0</div>
+                            <div class="metric-change" id="win-rate">Win Rate: 0%</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <div class="metric-title">Total Profit</div>
+                            <div class="metric-value" id="total-profit">$0.00</div>
+                            <div class="metric-change" id="roi">ROI: 0%</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <div class="metric-title">Sharpe Ratio</div>
+                            <div class="metric-value" id="sharpe-ratio">0.00</div>
+                            <div class="metric-change" id="max-drawdown">Max Drawdown: 0%</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <div class="metric-title">Gas Cost</div>
+                            <div class="metric-value" id="total-gas">0 ETH</div>
+                            <div class="metric-change" id="avg-gas">Avg: 0 ETH/trade</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="chart-container">
+                <h4>Portfolio Value</h4>
+                <canvas id="portfolio-chart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="chart-container">
+                <h4>Trade Performance</h4>
+                <canvas id="trades-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trade History -->
+    <div class="row">
+        <div class="col-12">
+            <div class="backtest-card">
+                <h4>Trade History</h4>
+                <div class="trade-list" id="trade-list">
+                    <!-- Trade items will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// Chart configurations
+const chartConfig = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            position: 'top',
+        }
+    }
+};
+
+// Initialize charts
+let portfolioChart, tradesChart;
+
+// Format currency
+function formatCurrency(num) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+    }).format(num);
+}
+
+// Format percentage
+function formatPercent(num) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'percent',
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+    }).format(num);
+}
+
+// Show loading overlay
+function showLoading() {
+    document.getElementById('loading-overlay').style.display = 'flex';
+}
+
+// Hide loading overlay
+function hideLoading() {
+    document.getElementById('loading-overlay').style.display = 'none';
+}
+
+// Update metrics display
+function updateMetrics(metrics) {
+    document.getElementById('total-trades').textContent = metrics.total_trades;
+    document.getElementById('win-rate').textContent = `Win Rate: ${formatPercent(metrics.win_rate)}`;
+    document.getElementById('total-profit').textContent = formatCurrency(metrics.total_profit_usd);
+    document.getElementById('roi').textContent = `ROI: ${formatPercent(metrics.roi)}`;
+    document.getElementById('sharpe-ratio').textContent = metrics.sharpe_ratio.toFixed(2);
+    document.getElementById('max-drawdown').textContent = `Max Drawdown: ${formatPercent(metrics.max_drawdown)}`;
+    document.getElementById('total-gas').textContent = `${metrics.total_gas_cost_eth} ETH`;
+    document.getElementById('avg-gas').textContent = `Avg: ${metrics.avg_gas_per_trade} ETH/trade`;
+}
+
+// Update portfolio chart
+function updatePortfolioChart(trades) {
+    const ctx = document.getElementById('portfolio-chart').getContext('2d');
+    if (portfolioChart) portfolioChart.destroy();
+    
+    // Calculate portfolio value over time
+    let balance = parseFloat(document.getElementById('initial-balance').value);
+    const values = [balance];
+    const timestamps = [trades[0].entry_time];
+    
+    trades.forEach(trade => {
+        balance += parseFloat(trade.profit_usd);
+        values.push(balance);
+        timestamps.push(trade.exit_time);
+    });
+    
+    portfolioChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: timestamps,
+            datasets: [{
+                label: 'Portfolio Value',
+                data: values,
+                borderColor: '#4caf50',
+                tension: 0.1
+            }]
+        },
+        options: chartConfig
+    });
+}
+
+// Update trades chart
+function updateTradesChart(trades) {
+    const ctx = document.getElementById('trades-chart').getContext('2d');
+    if (tradesChart) tradesChart.destroy();
+    
+    const profits = trades.map(t => parseFloat(t.profit_usd));
+    
+    tradesChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: trades.map((_, i) => `Trade ${i + 1}`),
+            datasets: [{
+                label: 'Profit/Loss',
+                data: profits,
+                backgroundColor: profits.map(p => p >= 0 ? '#4caf50' : '#f44336')
+            }]
+        },
+        options: chartConfig
+    });
+}
+
+// Update trade list
+function updateTradeList(trades) {
+    const container = document.getElementById('trade-list');
+    container.innerHTML = '';
+    
+    trades.forEach((trade, i) => {
+        const profit = parseFloat(trade.profit_usd);
+        const item = document.createElement('div');
+        item.className = 'trade-item';
+        
+        item.innerHTML = `
+            <div class="d-flex justify-content-between">
+                <span>Trade ${i + 1}</span>
+                <span class="${profit >= 0 ? 'trade-success' : 'trade-failure'}">
+                    ${formatCurrency(profit)}
+                </span>
+            </div>
+            <div class="d-flex justify-content-between">
+                <small>Entry: ${formatCurrency(trade.entry_price)}</small>
+                <small>Exit: ${formatCurrency(trade.exit_price)}</small>
+            </div>
+            <div class="d-flex justify-content-between">
+                <small>Size: ${formatCurrency(trade.size)}</small>
+                <small>Gas: ${trade.gas_cost_eth} ETH</small>
+            </div>
+        `;
+        
+        container.appendChild(item);
+    });
+}
+
+// Load default parameters
+async function loadDefaultParams() {
+    try {
+        const response = await fetch('/api/backtesting/default-params');
+        const data = await response.json();
+        
+        if (data.success) {
+            const container = document.getElementById('strategy-params');
+            container.innerHTML = '';
+            
+            for (const [param, value] of Object.entries(data.data.default_params)) {
+                const range = data.data.param_ranges[param];
+                const div = document.createElement('div');
+                div.className = 'mb-3';
+                
+                div.innerHTML = `
+                    <label class="form-label">${param.replace(/_/g, ' ').toUpperCase()}</label>
+                    <input type="range" class="param-slider form-range" 
+                           id="${param}" name="${param}"
+                           min="${range[0]}" max="${range[1]}" step="${range[2]}"
+                           value="${value}">
+                    <div class="param-value" id="${param}-value">${value}</div>
+                `;
+                
+                container.appendChild(div);
+                
+                // Add value update handler
+                div.querySelector('input').addEventListener('input', function() {
+                    div.querySelector('.param-value').textContent = this.value;
+                });
+            }
+        }
+        
+    } catch (error) {
+        console.error('Failed to load default parameters:', error);
+    }
+}
+
+// Run backtest
+async function runBacktest(event) {
+    event.preventDefault();
+    showLoading();
+    
+    try {
+        // Get form values
+        const symbol = document.getElementById('token-selector').value;
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        const initialBalance = document.getElementById('initial-balance').value;
+        
+        // Get strategy parameters
+        const strategyParams = {};
+        document.querySelectorAll('.param-slider').forEach(slider => {
+            strategyParams[slider.name] = parseFloat(slider.value);
+        });
+        
+        // Run backtest
+        const response = await fetch('/api/backtesting/run', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol,
+                start_date: startDate,
+                end_date: endDate,
+                initial_balance: initialBalance,
+                strategy_params: strategyParams
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update display
+            updateMetrics(data.data.metrics);
+            updatePortfolioChart(data.data.trades);
+            updateTradesChart(data.data.trades);
+            updateTradeList(data.data.trades);
+        } else {
+            alert('Failed to run backtest: ' + data.error);
+        }
+        
+    } catch (error) {
+        console.error('Failed to run backtest:', error);
+        alert('Failed to run backtest: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// Optimize strategy
+async function optimizeStrategy() {
+    if (!confirm('Strategy optimization may take several minutes. Continue?')) {
+        return;
+    }
+    
+    showLoading();
+    
+    try {
+        // Get form values
+        const symbol = document.getElementById('token-selector').value;
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        const initialBalance = document.getElementById('initial-balance').value;
+        
+        // Get parameter ranges
+        const response = await fetch('/api/backtesting/default-params');
+        const rangeData = await response.json();
+        
+        if (!rangeData.success) {
+            throw new Error('Failed to get parameter ranges');
+        }
+        
+        // Run optimization
+        const optimizeResponse = await fetch('/api/backtesting/optimize', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol,
+                start_date: startDate,
+                end_date: endDate,
+                initial_balance: initialBalance,
+                param_ranges: rangeData.data.param_ranges
+            })
+        });
+        
+        const data = await optimizeResponse.json();
+        
+        if (data.success) {
+            // Update parameter values
+            for (const [param, value] of Object.entries(data.data.best_params)) {
+                const slider = document.getElementById(param);
+                if (slider) {
+                    slider.value = value;
+                    document.getElementById(`${param}-value`).textContent = value;
+                }
+            }
+            
+            alert('Strategy optimization complete!');
+        } else {
+            alert('Failed to optimize strategy: ' + data.error);
+        }
+        
+    } catch (error) {
+        console.error('Failed to optimize strategy:', error);
+        alert('Failed to optimize strategy: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// Load tokens
+async function loadTokens() {
+    try {
+        const response = await fetch('/api/ml/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            const tokens = Object.keys(data.data.tokens || {});
+            const selector = document.getElementById('token-selector');
+            
+            tokens.forEach(token => {
+                const option = document.createElement('option');
+                option.value = token;
+                option.textContent = token;
+                selector.appendChild(option);
+            });
+        }
+        
+    } catch (error) {
+        console.error('Failed to load tokens:', error);
+    }
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    loadTokens();
+    loadDefaultParams();
+    document.getElementById('backtest-form').addEventListener('submit', runBacktest);
+});
+</script>
+{% endblock %}

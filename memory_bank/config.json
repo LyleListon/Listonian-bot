@@ -1,0 +1,28 @@
+{
+  "storage": {
+    "base_dir": "data/memory",
+    "max_cache_size": 1000,
+    "file_extension": ".json"
+  },
+  "retention": {
+    "default_expiry_days": 30,
+    "cleanup_interval_hours": 24,
+    "max_entries_per_type": 10000
+  },
+  "performance": {
+    "cache_enabled": true,
+    "compression_enabled": false,
+    "batch_size": 100
+  },
+  "logging": {
+    "enabled": true,
+    "level": "INFO",
+    "file": "logs/memory_bank.log"
+  },
+  "backup": {
+    "enabled": true,
+    "interval_hours": 24,
+    "max_backups": 7,
+    "backup_dir": "data/memory/backups"
+  }
+}

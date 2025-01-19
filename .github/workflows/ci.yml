@@ -1,0 +1,148 @@
+name: Arbitrage Bot CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10"]
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip packages
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Check code formatting
+      run: |
+        black --check arbitrage_bot/ tests/ \
+          --exclude="/(\.git|\.mypy_cache|\.venv|venv|\.env|env|docs)/"
+
+    - name: Run linter
+      run: |
+        flake8 arbitrage_bot/ tests/ \
+          --config=setup.cfg
+
+    - name: Type checking
+      run: |
+        mypy arbitrage_bot/ tests/ \
+          --ignore-missing-imports \
+          --disallow-untyped-defs \
+          --disallow-incomplete-defs
+
+    - name: Run tests
+      run: |
+        pytest tests/ \
+          --cov=arbitrage_bot \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --junitxml=test-results.xml
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v2
+      with:
+        name: coverage-report
+        path: coverage.xml
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v2
+      with:
+        name: test-results
+        path: test-results.xml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.9"
+
+    - name: Cache pip packages
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-deploy-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Configure environment
+      run: |
+        echo "Setting up environment variables..."
+        echo "RPC_URL=${{ secrets.RPC_URL }}" >> .env
+        echo "PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}" >> .env
+        echo "NETWORK=mainnet" >> .env
+        echo "MIN_PROFIT_BASIS_POINTS=200" >> .env
+        echo "MAX_TRADE_SIZE=0.1" >> .env
+        
+    - name: Deploy to production
+      env:
+        RPC_URL: ${{ secrets.RPC_URL }}
+        PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+        NETWORK: mainnet
+      run: |
+        # Load mainnet deployment configuration
+        cp deployments/mainnet_deployment_plan.json config.json
+        
+        # Run deployment script
+        python deploy.py
+        
+        # Monitor deployment for 5 minutes to ensure stability
+        timeout 300 tail -f logs/deployment.log || true
+        
+        # Verify processes are running
+        if [ ! -f bot.pid ]; then
+          echo "Deployment failed - bot.pid not found"
+          exit 1
+        fi
+        
+        # Check process status
+        while read line; do
+          pid=$(echo $line | cut -d= -f2)
+          if ! ps -p $pid > /dev/null; then
+            echo "Process $line terminated unexpectedly"
+            exit 1
+          fi
+        done < bot.pid
+        
+        echo "Deployment successful and processes verified!"
+
+    - name: Upload deployment logs
+      if: always()
+      uses: actions/upload-artifact@v2
+      with:
+        name: deployment-logs
+        path: logs/

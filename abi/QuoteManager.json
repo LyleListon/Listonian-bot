@@ -1,0 +1,339 @@
+[
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_dexRegistry",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "inputs": [],
+        "name": "ExcessivePriceImpact",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InsufficientLiquidity",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidPool",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NoValidPool",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "OnlyOwner",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "PoolError",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "UnsupportedDEX",
+        "type": "error"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "threshold",
+                "type": "uint256"
+            }
+        ],
+        "name": "LiquidityThresholdUpdated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "tokenIn",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "tokenOut",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amountIn",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amountOut",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "priceImpact",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "liquidity",
+                "type": "uint256"
+            }
+        ],
+        "name": "QuoteGenerated",
+        "type": "event"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address[]",
+                "name": "tokens",
+                "type": "address[]"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "thresholds",
+                "type": "uint256[]"
+            }
+        ],
+        "name": "batchSetLiquidityThresholds",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "dexRegistry",
+        "outputs": [
+            {
+                "internalType": "contract IDEXRegistry",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "tokenIn",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "tokenOut",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amountIn",
+                "type": "uint256"
+            }
+        ],
+        "name": "getDEXQuote",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "address",
+                        "name": "dex",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "output",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "gasEstimate",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "isV3",
+                        "type": "bool"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "targetToken",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "priceImpact",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "liquidity",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct IQuoteManager.DEXQuote",
+                "name": "",
+                "type": "tuple"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "tokenIn",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "tokenOut",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amountIn",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxGasPrice",
+                "type": "uint256"
+            }
+        ],
+        "name": "getQuotes",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "address",
+                        "name": "dex",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "output",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "gasEstimate",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "isV3",
+                        "type": "bool"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "targetToken",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "priceImpact",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "liquidity",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct IQuoteManager.DEXQuote[]",
+                "name": "",
+                "type": "tuple[]"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "liquidityThresholds",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "threshold",
+                "type": "uint256"
+            }
+        ],
+        "name": "setLiquidityThreshold",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]
