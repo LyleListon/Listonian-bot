@@ -1,13 +1,7 @@
 # Arbitrage Bot
 
-⚠️ **CRITICAL SECURITY WARNING** ⚠️
-- **NEVER** commit private keys or sensitive data to git repositories
-- **IMMEDIATELY** transfer funds if you've accidentally exposed your private key
-- Use `.env` files for all sensitive data (wallet keys, API keys, etc.)
-- Always check your commits for sensitive data before pushing
-- Previous versions of this repository may have exposed sensitive data - please review your git history
 
-An advanced cryptocurrency arbitrage bot with ML-driven decision making and sophisticated risk management.
+An advanced cryptocurrency arbitrage bot with ML-driven decision-making and sophisticated risk management.
 
 ## Features
 
