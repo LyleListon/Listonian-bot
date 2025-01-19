@@ -20,92 +20,52 @@ wheels/
 .installed.cfg
 *.egg
 
-# Environment
-.env
-.env.*
-.venv
-env/
+# Virtual Environment
 venv/
 ENV/
-.env.mainnet
-.env.production
-.conda/
+env/
 
 # IDE
 .idea/
 .vscode/
-.vs/
 *.swp
 *.swo
-.project
-.pydevproject
-.settings
 
-# Logs and databases
-*.log
-*.sqlite
-*.db
+# Logs and Data
 logs/
+*.log
+monitoring_data/
 historical_data/
+analytics/
+test_reports/
+coverage_html/
 
-# Test coverage
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-
-# Project specific
-models/
-simulation_results/
-backtest_results/
-benchmark_results/
-metrics/
-reports/
-temp_contracts/
-cache/
-artifacts/
-.frontmatter/
-
-# Node
-node_modules/
-package-lock.json
-
-# Temporary files
-*.pid
-*.tmp
-temp.txt
-output.txt
-*.temp
-MAINNET_WALLET.json
-
-# Documentation
-docs/images/
-docs/failed_attempts/
-
-# Deployment
-deployments - Copy/
-
-# Security and Sensitive Data
-secure/
+# Sensitive
+.env
+.env.*
+!.env.example
 *.key
 *.pem
-*.crt
-*.p12
-*.pfx
-*.enc
-*_API_KEY*
-*_WEBHOOK_*
-*_SECRET*
-addresses.env
-addresses.txt
-*private*
-*wallet*
-ssl/
-.secrets/
-*PASSWORD*
-*MNEMONIC*
+secure/
+**/secure/
+**/ALCHEMY_API_KEY.enc
+**/DISCORD_WEBHOOK_URL.enc
+**/INFURA_API_KEY.enc
+**/ssl/server.crt
+**/ssl/server.key
+**/PRIVATE_KEY=*
+**/password*
+**/*password*
+**/*.password*
+**/*secret*
+**/*.secret*
+**/*credential*
+**/*.credential*
+
+# Project specific
+coverage.json
+temp_log.txt
+
+# WARNING: Log files contain sensitive data and high-volume output
+# DO NOT attempt to read log files with AI assistants
+# Logs are stored in logs/ directory and should be handled with care
