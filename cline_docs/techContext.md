@@ -46,8 +46,9 @@
 2. **Environment Configuration**
    - Virtual environment setup
    - Environment variables
-   - Configuration files in /configs
-   - DEX configuration in configs/data/dex_config.json
+   - Configuration files in docs/reference/configuration.md
+   - Secure configuration templates
+   - Environment-based configuration
 
 3. **Dependencies**
    - Python packages in requirements.txt
@@ -63,7 +64,14 @@
    pip install -r requirements-dev.txt
    ```
 
-2. **Running the System**
+2. **Configuration Setup**
+   ```bash
+   # Copy configuration template
+   cp docs/reference/configuration.md system.conf
+   # Update configuration with actual values
+   ```
+
+3. **Running the System**
    ```bash
    # Start the dashboard
    .\start_dashboard.bat
@@ -86,6 +94,7 @@
    - Error recovery mechanisms
    - Transaction validation
    - System health monitoring
+   - Configuration validation
 
 ### Security Considerations
 1. **Transaction Security**
@@ -97,6 +106,13 @@
    - Access control
    - Rate limiting
    - Data encryption
+   - Configuration protection
+
+3. **Configuration Security**
+   - Sensitive data handling
+   - Environment isolation
+   - Secure templates
+   - Documentation security
 
 ### Integration Points
 1. **Blockchain Networks**
@@ -141,10 +157,12 @@
    - Performance metrics
    - Error tracking
    - Resource utilization
+   - Configuration validation
 
 2. **Updates and Maintenance**
    - Version control
    - Dependency updates
    - Security patches
+   - Configuration management
 
-Last Updated: 2024-01-15
+Last Updated: 2024-01-24
