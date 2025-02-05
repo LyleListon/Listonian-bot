@@ -61,10 +61,14 @@ secure/
 **/*.secret*
 **/*credential*
 **/*.credential*
-
 # Project specific
 coverage.json
 temp_log.txt
+configs/wallet_config.json
+configs/*_config.json
+!configs/config.json.example
+!configs/wallet_config.json.example
+
 
 # WARNING: Log files contain sensitive data and high-volume output
 # DO NOT attempt to read log files with AI assistants

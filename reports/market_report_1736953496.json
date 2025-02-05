@@ -1,0 +1,94 @@
+{
+  "timestamp": 1736953496.8499246,
+  "period": "1969-12-31T19:00:00 - 2025-01-15T10:04:56.849925",
+  "market_conditions": {
+    "WETH": {
+      "price": 3308.1,
+      "volume_24h": 15234567890.0,
+      "liquidity": 0.0,
+      "volatility": 0.0,
+      "trend": "sideways",
+      "trend_strength": 0.0,
+      "price_impact": 1.0
+    },
+    "USDC": {
+      "price": 1.0,
+      "volume_24h": 5234567890.0,
+      "liquidity": 6003169.801879544,
+      "volatility": 0.0,
+      "trend": "sideways",
+      "trend_strength": 0.0,
+      "price_impact": 0.00016657866310676537
+    }
+  },
+  "transactions": {
+    "completed": 0,
+    "pending": 0,
+    "failed": 0
+  },
+  "alerts": [
+    {
+      "timestamp": 1736953494.3752253,
+      "level": "warning",
+      "message": "Liquidity drop in uniswap_v3 pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "uniswap_v3"
+      }
+    },
+    {
+      "timestamp": 1736953494.8429725,
+      "level": "warning",
+      "message": "Liquidity drop in baseswap pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "baseswap"
+      }
+    },
+    {
+      "timestamp": 1736953495.6369839,
+      "level": "warning",
+      "message": "Liquidity drop in rocketswap pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "rocketswap"
+      }
+    },
+    {
+      "timestamp": 1736953496.3574948,
+      "level": "warning",
+      "message": "Liquidity drop in pancakeswap pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "pancakeswap"
+      }
+    },
+    {
+      "timestamp": 1736953496.755415,
+      "level": "warning",
+      "message": "Liquidity drop in aerodrome pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "aerodrome"
+      }
+    },
+    {
+      "timestamp": 1736953496.757415,
+      "level": "warning",
+      "message": "Liquidity drop in aerodrome_v3 pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "aerodrome_v3"
+      }
+    }
+  ],
+  "performance_metrics": {
+    "prediction_accuracy": 1.0,
+    "tracked_tokens": 2,
+    "data_points": 4,
+    "last_update": 1736953488.9587865,
+    "pending_transactions": 0,
+    "failed_transactions": 0,
+    "active_alerts": 6
+  }
+}

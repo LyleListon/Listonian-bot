@@ -1,0 +1,67 @@
+{
+  "timestamp": 1736883719.9194102,
+  "period": "1969-12-31T19:00:00 - 2025-01-14T14:41:59.919410",
+  "market_conditions": {
+    "WETH": {
+      "price": 3308.1,
+      "volume_24h": 15234567890.0,
+      "liquidity": 0.0,
+      "volatility": 0.0,
+      "trend": "sideways",
+      "trend_strength": 0.0,
+      "price_impact": 1.0
+    },
+    "USDC": {
+      "price": 1.0,
+      "volume_24h": 5234567890.0,
+      "liquidity": 25106.56079439326,
+      "volatility": 0.0,
+      "trend": "sideways",
+      "trend_strength": 0.0,
+      "price_impact": 0.0398302263774542
+    }
+  },
+  "transactions": {
+    "completed": 0,
+    "pending": 0,
+    "failed": 0
+  },
+  "alerts": [
+    {
+      "timestamp": 1736883718.1729794,
+      "level": "warning",
+      "message": "Liquidity drop in uniswap_v3 pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "uniswap_v3"
+      }
+    },
+    {
+      "timestamp": 1736883719.3902633,
+      "level": "warning",
+      "message": "Liquidity drop in pancakeswap pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "pancakeswap"
+      }
+    },
+    {
+      "timestamp": 1736883719.8348644,
+      "level": "warning",
+      "message": "Liquidity drop in sushiswap pool for USDC",
+      "data": {
+        "symbol": "USDC",
+        "dex": "sushiswap"
+      }
+    }
+  ],
+  "performance_metrics": {
+    "prediction_accuracy": 1.0,
+    "tracked_tokens": 2,
+    "data_points": 2,
+    "last_update": 1736883712.1609325,
+    "pending_transactions": 0,
+    "failed_transactions": 0,
+    "active_alerts": 3
+  }
+}
