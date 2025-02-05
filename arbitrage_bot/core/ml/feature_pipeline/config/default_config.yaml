@@ -1,0 +1,192 @@
+# Feature Pipeline Configuration
+
+# Global settings
+global:
+  log_level: "INFO"
+  feature_expiry: 3600  # 1 hour in seconds
+  validation_enabled: true
+
+# Real-time feature configuration
+real_time:
+  update_interval: 1  # seconds
+  feature_groups:
+    gas:
+      enabled: true
+      priority: 1
+      metrics:
+        - base_fee
+        - priority_fee
+        - block_utilization
+        - gas_trend
+    
+    liquidity:
+      enabled: true
+      priority: 1
+      metrics:
+        - pool_reserves
+        - volume_1h
+        - utilization
+        - price_impact
+    
+    market:
+      enabled: true
+      priority: 2
+      metrics:
+        - network_load
+        - pending_txs
+        - market_activity
+        - competition_level
+
+# Batch feature configuration
+batch:
+  batch_config:
+    update_interval: 300  # 5 minutes
+    history_hours: 24
+    min_samples: 100
+    max_samples: 10000
+    feature_expiry: 3600  # 1 hour
+  
+  feature_groups:
+    technical:
+      enabled: true
+      priority: 2
+      indicators:
+        - moving_averages:
+            windows: [5, 15, 30, 60]
+        - rsi:
+            window: 14
+        - bollinger_bands:
+            window: 20
+            std_dev: 2
+    
+    patterns:
+      enabled: true
+      priority: 3
+      detectors:
+        - trend_strength
+        - mean_reversion
+        - momentum
+        - volatility_regime
+    
+    correlations:
+      enabled: true
+      priority: 3
+      pairs:
+        - gas_liquidity
+        - gas_volume
+        - load_volume
+    
+    volatility:
+      enabled: true
+      priority: 2
+      metrics:
+        - standard_deviation
+        - skewness
+        - kurtosis
+        - value_at_risk
+        - conditional_var
+
+# Feature set definitions
+feature_sets:
+  minimal:
+    description: "Essential features for basic operation"
+    groups:
+      - gas
+      - liquidity
+    update_interval: 1
+    validation_required: true
+  
+  standard:
+    description: "Standard feature set for normal operation"
+    groups:
+      - gas
+      - liquidity
+      - market
+      - technical
+    update_interval: 1
+    validation_required: true
+  
+  full:
+    description: "Complete feature set for advanced analysis"
+    groups:
+      - gas
+      - liquidity
+      - market
+      - technical
+      - patterns
+      - correlations
+      - volatility
+    update_interval: 5
+    validation_required: true
+
+# Validation rules
+validation:
+  gas:
+    base_fee:
+      min_value: 0
+      max_value: 1000000000000
+      required: true
+    priority_fee:
+      min_value: 0
+      max_value: 1000000000000
+      required: true
+    block_utilization:
+      min_value: 0
+      max_value: 1
+      required: true
+  
+  liquidity:
+    pool_reserves:
+      min_value: 0
+      required: true
+    volume_1h:
+      min_value: 0
+      required: true
+    utilization:
+      min_value: 0
+      max_value: 1
+      required: true
+  
+  technical:
+    rsi:
+      min_value: 0
+      max_value: 100
+      required: true
+    volatility:
+      min_value: 0
+      required: true
+
+# Performance monitoring
+monitoring:
+  enabled: true
+  metrics:
+    - computation_time
+    - feature_counts
+    - error_rates
+    - update_frequency
+  
+  thresholds:
+    max_computation_time: 1.0  # seconds
+    max_error_rate: 0.01
+    max_feature_age: 300  # seconds
+  
+  alerts:
+    email:
+      enabled: false
+      recipients: []
+    discord:
+      enabled: false
+      webhook_url: ""
+
+# Storage configuration
+storage:
+  feature_history:
+    enabled: true
+    retention_days: 7
+    compression_enabled: true
+  
+  backup:
+    enabled: true
+    interval_hours: 24
+    retention_days: 30
+    path: "data/feature_backups"

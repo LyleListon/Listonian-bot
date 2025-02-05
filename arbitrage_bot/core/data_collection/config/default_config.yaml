@@ -1,0 +1,188 @@
+# Default configuration for data collection system
+
+# Global settings
+global:
+  environment: "production"  # or "development", "testing"
+  log_level: "INFO"
+  data_dir: "data"
+
+# Collector configurations
+collectors:
+  network:
+    enabled: true
+    interval_seconds: 1  # How often to collect network data
+    metrics:
+      base_fee:
+        enabled: true
+        priority: 1
+        validation:
+          min_value: 0
+          required: true
+      
+      priority_fee:
+        enabled: true
+        priority: 1
+        validation:
+          min_value: 0
+          required: true
+      
+      block_utilization:
+        enabled: true
+        priority: 2
+        validation:
+          min_value: 0
+          max_value: 1
+          required: true
+      
+      pending_txs:
+        enabled: true
+        priority: 2
+        validation:
+          min_value: 0
+          required: true
+      
+      network_load:
+        enabled: true
+        priority: 3
+        validation:
+          min_value: 0
+          max_value: 1
+          required: false
+
+  pool:
+    enabled: true
+    interval_seconds: 5  # How often to collect pool data
+    pools:
+      - dex: "uniswap_v3"
+        pairs: ["WETH/USDC", "WETH/DAI"]
+        fee_tiers: [500, 3000, 10000]
+      - dex: "baseswap"
+        pairs: ["WETH/USDC"]
+        fee_tiers: [3000]
+    
+    metrics:
+      reserves:
+        enabled: true
+        priority: 1
+        validation:
+          min_value: 0
+          required: true
+      
+      volume:
+        enabled: true
+        priority: 1
+        validation:
+          min_value: 0
+          required: true
+      
+      price_impact:
+        enabled: true
+        priority: 2
+        validation:
+          min_value: 0
+          max_value: 1
+          required: true
+      
+      concentration:
+        enabled: true
+        priority: 2
+        validation:
+          min_value: 0
+          max_value: 1
+          required: true
+      
+      utilization:
+        enabled: true
+        priority: 3
+        validation:
+          min_value: 0
+          max_value: 1
+          required: true
+
+# Processor configurations
+processors:
+  normalizer:
+    scaling_method: "standard"  # or "minmax"
+    window_size: 100  # Number of data points for rolling statistics
+    ranges:
+      base_fee:
+        min: 0
+        max: 1000
+      priority_fee:
+        min: 0
+        max: 500
+      block_utilization:
+        min: 0
+        max: 1
+      volume:
+        min: 0
+        max: 1000000
+
+  feature_extractor:
+    window_sizes: [10, 30, 60]  # in seconds
+    combine_method: "concat"  # or "merge"
+    feature_groups:
+      gas:
+        - "base_fee"
+        - "priority_fee"
+        - "block_utilization"
+      network:
+        - "pending_txs"
+        - "network_load"
+        - "block_time"
+      liquidity:
+        - "reserves"
+        - "volume"
+        - "price_impact"
+      market:
+        - "price"
+        - "volatility"
+        - "trend"
+
+# Storage configuration
+storage:
+  type: "timeseries"
+  database_path: "data/timeseries.db"
+  retention_days: 30
+  compression_enabled: true
+  backup_enabled: true
+  backup_interval_hours: 24
+  backup_path: "data/backups"
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  interval_seconds: 60
+  alerts:
+    email:
+      enabled: false
+      recipients: []
+    discord:
+      enabled: false
+      webhook_url: ""
+  thresholds:
+    collection_gap_seconds: 60  # Alert if no data collected for this long
+    storage_usage_percent: 80   # Alert if storage usage exceeds this
+    error_rate_threshold: 0.01  # Alert if error rate exceeds this
+
+# Example of how to extend configuration for specific environments
+environments:
+  development:
+    global:
+      log_level: "DEBUG"
+    collectors:
+      network:
+        interval_seconds: 5  # Slower collection for development
+      pool:
+        interval_seconds: 10
+    storage:
+      retention_days: 7  # Keep less history in development
+  
+  testing:
+    global:
+      log_level: "DEBUG"
+    storage:
+      database_path: "data/test.db"
+      retention_days: 1
+    monitoring:
+      enabled: false
