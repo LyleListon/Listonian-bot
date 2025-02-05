@@ -47,11 +47,20 @@
   * Fixed by:
     1. Updated .gitignore to exclude config files
     2. Created template files using environment variables
-    3. Moved sensitive data to environment variables
+    3. Modified pre-commit hook to allow templates while blocking real credentials
+    4. Added secure configuration documentation
   * Action needed:
     1. Rotate all security credentials
     2. Update configuration to use environment variables
-    3. Ensure all developers follow security protocols
+    3. Follow secure_configuration.md guidelines
+
+## Recent Changes
+- Modified git pre-commit hook to:
+  * Allow template files (.env.example)
+  * Allow environment variable placeholders (${VAR_NAME})
+  * Block actual sensitive values
+- Added docs/secure_configuration.md with setup guidelines
+- Created configs/wallet_config.json.example template
 
 
 ## Notes for Next Session
@@ -59,3 +68,11 @@
 2. Focus on high-priority tasks from progress.md
 3. Update documentation as new information is discovered
 4. Track any issues or concerns identified during review
+
+## Lessons Learned
+- Security measures should be balanced:
+  * Strict enough to prevent accidental credential exposure
+  * Flexible enough to allow legitimate development work
+  * Current pre-commit hook achieves this balance
+- Template files with ${VAR_NAME} placeholders are preferred
+- Sensitive data belongs in environment variables, not in code
