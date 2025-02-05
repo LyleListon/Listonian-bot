@@ -1,155 +1,78 @@
-# System Patterns and Architecture
+# System Patterns
 
-## DEX Integration Framework
+## Architecture Overview
 
 ### Core Components
 
-1. DEX Registry Pattern
-   - Central management of DEX integrations via `DEXRegistry` class
-   - Dynamic registration/unregistration of DEXes
-   - Consistent interface for accessing DEX functionality
-   - Located in: `arbitrage_bot/core/dex/dex_registry.py`
+1. Blockchain Layer
+   - Smart Contracts for on-chain interactions
+   - DEX Registry for exchange management
+   - Price Feed Registry for market data
 
-2. Base DEX Classes
-   - `BaseDEX`: Common interface for all DEXes
-   - `BaseV2DEX`: Specialized for V2-style DEXes (pair-based)
-   - `BaseV3DEX`: Specialized for V3-style DEXes (concentrated liquidity)
-   - Located in: `arbitrage_bot/core/dex/base_dex_*.py`
+2. Trading Execution Layer
+   - Arbitrage Detector for opportunity identification
+   - Trade Router for execution management
+   - Risk Manager for trade validation
 
-3. DEX Implementations
-   - Each DEX inherits from appropriate base class
-   - Consistent error handling and logging
-   - Example implementations:
-     - PancakeSwap V3: `arbitrage_bot/core/dex/implementations/pancakeswap_v3.py`
-     - BaseSwap V2: `arbitrage_bot/core/dex/implementations/baseswap_v2.py`
+3. Machine Learning Layer
+   - Predictive Models for market analysis
+   - Reinforcement Learning for strategy optimization
+   - Evolutionary Optimizer for parameter tuning
 
-### Integration Points
+4. Monitoring Layer
+   - Real-time price monitoring
+   - System status tracking
+   - Performance metrics
+   - WebSocket-based updates
 
-1. Market Analyzer Integration
-   - Uses DEX registry for all DEX operations
-   - Consistent quote handling across DEXes
-   - Improved error handling and logging
-   - File: `arbitrage_bot/core/analysis/market_analyzer.py`
+## Key Technical Decisions
 
-2. Configuration
-   - DEX-specific settings in config files
-   - Required parameters:
-     - V2: router, factory, fee_numerator
-     - V3: quoter, factory, fee_tiers
+1. Multi-DEX Integration
+   - Unified interface for all DEXs
+   - Support for V2/V3 protocols
+   - Protocol-specific implementations
+   - Extensible architecture
 
-### Adding New DEXes
+2. Real-time Data Processing
+   - WebSocket connections (port 8771)
+   - Efficient data caching
+   - TokenOptimizer implementation
+   - Real-time market updates
 
-1. Choose appropriate base class (V2 or V3)
-2. Implement required methods:
-   - get_quote
-   - check_liquidity
-   - Additional DEX-specific methods
-3. Register with DEXRegistry in MarketAnalyzer initialization
+3. Machine Learning Integration
+   - Market prediction models
+   - Strategy optimization
+   - Parameter tuning
+   - Continuous learning
 
-### Error Handling
+4. Modular Design
+   - Component-based architecture
+   - Clear separation of concerns
+   - Easy maintenance and scaling
+   - Flexible configuration
 
-1. Consistent error patterns:
-   - DEX-specific errors wrapped in QuoteResult
-   - Detailed logging with context
-   - Automatic error propagation to monitoring
+## Implementation Patterns
 
-2. Rate Limiting:
-   - Per-DEX rate limiting
-   - Exponential backoff
-   - Automatic retry logic
+1. Configuration Management
+   - Environment-based settings
+   - Secure credential handling
+   - Dynamic configuration loading
+   - Network-specific configs
 
-### Monitoring and Metrics
+2. Risk Management
+   - Pre-trade validation
+   - Position size limits
+   - Gas price optimization
+   - Market condition assessment
 
-1. Per-DEX metrics:
-   - Quote success rate
-   - Response times
-   - Error rates
-   - Liquidity levels
+3. Monitoring and Analytics
+   - Real-time dashboard
+   - Performance tracking
+   - System health monitoring
+   - Historical analysis
 
-2. Aggregated metrics:
-   - Cross-DEX price comparisons
-   - Arbitrage opportunities
-   - System health indicators
-
-## Next Steps
-
-1. Implement additional DEXes:
-   - Aerodrome
-   - SwapBased
-   - RocketSwap
-
-2. Enhance monitoring:
-   - Add DEX-specific health checks
-   - Implement automatic failover
-   - Add performance benchmarking
-
-3. Optimize gas usage:
-   - Implement multicall for batch quotes
-   - Add gas estimation per DEX
-   - Optimize path encoding
-
-## Implementation Guidelines
-
-1. New DEX Integration:
-```python
-from ..base_dex_v2 import BaseV2DEX  # or base_dex_v3
-from ..dex_registry import QuoteResult
-
-class NewDEX(BaseV2DEX):
-    def __init__(self, web3, config):
-        super().__init__(web3, config)
-        self.name = "new_dex"
-        self.version = "v2"  # or "v3"
-        
-    async def get_quote(self, token_in, token_out, amount_in):
-        try:
-            # DEX-specific quote logic
-            return QuoteResult(
-                amount_out=quote,
-                fee=fee,
-                price_impact=impact,
-                path=[token_in, token_out],
-                success=True
-            )
-        except Exception as e:
-            self.log_error(e, {
-                "method": "get_quote",
-                "token_in": token_in,
-                "token_out": token_out
-            })
-            return QuoteResult(
-                amount_out=0,
-                fee=0,
-                price_impact=0,
-                path=[],
-                success=False,
-                error=str(e)
-            )
-```
-
-2. Registration:
-```python
-# In MarketAnalyzer._initialize_dexes
-from ..dex.implementations.new_dex import NewDEX
-
-if dex_name == "new_dex":
-    dex = NewDEX(self.w3, dex_config)
-    self.dex_registry.register(dex)
-```
-
-## Testing Strategy
-
-1. Unit Tests:
-   - Test each DEX implementation independently
-   - Mock Web3 responses
-   - Verify error handling
-
-2. Integration Tests:
-   - Test DEX interactions with live networks
-   - Verify quote accuracy
-   - Test rate limiting
-
-3. System Tests:
-   - Test full arbitrage workflow
-   - Verify monitoring and metrics
-   - Test failover scenarios
+4. Security Implementation
+   - Secure wallet management
+   - Environment variable protection
+   - Regular security audits
+   - Git security practices
