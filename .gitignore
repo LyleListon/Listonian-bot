@@ -73,3 +73,4 @@ configs/*_config.json
 # WARNING: Log files contain sensitive data and high-volume output
 # DO NOT attempt to read log files with AI assistants
 # Logs are stored in logs/ directory and should be handled with care
+Roo-Cline
