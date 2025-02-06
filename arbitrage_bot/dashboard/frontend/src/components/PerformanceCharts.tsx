@@ -1,11 +1,10 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   Box,
   Card,
   CardContent,
   Typography,
   Grid,
-  Divider,
   useTheme,
 } from '@mui/material';
 import {
@@ -24,10 +23,10 @@ import {
   Title,
   Tooltip,
   Legend,
-  ChartData,
-  ChartOptions,
 } from 'chart.js';
 import { useWebSocket } from '../providers/WebSocketProvider';
+import { PerformanceMessage } from '../types/websocket';
+import { format } from 'date-fns';
 
 // Register ChartJS components
 ChartJS.register(
@@ -44,9 +43,14 @@ ChartJS.register(
 
 const PerformanceCharts: React.FC = () => {
   const theme = useTheme();
-  const { lastUpdate } = useWebSocket();
+  const { lastMessage } = useWebSocket();
 
-  const chartOptions: ChartOptions<'line'> = {
+  // Cast lastMessage to PerformanceMessage if it's a performance type
+  const performanceData = lastMessage?.type === 'performance'
+    ? (lastMessage as PerformanceMessage).performance
+    : [];
+
+  const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -55,10 +59,6 @@ const PerformanceCharts: React.FC = () => {
         labels: {
           color: theme.palette.text.primary,
         },
-      },
-      tooltip: {
-        mode: 'index',
-        intersect: false,
       },
     },
     scales: {
@@ -81,154 +81,129 @@ const PerformanceCharts: React.FC = () => {
     },
   };
 
-  const profitChartData = useMemo(() => {
-    if (!lastUpdate) return null;
+  const profitChartData = {
+    labels: performanceData.map(d => format(d.timestamp, 'HH:mm')),
+    datasets: [
+      {
+        label: 'Profit (ETH)',
+        data: performanceData.map(d => d.profit),
+        borderColor: theme.palette.primary.main,
+        backgroundColor: theme.palette.primary.main + '40',
+        fill: true,
+      },
+    ],
+  };
 
-    const { trades, profit_loss } = lastUpdate.performance;
-    const profitData: ChartData<'line'> = {
-      labels: Array.from({ length: 10 }, (_, i) => `${i + 1}m ago`).reverse(),
-      datasets: [
-        {
-          label: 'Cumulative Profit',
-          data: Array(10).fill(profit_loss.net_profit / 10),
-          borderColor: theme.palette.success.main,
-          backgroundColor: theme.palette.success.main + '40',
-          fill: true,
-          tension: 0.4,
-        },
-      ],
-    };
+  const tradesChartData = {
+    labels: performanceData.map(d => format(d.timestamp, 'HH:mm')),
+    datasets: [
+      {
+        label: 'Number of Trades',
+        data: performanceData.map(d => d.trades),
+        backgroundColor: theme.palette.secondary.main,
+      },
+    ],
+  };
 
-    return profitData;
-  }, [lastUpdate, theme]);
+  const successRateData = {
+    labels: ['Successful', 'Failed'],
+    datasets: [
+      {
+        data: [
+          performanceData[performanceData.length - 1]?.successRate || 0,
+          100 - (performanceData[performanceData.length - 1]?.successRate || 0),
+        ],
+        backgroundColor: [
+          theme.palette.success.main,
+          theme.palette.error.main,
+        ],
+      },
+    ],
+  };
 
-  const winRateChartData = useMemo(() => {
-    if (!lastUpdate) return null;
-
-    const { trades } = lastUpdate.performance;
-    const winRate = trades.successful / trades.total;
-    const lossRate = 1 - winRate;
-
-    const data: ChartData<'doughnut'> = {
-      labels: ['Wins', 'Losses'],
-      datasets: [
-        {
-          data: [winRate * 100, lossRate * 100],
-          backgroundColor: [
-            theme.palette.success.main,
-            theme.palette.error.main,
-          ],
-          borderWidth: 0,
-        },
-      ],
-    };
-
-    return data;
-  }, [lastUpdate, theme]);
-
-  const riskMetricsData = useMemo(() => {
-    if (!lastUpdate) return null;
-
-    const { risk } = lastUpdate.performance;
-    const data: ChartData<'bar'> = {
-      labels: ['Drawdown', 'Exposure', 'Volatility'],
-      datasets: [
-        {
-          label: 'Risk Metrics',
-          data: [
-            risk.drawdown * 100,
-            risk.exposure * 100,
-            risk.volatility * 100,
-          ],
-          backgroundColor: [
-            theme.palette.warning.main,
-            theme.palette.info.main,
-            theme.palette.error.main,
-          ],
-        },
-      ],
-    };
-
-    return data;
-  }, [lastUpdate, theme]);
-
-  if (!lastUpdate) return null;
-
-  const { trades, profit_loss } = lastUpdate.performance;
+  if (!performanceData.length) {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Typography color="textSecondary">
+          Waiting for performance data...
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
-    <Grid container spacing={2}>
+    <Grid container spacing={3}>
       {/* Profit Chart */}
-      <Grid item xs={12}>
+      <Grid item xs={12} md={6}>
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Profit Performance
+              Profit Over Time
             </Typography>
             <Box sx={{ height: 300 }}>
-              {profitChartData && (
-                <Line options={chartOptions} data={profitChartData} />
-              )}
-            </Box>
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-around' }}>
-              <Typography variant="body2" color="textSecondary">
-                Total Profit: ${profit_loss.total_profit.toFixed(2)}
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Net Profit: ${profit_loss.net_profit.toFixed(2)}
-              </Typography>
+              <Line options={chartOptions} data={profitChartData} />
             </Box>
           </CardContent>
         </Card>
       </Grid>
 
-      {/* Win Rate Chart */}
+      {/* Trades Chart */}
       <Grid item xs={12} md={6}>
-        <Card sx={{ height: '100%' }}>
+        <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Win Rate
+              Trade Volume
             </Typography>
-            <Box sx={{ height: 200, display: 'flex', justifyContent: 'center' }}>
-              {winRateChartData && (
-                <Doughnut
-                  data={winRateChartData}
-                  options={{
-                    ...chartOptions,
-                    cutout: '70%',
-                  }}
-                />
-              )}
-            </Box>
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Typography variant="h4">
-                {((trades.successful / trades.total) * 100).toFixed(1)}%
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                {trades.successful} / {trades.total} trades
-              </Typography>
+            <Box sx={{ height: 300 }}>
+              <Bar options={chartOptions} data={tradesChartData} />
             </Box>
           </CardContent>
         </Card>
       </Grid>
 
-      {/* Risk Metrics */}
+      {/* Success Rate Chart */}
       <Grid item xs={12} md={6}>
-        <Card sx={{ height: '100%' }}>
+        <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Risk Metrics
+              Success Rate
             </Typography>
-            <Box sx={{ height: 200 }}>
-              {riskMetricsData && (
-                <Bar
-                  data={riskMetricsData}
-                  options={{
-                    ...chartOptions,
-                    indexAxis: 'y' as const,
-                  }}
-                />
-              )}
+            <Box sx={{ height: 300 }}>
+              <Doughnut
+                data={successRateData}
+                options={{
+                  ...chartOptions,
+                  cutout: '70%',
+                }}
+              />
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      {/* Gas Usage Chart */}
+      <Grid item xs={12} md={6}>
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Gas Usage
+            </Typography>
+            <Box sx={{ height: 300 }}>
+              <Line
+                options={chartOptions}
+                data={{
+                  labels: performanceData.map(d => format(d.timestamp, 'HH:mm')),
+                  datasets: [
+                    {
+                      label: 'Gas Used (gwei)',
+                      data: performanceData.map(d => d.gasUsed),
+                      borderColor: theme.palette.warning.main,
+                      backgroundColor: theme.palette.warning.main + '40',
+                      fill: true,
+                    },
+                  ],
+                }}
+              />
             </Box>
           </CardContent>
         </Card>

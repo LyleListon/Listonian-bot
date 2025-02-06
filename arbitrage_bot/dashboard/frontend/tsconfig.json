@@ -21,14 +21,32 @@
     "jsx": "react-jsx",
     "baseUrl": "src",
     "paths": {
+      "@/*": ["*"],
       "@components/*": ["components/*"],
-      "@providers/*": ["providers/*"],
-      "@hooks/*": ["hooks/*"],
       "@utils/*": ["utils/*"],
+      "@hooks/*": ["hooks/*"],
+      "@providers/*": ["providers/*"],
       "@types/*": ["types/*"]
-    }
+    },
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types"
+    ]
   },
   "include": [
-    "src"
+    "src",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.json",
+    "src/custom.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "scripts",
+    "acceptance-tests",
+    "webpack",
+    "jest",
+    "src/setupTests.ts"
   ]
 }

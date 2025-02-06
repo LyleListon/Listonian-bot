@@ -1,5 +1,17 @@
 import React from 'react';
-import { Box, AppBar, Toolbar, Typography, IconButton, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme } from '@mui/material';
+import {
+  Box,
+  AppBar,
+  Toolbar,
+  Typography,
+  IconButton,
+  Drawer,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  useTheme,
+} from '@mui/material';
 import { styled } from '@mui/material/styles';
 import {
   Menu as MenuIcon,
@@ -8,9 +20,11 @@ import {
   Assessment as AssessmentIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
+  People as PeopleIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useWebSocket } from '../providers/WebSocketProvider';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 
 // Custom styled components
 const drawerWidth = 240;
@@ -34,19 +48,28 @@ const Main = styled('main', { shouldForwardProp: (prop) => prop !== 'open' })<{
   }),
 }));
 
+interface MenuItem {
+  text: string;
+  icon: React.ReactNode;
+  path: string;
+}
+
 const Layout: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(true);
   const theme = useTheme();
-  const { connected, lastUpdate } = useWebSocket();
+  const { connected } = useWebSocket();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const handleDrawerToggle = () => {
     setDrawerOpen(!drawerOpen);
   };
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Opportunities', icon: <TimelineIcon />, path: '/opportunities' },
     { text: 'Performance', icon: <AssessmentIcon />, path: '/performance' },
+    { text: 'Users', icon: <PeopleIcon />, path: '/users' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
   ];
 
@@ -107,10 +130,14 @@ const Layout: React.FC = () => {
         <Toolbar /> {/* Spacer for AppBar */}
         <List>
           {menuItems.map((item) => (
-            <ListItem button key={item.text}>
+            <ListItemButton
+              key={item.text}
+              onClick={() => navigate(item.path)}
+              selected={location.pathname === item.path}
+            >
               <ListItemIcon sx={{ color: 'primary.main' }}>{item.icon}</ListItemIcon>
               <ListItemText primary={item.text} />
-            </ListItem>
+            </ListItemButton>
           ))}
         </List>
       </Drawer>
@@ -119,34 +146,7 @@ const Layout: React.FC = () => {
       <Main open={drawerOpen}>
         <Toolbar /> {/* Spacer for AppBar */}
         <Box sx={{ p: 3 }}>
-          {/* Dashboard Content */}
-          {lastUpdate && (
-            <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-              {/* Opportunity Cards */}
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Active Opportunities
-                </Typography>
-                {/* Add OpportunityList component here */}
-              </Box>
-
-              {/* Prediction Cards */}
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  ML Predictions
-                </Typography>
-                {/* Add PredictionCards component here */}
-              </Box>
-
-              {/* Performance Charts */}
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Performance
-                </Typography>
-                {/* Add PerformanceCharts component here */}
-              </Box>
-            </Box>
-          )}
+          <Outlet />
         </Box>
       </Main>
     </Box>

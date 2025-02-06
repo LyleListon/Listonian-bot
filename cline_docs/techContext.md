@@ -1,323 +1,178 @@
 # Technical Context
 
-<<<<<<< Updated upstream
-## Technologies Used
-
-### Core Technologies
-- Python 3.9+
-- Node.js (for contract compilation)
-- Web3 Provider (Infura/Alchemy)
-- WebSocket Server (port 8771)
-- Flask (Dashboard)
-- SocketIO (Real-time updates)
-
-### Blockchain Technologies
-- Smart Contracts (Solidity)
-- Multiple DEX Protocols (V2/V3)
-  - PancakeSwap V3
-  - BaseSwap
-  - Aerodrome
-  - Other supported DEXs
-
-### Machine Learning
-- Predictive Models
-- Reinforcement Learning
-- Evolutionary Algorithms
-- Data Analysis Tools
-=======
-## System Requirements
+## Technology Stack
 
 ### Backend
-- Python 3.8+
-- FastAPI
-- WebSocket support
-- PostgreSQL database
-- Redis for caching
-- JWT authentication
-- OAuth2 providers
+- **Language**: Python
+- **Framework**: 
+  - FastAPI (Dashboard)
+  - WebSocket support
+  - JWT authentication
+- **Database**: 
+  - SQLite (arbitrage.db, trades.db)
+  - Time-series storage for market data
 
-### Frontend
-- Node.js 16+
-- React 18+
-- TypeScript 4+
-- Material-UI
-- React Query
-- WebSocket client
-- Chart.js
+### Frontend (Dashboard)
+- **Framework**: React with TypeScript
+- **State Management**: Context API
+- **Real-time Updates**: WebSocket
+- **UI Components**: Material-UI
+- **Authentication**: OAuth2 (Google, GitHub)
+- **Routing**: React Router with protected routes
+- **Data Visualization**: Performance charts, prediction cards
 
-### Authentication
-- OAuth2 providers:
-  * Google OAuth2
-  * GitHub OAuth2
-- JWT tokens
-- Session management
-- Role-based access
+### Blockchain
+- **Smart Contracts**: Solidity
+- **Networks**: Multiple EVM-compatible chains
+- **Contract Interfaces**: Web3.py
+- **DEX Integration**: Multiple V2/V3 protocols
 
-### Infrastructure
-- Linux/Unix environment
-- Docker support
-- SSL/TLS certificates
-- Load balancer ready
-- Monitoring system
+### Machine Learning
+- **Framework**: PyTorch
+- **Models**: 
+  - LSTM for price prediction
+  - CNN for pattern detection
+  - Isolation Forest for anomaly detection
+- **Feature Engineering**: Custom pipeline
+- **Training**: Online learning system
 
-## Dependencies
+## Development Setup
 
-### Python Packages
-- fastapi
-- uvicorn
-- websockets
-- pydantic
-- sqlalchemy
-- redis
-- jwt
-- authlib
-- aiohttp
-- numpy
-- pandas
-- torch
-- pytest
+### Prerequisites
+1. Python 3.8+
+2. Node.js 16+
+3. Web3 provider
+4. Database setup
+5. Configuration files
+6. OAuth2 credentials (Google, GitHub)
 
-### Node Packages
-- react
-- react-dom
-- react-router-dom
-- react-query
-- material-ui
-- notistack
-- chart.js
-- axios
-- typescript
-- jest
->>>>>>> Stashed changes
+### Environment Configuration
+1. `.env` file for sensitive data
+2. `config.json` for system settings
+3. `wallet_config.json` for blockchain accounts
+4. `auth_config.yaml` for OAuth settings
+5. Various YAML configs for components
 
-## Development Tools
-
-<<<<<<< Updated upstream
-### System Requirements
-- 2GB RAM minimum
-- SSD Storage
-- Stable network connection
-- Unix-like environment preferred
-
-### Environment Setup
-1. Python Dependencies
+### Local Development
+1. Start backend:
    ```bash
-   pip install -r requirements.txt
+   cd backend && uvicorn api:app --reload
    ```
 
-2. Node.js Dependencies
+2. Start frontend:
    ```bash
-   npm install
+   cd frontend && npm start
    ```
 
-3. Environment Configuration
-   - Copy .env.template to .env
-   - Configure Web3 provider
-   - Set up API keys
-   - Configure wallet details
-
-### Configuration Files
-- trading_config.json: Trading parameters
-- dex_config.json: DEX configurations
-- cline_mcp_settings.json: MCP server settings
+3. Run monitoring:
+   ```bash
+   python start_monitoring.py
+   ```
 
 ## Technical Constraints
 
-### Performance Requirements
-- Real-time price monitoring
-- Low-latency trade execution
-- Efficient memory management
-- Optimized gas usage
+### Performance
+1. **Latency Requirements**
+   - Trade execution: < 500ms
+   - Price updates: < 100ms
+   - ML inference: < 200ms
+   - Dashboard response: < 100ms
+   - WebSocket latency: < 50ms
 
-### Security Requirements
-- Secure wallet management
-- Protected environment variables
-- Regular security audits
-- Git security practices
+2. **Resource Limits**
+   - Memory usage: < 8GB
+   - CPU utilization: < 80%
+   - Storage: < 100GB
+   - Concurrent users: < 100
 
-### Network Requirements
-- Stable internet connection
-- Reliable RPC endpoints
-- WebSocket support
-- Multiple DEX connections
+### Security
+1. **Access Control**
+   - OAuth2 authentication
+   - JWT token management
+   - Role-based authorization
+   - API key management
+   - Wallet security
 
-### Resource Constraints
-- Memory usage optimization
-- CPU usage management
-- Network bandwidth consideration
-- Storage space management
-
-## Development Guidelines
-
-### Code Standards
-- PEP 8 compliance
-- Type hints usage
-- Documentation requirements
-- Testing coverage
-
-### Security Practices
-- No sensitive data in code
-- Environment variable usage
-- Regular dependency updates
-- Security audit compliance
-
-### Performance Guidelines
-- Efficient data structures
-- Optimized algorithms
-- Resource management
-- Caching strategies
-=======
-### Required
-- Git
-- VSCode or similar IDE
-- Python virtual environment
-- Node package manager (npm)
-- PostgreSQL client
-- Redis client
-
-### Optional
-- Docker Desktop
-- Postman
-- pgAdmin
-- Redis Desktop Manager
-
-## Security Requirements
-
-### Authentication
-- OAuth2 configuration
-- SSL/TLS certificates
-- Secure session storage
-- Token management
-- Role management
-
-### API Security
-- Rate limiting
-- CORS protection
-- Input validation
-- Error handling
-- Audit logging
-
-### Data Security
-- Encryption at rest
-- Secure transmission
-- Access control
-- Backup systems
-
-## Performance Requirements
-
-### Response Times
-- API: < 100ms
-- WebSocket: Real-time
-- ML predictions: < 500ms
-- Authentication: < 200ms
+2. **Data Protection**
+   - Encrypted configuration
+   - Secure key storage
+   - Protected API endpoints
+   - CORS policies
+   - Rate limiting
 
 ### Scalability
-- Horizontal scaling
-- Load balancing
-- Connection pooling
-- Caching strategy
+1. **System Limits**
+   - Max concurrent trades: 50
+   - Max monitored pairs: 1000
+   - Max DEX connections: 20
+   - Max WebSocket connections: 200
 
-### Resource Usage
-- CPU optimization
-- Memory management
-- Network efficiency
-- Storage optimization
+2. **Resource Scaling**
+   - Horizontal scaling capability
+   - Load balancing support
+   - Database partitioning
+   - WebSocket clustering
 
-## Monitoring Requirements
+## Dependencies
 
-### System Metrics
-- CPU usage
-- Memory usage
-- Network traffic
-- Error rates
-- Response times
+### Core Libraries
+- web3.py: Blockchain interaction
+- numpy: Numerical operations
+- pandas: Data manipulation
+- pytorch: Machine learning
+- fastapi: Web server
+- websockets: Real-time communication
+- pyjwt: Token management
+- react: Frontend framework
+- material-ui: UI components
 
-### Business Metrics
-- Active users
-- Trading volume
-- Success rates
-- Profit metrics
+### External Services
+- Blockchain nodes
+- Price feed oracles
+- Time synchronization
+- Monitoring services
+- OAuth2 providers
 
-### Security Metrics
-- Authentication attempts
-- Failed logins
-- Token usage
-- Role changes
+## Development Workflow
 
-## Documentation Requirements
+### Version Control
+- Git for source control
+- Feature branch workflow
+- PR review process
+- CI/CD integration
 
-### Code Documentation
-- Type hints
-- Function docs
-- Class docs
-- Module docs
+### Testing
+- Unit tests with pytest
+- React testing library
+- Integration tests
+- Performance testing
+- Security audits
 
-### API Documentation
-- OpenAPI/Swagger
-- Authentication flows
-- Error codes
-- Examples
+### Deployment
+- CI/CD pipeline
+- Environment stages
+- Rollback procedures
+- Zero-downtime updates
 
-### User Documentation
-- Setup guides
-- Usage guides
-- API guides
-- Security guides
+## Monitoring & Maintenance
 
-## Testing Requirements
+### System Health
+- Performance metrics
+- Error tracking
+- Resource utilization
+- Network status
+- User session monitoring
 
-### Unit Tests
-- Python tests
-- React tests
-- API tests
-- Model tests
+### Updates & Patches
+- Regular dependency updates
+- Security patches
+- Performance optimizations
+- Feature deployments
+- OAuth provider updates
 
-### Integration Tests
-- End-to-end tests
-- Performance tests
-- Security tests
-- UI tests
-
-## Deployment Requirements
-
-### Development
-- Local setup
-- Hot reloading
-- Debug mode
-- Test data
-
-### Production
-- SSL/TLS
-- Domain setup
-- Load balancing
-- Monitoring
-- Backups
-
-## Maintenance Requirements
-
-### Regular Tasks
-- Security updates
-- Dependency updates
-- Performance tuning
-- Log rotation
-
-### Backup Strategy
-- Database backups
-- Configuration backups
-- Model backups
-- Log backups
-
-## Support Requirements
-
-### User Support
-- Documentation
-- Setup help
-- Error resolution
-- Feature requests
-
-### System Support
-- Monitoring
-- Error handling
-- Performance tuning
-- Security updates
->>>>>>> Stashed changes
+### Dashboard Monitoring
+- User activity tracking
+- Performance metrics
+- Error logging
+- WebSocket health
+- Authentication status
