@@ -14,6 +14,7 @@ npm install \
     @types/node \
     @types/react \
     @types/react-dom \
+<<<<<<< Updated upstream
     @tanstack/react-query \
     @uniswap/sdk \
     @uniswap/v2-sdk \
@@ -24,6 +25,11 @@ npm install \
     chart.js \
     date-fns \
     ethers@5.7.2 \
+=======
+    axios \
+    chart.js \
+    date-fns \
+>>>>>>> Stashed changes
     notistack \
     react \
     react-chartjs-2 \
@@ -31,8 +37,12 @@ npm install \
     react-query \
     react-router-dom \
     typescript \
+<<<<<<< Updated upstream
     web-vitals \
     web3@1.10.0
+=======
+    web-vitals
+>>>>>>> Stashed changes
 
 # Install dev dependencies
 npm install --save-dev \
@@ -48,10 +58,19 @@ mkdir -p src/hooks
 mkdir -p src/utils
 mkdir -p src/types
 
+<<<<<<< Updated upstream
+=======
+# Install additional type definitions
+npm install --save-dev \
+    @types/chart.js \
+    @types/date-fns
+
+>>>>>>> Stashed changes
 # Create environment file
 cat > .env << EOL
 REACT_APP_WS_URL=ws://localhost:8000/ws
 REACT_APP_API_URL=http://localhost:8000/api
+<<<<<<< Updated upstream
 
 # Blockchain Network Settings
 REACT_APP_NETWORK_RPC_URL=https://base-mainnet.g.alchemy.com/v2/your-api-key
@@ -62,12 +81,15 @@ REACT_APP_UNISWAP_V2_ROUTER=0x...
 REACT_APP_UNISWAP_V3_ROUTER=0x...
 REACT_APP_PANCAKESWAP_V2_ROUTER=0x...
 REACT_APP_PANCAKESWAP_V3_ROUTER=0x...
+=======
+>>>>>>> Stashed changes
 EOL
 
 # Create environment file for production
 cat > .env.production << EOL
 REACT_APP_WS_URL=wss://your-production-domain.com/ws
 REACT_APP_API_URL=https://your-production-domain.com/api
+<<<<<<< Updated upstream
 
 # Blockchain Network Settings
 REACT_APP_NETWORK_RPC_URL=https://base-mainnet.g.alchemy.com/v2/your-api-key
@@ -78,13 +100,106 @@ REACT_APP_UNISWAP_V2_ROUTER=0x...
 REACT_APP_UNISWAP_V3_ROUTER=0x...
 REACT_APP_PANCAKESWAP_V2_ROUTER=0x...
 REACT_APP_PANCAKESWAP_V3_ROUTER=0x...
+=======
+EOL
+
+# Update index.html with required fonts and meta tags
+cat > public/index.html << EOL
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Arbitrage Trading Dashboard" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;700&display=swap" />
+    <title>Arbitrage Dashboard</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
+EOL
+
+# Update package.json scripts
+cat > package.json << EOL
+{
+  "name": "arbitrage-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.11.16",
+    "@mui/material": "^5.13.0",
+    "@types/node": "^16.18.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "axios": "^1.4.0",
+    "chart.js": "^4.3.0",
+    "date-fns": "^2.30.0",
+    "notistack": "^3.0.1",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.2.0",
+    "react-query": "^3.39.0",
+    "react-router-dom": "^6.11.0",
+    "typescript": "^4.9.5",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "lint": "eslint src --ext .ts,.tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "type-check": "tsc --noEmit"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "@types/jest": "^27.5.2",
+    "@types/chart.js": "^2.9.37",
+    "@types/date-fns": "^2.6.0"
+  }
+}
+>>>>>>> Stashed changes
 EOL
 
 # Make the script executable
 chmod +x setup.sh
 
+<<<<<<< Updated upstream
 echo "Setup complete! Run 'npm start' to start the development server."
 echo "Don't forget to:"
 echo "1. Update the RPC URL with your Alchemy API key"
 echo "2. Update the router contract addresses"
 echo "3. Configure your production environment variables"
+=======
+echo "Setup complete! Run 'npm start' to start the development server."
+>>>>>>> Stashed changes

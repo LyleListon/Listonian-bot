@@ -21,6 +21,7 @@
     "jsx": "react-jsx",
     "baseUrl": "src",
     "paths": {
+<<<<<<< Updated upstream
       "@/*": ["*"],
       "@components/*": ["components/*"],
       "@utils/*": ["utils/*"],
@@ -48,5 +49,16 @@
     "webpack",
     "jest",
     "src/setupTests.ts"
+=======
+      "@components/*": ["components/*"],
+      "@providers/*": ["providers/*"],
+      "@hooks/*": ["hooks/*"],
+      "@utils/*": ["utils/*"],
+      "@types/*": ["types/*"]
+    }
+  },
+  "include": [
+    "src"
+>>>>>>> Stashed changes
   ]
 }

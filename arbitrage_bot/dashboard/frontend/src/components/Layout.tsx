@@ -1,4 +1,5 @@
 import React from 'react';
+<<<<<<< Updated upstream
 import {
   Box,
   AppBar,
@@ -12,6 +13,9 @@ import {
   ListItemText,
   useTheme,
 } from '@mui/material';
+=======
+import { Box, AppBar, Toolbar, Typography, IconButton, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme } from '@mui/material';
+>>>>>>> Stashed changes
 import { styled } from '@mui/material/styles';
 import {
   Menu as MenuIcon,
@@ -20,11 +24,17 @@ import {
   Assessment as AssessmentIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
+<<<<<<< Updated upstream
   People as PeopleIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useWebSocket } from '../providers/WebSocketProvider';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+=======
+} from '@mui/icons-material';
+import { useState } from 'react';
+import { useWebSocket } from '../providers/WebSocketProvider';
+>>>>>>> Stashed changes
 
 // Custom styled components
 const drawerWidth = 240;
@@ -48,6 +58,7 @@ const Main = styled('main', { shouldForwardProp: (prop) => prop !== 'open' })<{
   }),
 }));
 
+<<<<<<< Updated upstream
 interface MenuItem {
   text: string;
   icon: React.ReactNode;
@@ -60,16 +71,29 @@ const Layout: React.FC = () => {
   const { connected } = useWebSocket();
   const navigate = useNavigate();
   const location = useLocation();
+=======
+const Layout: React.FC = () => {
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const theme = useTheme();
+  const { connected, lastUpdate } = useWebSocket();
+>>>>>>> Stashed changes
 
   const handleDrawerToggle = () => {
     setDrawerOpen(!drawerOpen);
   };
 
+<<<<<<< Updated upstream
   const menuItems: MenuItem[] = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Opportunities', icon: <TimelineIcon />, path: '/opportunities' },
     { text: 'Performance', icon: <AssessmentIcon />, path: '/performance' },
     { text: 'Users', icon: <PeopleIcon />, path: '/users' },
+=======
+  const menuItems = [
+    { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+    { text: 'Opportunities', icon: <TimelineIcon />, path: '/opportunities' },
+    { text: 'Performance', icon: <AssessmentIcon />, path: '/performance' },
+>>>>>>> Stashed changes
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
   ];
 
@@ -130,6 +154,7 @@ const Layout: React.FC = () => {
         <Toolbar /> {/* Spacer for AppBar */}
         <List>
           {menuItems.map((item) => (
+<<<<<<< Updated upstream
             <ListItemButton
               key={item.text}
               onClick={() => navigate(item.path)}
@@ -138,6 +163,12 @@ const Layout: React.FC = () => {
               <ListItemIcon sx={{ color: 'primary.main' }}>{item.icon}</ListItemIcon>
               <ListItemText primary={item.text} />
             </ListItemButton>
+=======
+            <ListItem button key={item.text}>
+              <ListItemIcon sx={{ color: 'primary.main' }}>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.text} />
+            </ListItem>
+>>>>>>> Stashed changes
           ))}
         </List>
       </Drawer>
@@ -146,7 +177,38 @@ const Layout: React.FC = () => {
       <Main open={drawerOpen}>
         <Toolbar /> {/* Spacer for AppBar */}
         <Box sx={{ p: 3 }}>
+<<<<<<< Updated upstream
           <Outlet />
+=======
+          {/* Dashboard Content */}
+          {lastUpdate && (
+            <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+              {/* Opportunity Cards */}
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  Active Opportunities
+                </Typography>
+                {/* Add OpportunityList component here */}
+              </Box>
+
+              {/* Prediction Cards */}
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  ML Predictions
+                </Typography>
+                {/* Add PredictionCards component here */}
+              </Box>
+
+              {/* Performance Charts */}
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  Performance
+                </Typography>
+                {/* Add PerformanceCharts component here */}
+              </Box>
+            </Box>
+          )}
+>>>>>>> Stashed changes
         </Box>
       </Main>
     </Box>

@@ -1,4 +1,5 @@
 import React from 'react';
+<<<<<<< Updated upstream
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material/styles';
 import { createTheme } from '@mui/material/styles';
@@ -14,6 +15,20 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import DashboardContent from './components/DashboardContent';
 import UserManagement from './pages/UserManagement';
+=======
+import { QueryClient, QueryClientProvider } from 'react-query';
+import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { SnackbarProvider } from 'notistack';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
+
+import Layout from './components/Layout';
+import Login from './pages/Login';
+>>>>>>> Stashed changes
 import ProtectedRoute from './components/ProtectedRoute';
 import { WebSocketProvider } from './providers/WebSocketProvider';
 import { AuthProvider } from './providers/AuthProvider';
@@ -63,6 +78,7 @@ const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
+<<<<<<< Updated upstream
         <BrowserRouter>
           <AuthProvider>
             <WebSocketProvider>
@@ -99,6 +115,49 @@ const App: React.FC = () => {
             </WebSocketProvider>
           </AuthProvider>
         </BrowserRouter>
+=======
+        <SnackbarProvider
+          maxSnack={3}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+        >
+          <Router>
+            <AuthProvider>
+              <WebSocketProvider>
+                <Routes>
+                  {/* Public route */}
+                  <Route
+                    path="/login"
+                    element={
+                      <ProtectedRoute requireAuth={false}>
+                        <Login />
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  {/* Protected routes */}
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <Layout />
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  {/* Catch all route */}
+                  <Route
+                    path="*"
+                    element={<Navigate to="/" replace />}
+                  />
+                </Routes>
+              </WebSocketProvider>
+            </AuthProvider>
+          </Router>
+        </SnackbarProvider>
+>>>>>>> Stashed changes
       </ThemeProvider>
     </QueryClientProvider>
   );

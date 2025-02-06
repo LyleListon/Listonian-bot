@@ -1,7 +1,13 @@
-# System Patterns
+# System Architecture Patterns
 
-## Architecture Overview
+## Authentication System
+1. OAuth2 Flow
+   - Third-party authentication (Google, GitHub)
+   - JWT token-based API auth
+   - WebSocket authentication
+   - Role-based access control
 
+<<<<<<< Updated upstream
 ### Core Components
 1. **Blockchain Layer**
    - Smart Contracts for trade execution
@@ -25,9 +31,44 @@
    - Performance analytics
    - OAuth2 authentication
    - WebSocket communication
+=======
+2. Security Patterns
+   - Token-based authentication
+   - Session management
+   - Rate limiting
+   - CORS protection
+   - Input validation
+   - Error handling
+   - Audit logging
 
-## Design Patterns
+## Data Collection
+1. Real-time Collection
+   - WebSocket connections
+   - Event-driven updates
+   - Data validation
+   - Error recovery
 
+2. Batch Processing
+   - Scheduled collection
+   - Data aggregation
+   - Historical analysis
+   - Performance optimization
+
+## ML System
+1. Feature Pipeline
+   - Real-time features
+   - Batch features
+   - Feature validation
+   - Performance monitoring
+>>>>>>> Stashed changes
+
+2. Model Architecture
+   - Online LSTM models
+   - Continuous learning
+   - Prediction uncertainty
+   - Model persistence
+
+<<<<<<< Updated upstream
 ### 1. Data Collection & Processing
 - **Pattern**: Event-Driven Architecture
 - **Implementation**: 
@@ -145,9 +186,87 @@
 - Input validation
 - Emergency stops
 - Upgrade mechanisms
+=======
+## Arbitrage Detection
+1. Opportunity Detection
+   - Real-time monitoring
+   - Path finding
+   - Profit calculation
+   - Risk assessment
+
+2. Execution
+   - Multi-DEX integration
+   - Gas optimization
+   - Slippage protection
+   - Error handling
+
+## Dashboard
+1. Frontend Architecture
+   - React components
+   - Real-time updates
+   - Protected routes
+   - Error boundaries
+
+2. Backend Architecture
+   - FastAPI server
+   - WebSocket support
+   - Authentication middleware
+   - Rate limiting
+
+## Development Patterns
+1. Code Organization
+   - Feature modules
+   - Shared utilities
+   - Configuration management
+   - Type definitions
+
+2. Testing
+   - Unit tests
+   - Integration tests
+   - Performance testing
+   - Security testing
+
+## Deployment
+1. Development
+   - Local setup
+   - Hot reloading
+   - Debug logging
+   - Test data
+
+2. Production
+   - SSL/TLS
+   - Load balancing
+   - Monitoring
+   - Backup systems
+
+## Security Patterns
+1. Authentication
+   - OAuth2 providers
+   - JWT tokens
+   - Session management
+   - Role-based access
+
+2. API Security
+   - Rate limiting
+   - Input validation
+   - Error handling
+   - CORS protection
+
+3. Data Security
+   - Encryption
+   - Secure storage
+   - Access control
+   - Audit logging
+>>>>>>> Stashed changes
 
 ## Error Handling
+1. Frontend
+   - Error boundaries
+   - Retry logic
+   - User feedback
+   - Graceful degradation
 
+<<<<<<< Updated upstream
 ### 1. Resilience Patterns
 - Circuit breakers
 - Retry mechanisms
@@ -185,3 +304,49 @@
 - Automated deployment
 - Environment management
 - Rollback procedures
+=======
+2. Backend
+   - Exception handling
+   - Error logging
+   - Status codes
+   - Recovery procedures
+
+## Monitoring
+1. System Health
+   - Performance metrics
+   - Error rates
+   - Resource usage
+   - API latency
+
+2. Business Metrics
+   - Trading performance
+   - Opportunity detection
+   - Prediction accuracy
+   - Risk metrics
+
+## Documentation
+1. Code Documentation
+   - Type definitions
+   - Function docs
+   - Component docs
+   - Architecture docs
+
+2. User Documentation
+   - Setup guides
+   - Usage instructions
+   - API documentation
+   - Troubleshooting guides
+
+## Configuration
+1. Environment Config
+   - Development settings
+   - Production settings
+   - Secret management
+   - Feature flags
+
+2. Application Config
+   - System settings
+   - User preferences
+   - Security settings
+   - Performance tuning
+>>>>>>> Stashed changes
