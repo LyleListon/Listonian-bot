@@ -1,0 +1,179 @@
+# Arbitrage Detection Configuration
+
+# Global settings
+global:
+  environment: "production"  # or "development", "testing"
+  log_level: "INFO"
+  max_concurrent_trades: 10
+
+# Detector settings
+detector:
+  # Opportunity detection
+  min_profit_threshold: 0.001  # 0.1% minimum profit
+  min_price_difference: 0.002  # 0.2% price difference
+  max_execution_time: 3.0  # seconds
+  min_risk_score: 0.3  # Aggressive: accept higher risk
+  
+  # Path finding
+  max_path_length: 4
+  min_liquidity: 10000  # USD
+  max_price_impact: 0.01  # 1%
+  
+  # Position sizing
+  max_position_size: 100000  # USD
+  min_position_size: 1000  # USD
+  risk_tolerance: 0.8  # Aggressive: 0.8 vs Conservative: 0.3
+  
+  # Performance monitoring
+  monitoring:
+    enabled: true
+    metrics_window: 1000
+    alert_thresholds:
+      min_profit: 0.0005
+      max_loss: 0.002
+      max_drawdown: 0.1
+      max_exposure: 0.8
+
+# Risk management
+risk_management:
+  # Initial settings
+  initial_capital: 1000000  # $1M USD
+  max_drawdown: 0.15  # 15% maximum drawdown
+  max_exposure: 0.8  # 80% maximum capital exposure
+  recovery_threshold: 1.5  # Required recovery factor
+  
+  # Volatility settings
+  volatility_window: 100
+  max_volatility: 0.5
+  volatility_adjustment: true
+  
+  # Position management
+  position_limits:
+    max_per_trade: 0.1  # 10% of capital per trade
+    max_per_token: 0.2  # 20% of capital per token
+    max_per_dex: 0.3   # 30% of capital per DEX
+  
+  # Risk metrics
+  metrics:
+    risk_free_rate: 0.03  # 3% annual
+    min_sharpe_ratio: 1.5
+    min_profit_factor: 1.2
+    min_win_rate: 0.55
+  
+  # Dynamic adjustment
+  dynamic_sizing:
+    enabled: true
+    momentum_factor: 0.3
+    volatility_factor: 0.3
+    liquidity_factor: 0.4
+  
+  # Stop loss
+  stop_loss:
+    enabled: true
+    trailing: true
+    initial_threshold: 0.02  # 2%
+    trailing_distance: 0.01  # 1%
+
+# Trading parameters
+trading:
+  # Gas optimization
+  gas_settings:
+    max_gas_price: 100  # gwei
+    gas_price_multiplier: 1.1
+    priority_fee_multiplier: 1.2
+    
+  # Slippage tolerance
+  slippage:
+    max_slippage: 0.005  # 0.5%
+    dynamic_slippage: true
+    base_slippage: 0.001
+    
+  # Execution
+  execution:
+    timeout: 30  # seconds
+    retries: 3
+    backoff_factor: 1.5
+    
+  # Nonce management
+  nonce:
+    auto_increment: true
+    reset_on_error: true
+    
+  # MEV protection
+  mev_protection:
+    enabled: true
+    max_delay: 2  # blocks
+    randomization: true
+
+# Performance monitoring
+monitoring:
+  # System health
+  health_checks:
+    enabled: true
+    interval: 60  # seconds
+    metrics:
+      - gas_price
+      - block_time
+      - network_load
+      
+  # Performance tracking
+  performance:
+    track_metrics: true
+    save_interval: 300  # seconds
+    max_history: 10000
+    
+  # Alerting
+  alerts:
+    email:
+      enabled: false
+      recipients: []
+    discord:
+      enabled: true
+      webhook_url: "${DISCORD_WEBHOOK}"
+    
+    thresholds:
+      profit_alert: 0.01  # 1% profit
+      loss_alert: 0.005   # 0.5% loss
+      exposure_alert: 0.7  # 70% exposure
+      
+  # Visualization
+  visualization:
+    enabled: true
+    update_interval: 60  # seconds
+    metrics:
+      - profit_loss
+      - exposure
+      - win_rate
+      - drawdown
+
+# Resource management
+resources:
+  # Memory management
+  memory:
+    max_opportunities: 1000
+    max_trade_history: 10000
+    cleanup_interval: 3600  # seconds
+    
+  # CPU usage
+  cpu:
+    max_threads: 4
+    priority: "high"
+    
+  # Network
+  network:
+    max_connections: 100
+    timeout: 10  # seconds
+    retry_limit: 3
+
+# Backup and recovery
+backup:
+  enabled: true
+  interval: 3600  # seconds
+  retention_days: 7
+  path: "data/backups"
+  
+  # State persistence
+  state:
+    save_interval: 300  # seconds
+    max_saves: 5
+    compression: true

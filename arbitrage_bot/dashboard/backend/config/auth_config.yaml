@@ -1,0 +1,116 @@
+# Authentication Configuration
+
+# JWT Settings
+jwt:
+  secret_key: "${JWT_SECRET_KEY}"  # Set in environment variables
+  algorithm: "HS256"
+  access_token_expire_minutes: 30
+  refresh_token_expire_days: 7
+
+# OAuth2 Providers
+providers:
+  google:
+    client_id: "${GOOGLE_CLIENT_ID}"
+    client_secret: "${GOOGLE_CLIENT_SECRET}"
+    redirect_uri: "http://localhost:3000/auth/google/callback"  # Update for production
+    scopes:
+      - "openid"
+      - "email"
+      - "profile"
+    metadata_url: "https://accounts.google.com/.well-known/openid-configuration"
+
+  github:
+    client_id: "${GITHUB_CLIENT_ID}"
+    client_secret: "${GITHUB_CLIENT_SECRET}"
+    redirect_uri: "http://localhost:3000/auth/github/callback"  # Update for production
+    scopes:
+      - "user:email"
+    authorize_url: "https://github.com/login/oauth/authorize"
+    token_url: "https://github.com/login/oauth/access_token"
+    user_info_url: "https://api.github.com/user"
+
+# Session Settings
+session:
+  cookie_name: "arbitrage_session"
+  cookie_secure: true
+  cookie_httponly: true
+  cookie_samesite: "Lax"
+  session_lifetime: 86400  # 24 hours in seconds
+
+# Security Settings
+security:
+  cors_origins:
+    - "http://localhost:3000"  # Development
+    - "https://your-production-domain.com"  # Production
+  allowed_hosts:
+    - "localhost"
+    - "127.0.0.1"
+    - "your-production-domain.com"
+  rate_limit:
+    requests_per_minute: 60
+    burst_size: 10
+  max_failed_attempts: 5
+  lockout_duration: 300  # 5 minutes in seconds
+
+# User Management
+users:
+  roles:
+    - admin
+    - trader
+    - viewer
+  default_role: "viewer"
+  permissions:
+    admin:
+      - "full_access"
+    trader:
+      - "view_dashboard"
+      - "execute_trades"
+      - "view_analytics"
+    viewer:
+      - "view_dashboard"
+      - "view_analytics"
+
+# Audit Logging
+audit:
+  enabled: true
+  log_level: "INFO"
+  events:
+    - "login"
+    - "logout"
+    - "failed_login"
+    - "permission_change"
+    - "role_change"
+  retention_days: 30
+
+# Development Settings
+development:
+  debug: false
+  mock_auth: false
+  test_users:
+    - email: "test@example.com"
+      role: "admin"
+    - email: "trader@example.com"
+      role: "trader"
+
+# Production Settings
+production:
+  ssl_required: true
+  secure_headers:
+    enabled: true
+    hsts_seconds: 31536000
+    csp:
+      default-src: "'self'"
+      script-src: "'self' 'unsafe-inline' 'unsafe-eval'"
+      style-src: "'self' 'unsafe-inline' https://fonts.googleapis.com"
+      font-src: "'self' https://fonts.gstatic.com"
+      img-src: "'self' data: https:"
+      connect-src: "'self' wss: https:"
+
+# Error Messages
+error_messages:
+  invalid_credentials: "Invalid credentials provided"
+  account_locked: "Account temporarily locked due to too many failed attempts"
+  session_expired: "Session has expired"
+  invalid_token: "Invalid or expired token"
+  insufficient_permissions: "Insufficient permissions for this action"
+  rate_limited: "Too many requests, please try again later"

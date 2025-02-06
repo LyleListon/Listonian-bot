@@ -1,0 +1,186 @@
+# ML Models Configuration
+
+# Global settings
+global:
+  device: "cuda"  # or "cpu"
+  seed: 42
+  log_level: "INFO"
+
+# Model manager settings
+manager:
+  update_interval: 1  # seconds
+  performance_thresholds:
+    max_gas_loss: 0.1
+    max_liquidity_loss: 0.1
+    min_confidence: 0.7
+    max_uncertainty: 0.3
+
+# Model configurations
+model_configs:
+  gas:
+    # Architecture
+    input_size: 32
+    hidden_size: 128
+    num_layers: 2
+    output_size: 2  # [price, uncertainty]
+    sequence_length: 60
+    dropout: 0.1
+    
+    # Training
+    learning_rate: 0.001
+    batch_size: 32
+    memory_size: 10000
+    weight_decay: 1e-5
+    
+    # Loss weights
+    price_weight: 1.0
+    volatility_weight: 0.5
+    
+    # Feature importance tracking
+    track_feature_importance: true
+    importance_update_interval: 100
+    
+    # Early stopping
+    early_stopping:
+      enabled: true
+      patience: 1000
+      min_delta: 0.001
+    
+    # Performance monitoring
+    monitoring:
+      max_mae: 0.1
+      max_rmse: 0.15
+      max_volatility_error: 0.2
+      evaluation_window: 100
+
+  liquidity:
+    # Architecture
+    input_size: 48
+    hidden_size: 256
+    num_layers: 3
+    output_size: 4  # [liquidity, volume, impact, uncertainty]
+    sequence_length: 120
+    dropout: 0.15
+    
+    # Training
+    learning_rate: 0.0005
+    batch_size: 64
+    memory_size: 20000
+    weight_decay: 1e-5
+    
+    # Loss weights
+    liquidity_weight: 1.0
+    volume_weight: 0.8
+    impact_weight: 0.6
+    
+    # Feature importance tracking
+    track_feature_importance: true
+    importance_update_interval: 100
+    
+    # Early stopping
+    early_stopping:
+      enabled: true
+      patience: 1000
+      min_delta: 0.001
+    
+    # Performance monitoring
+    monitoring:
+      max_liquidity_mae: 0.12
+      max_volume_mae: 0.15
+      max_impact_mae: 0.1
+      evaluation_window: 100
+
+# Feature preprocessing
+preprocessing:
+  gas:
+    # Feature normalization
+    normalization:
+      method: "standard"  # or "minmax"
+      update_stats: true
+      stats_window: 1000
+    
+    # Feature selection
+    min_importance: 0.01
+    max_features: 32
+    
+    # Sequence preparation
+    stride: 1
+    padding: "same"
+    
+  liquidity:
+    # Feature normalization
+    normalization:
+      method: "standard"
+      update_stats: true
+      stats_window: 1000
+    
+    # Feature selection
+    min_importance: 0.01
+    max_features: 48
+    
+    # Sequence preparation
+    stride: 1
+    padding: "same"
+
+# Model persistence
+persistence:
+  enabled: true
+  save_interval: 3600  # seconds
+  max_saves: 5
+  save_path: "data/models"
+  
+  # Checkpointing
+  checkpointing:
+    enabled: true
+    interval: 1800  # seconds
+    max_checkpoints: 3
+    
+  # Model versioning
+  versioning:
+    enabled: true
+    major_threshold: 0.1  # Significant performance change
+    minor_threshold: 0.05  # Minor performance change
+
+# Performance monitoring
+monitoring:
+  enabled: true
+  metrics:
+    - loss
+    - mae
+    - rmse
+    - uncertainty
+    - confidence
+  
+  # Alert thresholds
+  alerts:
+    max_loss_increase: 0.5
+    min_confidence: 0.6
+    max_uncertainty: 0.4
+    
+  # Performance logging
+  logging:
+    enabled: true
+    interval: 60  # seconds
+    metrics_history: 1000
+    
+  # Visualization
+  visualization:
+    enabled: true
+    update_interval: 300  # seconds
+    max_points: 1000
+
+# Resource management
+resources:
+  max_memory: "4G"
+  max_cpu_percent: 80
+  gpu_memory_fraction: 0.5
+  
+  # Batch processing
+  max_batch_size: 256
+  dynamic_batching: true
+  
+  # Memory management
+  garbage_collection:
+    enabled: true
+    interval: 300  # seconds
+    threshold: "3G"
