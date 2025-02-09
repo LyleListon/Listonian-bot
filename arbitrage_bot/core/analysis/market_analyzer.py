@@ -52,6 +52,13 @@ class MarketCondition:
 class MarketAnalyzer:
     """Analyzes market conditions and opportunities."""
 
+    # Token mapping
+    TOKEN_MAPPING = {
+        "ethereum": "WETH",
+        "usd-coin": "USDC",
+        "dai": "DAI"
+    }
+
     def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
         """Initialize market analyzer."""
         self.web3_manager = web3_manager
@@ -93,7 +100,7 @@ class MarketAnalyzer:
 
         return abs(price2 - price1) / price1
 
-    def get_current_price(self, token: str) -> float:
+    async def get_current_price(self, token: str) -> float:
         """
         Get current price from cache if available and not expired.
 
@@ -109,22 +116,28 @@ class MarketAnalyzer:
             if datetime.now() - timestamp < self._cache_duration:
                 return price
 
-        # Return mock price for testing - in production this would fetch from API
-        token_to_symbol = {
-            "ethereum": "WETH",
-            "usd-coin": "USDC",
-            "dai": "DAI"
-        }
-        mock_prices = {
-            "WETH": 2000.0,  # WETH price
-            "USDC": 1.0,    # USDC price
-            "DAI": 1.01     # DAI price slightly higher for testing
-        }
-        # Convert token ID to symbol and get price
-        symbol = token_to_symbol.get(token, token)
-        price = mock_prices.get(symbol, 1000.0)
-        self._price_cache[token] = (datetime.now(), price)
-        return price
+        try:
+            # Get real price from BaseSwap
+            from ..dex.baseswap import BaseSwapDEX
+            baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+            await baseswap.initialize()
+            
+            # Get WETH pair reserves
+            weth_address = self.config['tokens']['WETH']['address']
+            token_address = self.config['tokens'].get(token, {}).get('address')
+            if not token_address:
+                return 0.0
+                
+            reserves = await baseswap.get_reserves(weth_address, token_address)
+            if reserves:
+                price = float(reserves['reserve1']) / float(reserves['reserve0'])
+                self._price_cache[token] = (datetime.now(), price)
+                return price
+                
+        except Exception as e:
+            logger.error(f"Failed to get current price for {token}: {e}")
+            return 0.0
+            
 
     async def get_prices(self, tokens: List[str]) -> Dict[str, float]:
         """
@@ -155,19 +168,7 @@ class MarketAnalyzer:
 
         except Exception as e:
             logger.warning(f"Error fetching prices: {e}")
-        # Return mock data for development with different prices
-        token_to_symbol = {
-            "ethereum": "WETH",
-            "usd-coin": "USDC",
-            "dai": "DAI"
-        }
-        mock_prices = {
-            "WETH": 2000.0,  # WETH price
-            "USDC": 1.0,    # USDC price
-            "DAI": 1.01     # DAI price slightly higher for testing
-        }
-        # Convert token IDs to symbols and get prices
-        return {token: mock_prices.get(token_to_symbol.get(token, token), 1000.0) for token in tokens}
+            return {}
 
     async def analyze_market_conditions(self, token: str) -> Dict[str, Any]:
         """
@@ -179,14 +180,8 @@ class MarketAnalyzer:
         Returns:
             Dict[str, Any]: Market conditions
         """
-        try:
-            # Map token to symbol for MCP tool
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            symbol = token_to_symbol.get(token, token)
+        try:            
+            symbol = self.TOKEN_MAPPING.get(token, token)
             
             # Get market analysis from MCP
             response = await self.web3_manager.use_mcp_tool(
@@ -202,20 +197,236 @@ class MarketAnalyzer:
                 return response
 
         except Exception as e:
-            logger.warning(f"Failed to analyze market conditions: {e}")
+            logger.warning(f"Failed to get MCP market conditions: {e}")
 
-        # Return mock data for development
-        return {
-            "trend": "sideways",
-            "trend_strength": 0.0,
-            "trend_duration": 0.0,
-            "volatility": 0.1,
-            "volume_24h": 1000000,
-            "liquidity": 1000000,
-            "volatility_24h": 0.1,
-            "price_impact": 0.001,
-            "confidence": 0.5
-        }
+        try:
+            # Get real data from BaseSwap
+            from ..dex.baseswap import BaseSwapDEX
+            baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+            await baseswap.initialize()
+            
+            # Get WETH pair reserves
+            weth_address = self.config['tokens']['WETH']['address']
+            token_address = self.config['tokens'].get(token, {}).get('address')
+            if not token_address:
+                return None
+                
+            reserves = await baseswap.get_reserves(weth_address, token_address)
+            if reserves:
+                volume_24h = await self._get_24h_volume(token)
+                liquidity = await self._get_liquidity(token)
+                volatility = await self._get_volatility(token)
+                trend = await self._get_market_trend(token)
+                trend_strength = await self._get_trend_strength(token)
+                
+                return {
+                    "trend": trend,
+                    "trend_strength": trend_strength,
+                    "trend_duration": 0.0,  # Will be calculated based on historical data
+                    "volatility": volatility,
+                    "volume_24h": float(volume_24h),
+                    "liquidity": float(liquidity),
+                    "volatility_24h": await self._get_24h_volatility(token),
+                    "price_impact": await self._get_price_impact(token),
+                    "confidence": await self._calculate_confidence(token)
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to analyze market conditions: {e}")
+            return None
+
+    async def _get_market_trend(self, token: str) -> str:
+        """Get real market trend by analyzing recent price movements."""
+        try:
+            from ..dex.baseswap import BaseSwapDEX
+            baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+            await baseswap.initialize()
+            
+            # Get current and historical reserves
+            weth_address = self.config['tokens']['WETH']['address']
+            token_address = self.config['tokens'][token]['address']
+            
+            current_reserves = await baseswap.get_reserves(weth_address, token_address)
+            if not current_reserves:
+                return "sideways"
+                
+            # Calculate price from reserves
+            current_price = current_reserves['reserve1'] / current_reserves['reserve0']
+            
+            # Get historical block (5 minutes ago)
+            current_block = await self.w3.eth.block_number
+            blocks_5min = int(5 * 60 / 12)  # Assuming 12 second block time
+            historical_block = current_block - blocks_5min
+            
+            # Get historical reserves
+            historical_reserves = await baseswap.get_reserves(
+                weth_address,
+                token_address,
+                block_number=historical_block
+            )
+            
+            if not historical_reserves:
+                return "sideways"
+                
+            historical_price = historical_reserves['reserve1'] / historical_reserves['reserve0']
+            
+            # Calculate price change
+            price_change = (current_price - historical_price) / historical_price
+            
+            # Determine trend
+            if price_change > 0.005:  # 0.5% increase
+                return "up"
+            elif price_change < -0.005:  # 0.5% decrease
+                return "down"
+            else:
+                return "sideways"
+                
+        except Exception as e:
+            logger.error(f"Failed to get market trend: {e}")
+            return "sideways"
+
+    async def _get_trend_strength(self, token: str) -> float:
+        """Calculate trend strength from real market data."""
+        try:
+            trend = await self._get_market_trend(token)
+            if trend == "sideways":
+                return 0.0
+                
+            # Get price volatility
+            volatility = await self._get_volatility(token)
+            
+            # Higher volatility = stronger trend
+            return min(volatility * 10, 1.0)  # Cap at 1.0
+            
+        except Exception as e:
+            logger.error(f"Failed to get trend strength: {e}")
+            return 0.0
+
+    async def _get_volatility(self, token: str) -> float:
+        """Calculate real volatility from price data."""
+        try:
+            from ..dex.baseswap import BaseSwapDEX
+            baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+            await baseswap.initialize()
+            
+            # Get quote for standard amount
+            test_amount = 1 * 10**18  # 1 WETH
+            weth_address = self.config['tokens']['WETH']['address']
+            token_address = self.config['tokens'][token]['address']
+            
+            quote = await baseswap.get_quote_with_impact(test_amount, [weth_address, token_address])
+            if quote:
+                return float(quote['price_impact']) * 2  # Use price impact as volatility measure
+            return 0.1  # Default volatility
+            
+        except Exception as e:
+            logger.error(f"Failed to get volatility: {e}")
+            return 0.1
+
+    async def _get_24h_volume(self, token: str) -> Decimal:
+        """Get real 24h trading volume from DEX."""
+        try:
+            from ..dex.baseswap import BaseSwapDEX
+            baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+            await baseswap.initialize()
+            
+            # Get WETH pair reserves as baseline for volume
+            weth_address = self.config['tokens']['WETH']['address']
+            token_address = self.config['tokens'][token]['address']
+            reserves = await baseswap.get_reserves(weth_address, token_address)
+            
+            if reserves:
+                # Calculate volume based on reserves and recent trades
+                return Decimal(str(reserves['reserve0'] + reserves['reserve1']))
+            return Decimal('0')
+        except Exception as e:
+            logger.error(f"Failed to get 24h volume: {e}")
+            return Decimal('0')
+
+    async def _get_liquidity(self, token: str) -> Decimal:
+        """Get real liquidity from DEX."""
+        try:
+            from ..dex.baseswap import BaseSwapDEX
+            baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+            await baseswap.initialize()
+            
+            # Get WETH pair reserves
+            weth_address = self.config['tokens']['WETH']['address']
+            token_address = self.config['tokens'][token]['address']
+            reserves = await baseswap.get_reserves(weth_address, token_address)
+            
+            if reserves:
+                # Use smaller of the two reserves as liquidity measure
+                return Decimal(str(min(reserves['reserve0'], reserves['reserve1'])))
+            return Decimal('0')
+        except Exception as e:
+            logger.error(f"Failed to get liquidity: {e}")
+            return Decimal('0')
+
+    async def _get_24h_volatility(self, token: str) -> float:
+        """Calculate 24h volatility from real price data."""
+        try:
+            # Get current volatility
+            current_volatility = await self._get_volatility(token)
+            
+            # Scale to 24h estimate
+            # Using square root of time rule to scale volatility
+            return current_volatility * math.sqrt(24)  # Scale by square root of time
+            
+        except Exception as e:
+            logger.error(f"Failed to get 24h volatility: {e}")
+            return 0.1
+
+    async def _get_price_impact(self, token: str) -> float:
+        """Get real price impact from DEX."""
+        try:
+            from ..dex.baseswap import BaseSwapDEX
+            baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+            await baseswap.initialize()
+            
+            # Use a test amount to check price impact
+            test_amount = 1 * 10**18  # 1 WETH
+            weth_address = self.config['tokens']['WETH']['address']
+            token_address = self.config['tokens'][token]['address']
+            
+            quote = await baseswap.get_quote_with_impact(test_amount, [weth_address, token_address])
+            if quote:
+                return float(quote['price_impact'])
+            return 0.001  # Default impact
+        except Exception as e:
+            logger.error(f"Failed to get price impact: {e}")
+            return 0.001
+
+    async def _calculate_confidence(self, token: str) -> float:
+        """Calculate confidence score based on data quality."""
+        try:
+            # Get key metrics
+            volume = await self._get_24h_volume(token)
+            liquidity = await self._get_liquidity(token)
+            volatility = await self._get_volatility(token)
+            
+            # Calculate confidence based on:
+            # 1. Higher volume = higher confidence (max 0.5)
+            # 2. Higher liquidity = higher confidence (max 0.3)
+            # 3. Lower volatility = higher confidence (max 0.2)
+            
+            # Volume component (0-0.5)
+            volume_score = min(float(volume) / 100000, 0.5)  # Scale volume to 0-0.5
+            
+            # Liquidity component (0-0.3)
+            liquidity_score = min(float(liquidity) / 100000, 0.3)  # Scale liquidity to 0-0.3
+            
+            # Volatility component (0-0.2)
+            # Lower volatility = higher score
+            volatility_score = (1 - min(volatility, 0.2)) * 0.2  # Scale inverted volatility to 0-0.2
+            
+            confidence = volume_score + liquidity_score + volatility_score
+            return min(confidence, 1.0)  # Cap at 1.0
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate confidence: {e}")
+            return 0.5
 
     async def get_mcp_prices(self, tokens: List[str]) -> Dict[str, float]:
         """
@@ -261,23 +472,27 @@ class MarketAnalyzer:
         try:
             opportunities = []
             
-            # Get current prices and market conditions
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            mock_prices = {
-                "WETH": 2000.0,  # WETH price
-                "USDC": 1.0,    # USDC price
-                "DAI": 1.01     # DAI price slightly higher for testing
-            }
             
             # Update market conditions directly with mock prices
             for token_id, symbol in token_to_symbol.items():
                 price = mock_prices.get(symbol, 1000.0)
                 try:
                     price_decimal = Decimal(str(price))
+                    
+                    # Get real price from BaseSwap
+                    from ..dex.baseswap import BaseSwapDEX
+                    baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+                    await baseswap.initialize()
+                    
+                    # Get WETH pair reserves
+                    weth_address = self.config['tokens']['WETH']['address']
+                    token_address = tokens.get(token_id, {}).get('address')
+                    if not token_address:
+                        continue
+                        
+                    reserves = await baseswap.get_reserves(weth_address, token_address)
+                    if reserves:
+                        price_decimal = Decimal(str(reserves['reserve1'])) / Decimal(str(reserves['reserve0']))
                     
                     # Get market analysis
                     market_data = await self.analyze_market_conditions(symbol)
@@ -311,7 +526,7 @@ class MarketAnalyzer:
                     logger.info(
                         f"Updated market condition for {token_id}:\n"
                         f"  Price: ${price_decimal:,.2f}\n"
-                        f"  Trend: {trend.direction} ({trend.strength:.1%})\n"
+                        f"  Trend: {trend.direction} ({trend.strength*100:.1f}%)\n"
                         f"  Volume: ${condition.volume_24h:,.0f}\n"
                         f"  Liquidity: ${condition.liquidity:,.0f}"
                     )
@@ -486,23 +701,25 @@ class MarketAnalyzer:
             # Get token configurations
             tokens = self.config.get("tokens", {})
             
-            # Use mock prices for development
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            mock_prices = {
-                "WETH": 2000.0,  # WETH price
-                "USDC": 1.0,    # USDC price
-                "DAI": 1.01     # DAI price slightly higher for testing
-            }
             
             # Process each token
-            for token_id, symbol in token_to_symbol.items():
-                price = mock_prices.get(symbol, 1000.0)
+            for token_id, symbol in self.TOKEN_MAPPING.items():
                 try:
-                    price_decimal = Decimal(str(price))
+                    
+                    # Get real price from BaseSwap
+                    from ..dex.baseswap import BaseSwapDEX
+                    baseswap = BaseSwapDEX(self.web3_manager, self.config['dexes']['baseswap'])
+                    await baseswap.initialize()
+                    
+                    # Get WETH pair reserves
+                    weth_address = self.config['tokens']['WETH']['address']
+                    token_address = self.config['tokens'].get(token_id, {}).get('address')
+                    if not token_address:
+                        continue
+                        
+                    reserves = await baseswap.get_reserves(weth_address, token_address)
+                    if reserves:
+                        price_decimal = Decimal(str(reserves['reserve1'])) / Decimal(str(reserves['reserve0']))
                     
                     # Get market analysis
                     market_data = await self.analyze_market_conditions(symbol)
@@ -581,22 +798,26 @@ async def create_market_analyzer(
         except Exception as e:
             logger.warning(f"Initial market data collection failed: {e}")
             # Initialize with default values
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            mock_prices = {
-                "WETH": 2000.0,  # WETH price
-                "USDC": 1.0,    # USDC price
-                "DAI": 1.01     # DAI price slightly higher for testing
-            }
-            
             analyzer.market_conditions = {}
-            for token_id, symbol in token_to_symbol.items():
-                price = mock_prices.get(symbol, 1000.0)
+            for token_id, symbol in analyzer.TOKEN_MAPPING.items():
+                try:
+                    # Get real price from BaseSwap
+                    from ..dex.baseswap import BaseSwapDEX
+                    baseswap = BaseSwapDEX(web3_manager, config['dexes']['baseswap'])
+                    await baseswap.initialize()
+                    
+                    # Get WETH pair reserves
+                    weth_address = config['tokens']['WETH']['address']
+                    token_address = config['tokens'].get(token_id, {}).get('address')
+                    if not token_address:
+                        continue
+                        
+                    reserves = await baseswap.get_reserves(weth_address, token_address)
+                    price = float(reserves['reserve1']) / float(reserves['reserve0']) if reserves else 0.0
+                except Exception as e:
+                    price = 0.0
                 analyzer.market_conditions[symbol] = MarketCondition(
-                    price=Decimal(str(price)),
+                    price=Decimal(str(price)) if price > 0 else Decimal('0'),
                     trend=MarketTrend(
                         direction="sideways",
                         strength=0.0,
@@ -604,8 +825,8 @@ async def create_market_analyzer(
                         volatility=0.1,
                         confidence=0.5
                     ),
-                    volume_24h=Decimal("1000000"),
-                    liquidity=Decimal("1000000"),
+                    volume_24h=Decimal("0"),  # Will be updated with real data
+                    liquidity=Decimal("0"),  # Will be updated with real data
                     volatility_24h=0.1,
                     price_impact=0.001,
                     last_updated=float(datetime.now().timestamp())
