@@ -1,4 +1,4 @@
-"""Dashboard package for arbitrage bot."""
+"""Dashboard package initialization."""
 
 from .app import create_app
 

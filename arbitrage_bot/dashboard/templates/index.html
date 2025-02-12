@@ -1,300 +1,276 @@
-{% extends "base.html" %}
-
-{% block content %}
-<!-- System Status Section -->
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0">System Status</h5>
-                    <div>
-                        <span class="badge bg-secondary" id="connection-status">Connecting...</span>
-                        <span class="badge bg-secondary" id="data-status">Waiting for data...</span>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Bot Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-lg">
+            <div class="max-w-7xl mx-auto px-4">
+                <div class="flex justify-between h-16">
+                    <div class="flex">
+                        <div class="flex-shrink-0 flex items-center">
+                            <h1 class="text-xl font-bold text-gray-800">Arbitrage Bot</h1>
+                        </div>
+                        <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                            <a href="/" class="border-indigo-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                                Dashboard
+                            </a>
+                            <a href="/opportunities" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                                Opportunities
+                            </a>
+                            <a href="/history" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                                History
+                            </a>
+                            <a href="/settings" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                                Settings
+                            </a>
+                        </div>
+                    </div>
+                    <!-- Connection Status -->
+                    <div class="flex items-center">
+                        <span id="connection-status" class="px-3 py-1 rounded-full text-sm font-medium">
+                            Connecting...
+                        </span>
                     </div>
                 </div>
-                <div id="error-container" class="alert alert-danger mt-3" style="display: none;">
-                    <strong>Error:</strong> <span id="error-message"></span>
-                </div>
-                <div id="warning-container" class="alert alert-warning mt-3" style="display: none;">
-                    <strong>Warning:</strong> <span id="warning-message"></span>
-                </div>
             </div>
-        </div>
-    </div>
-</div>
+        </nav>
 
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <h2>Live Arbitrage Opportunities</h2>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Current Opportunities</h5>
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Token Pair</th>
-                                <th>Potential Profit</th>
-                                <th>Gas Cost</th>
-                                <th>Net Profit</th>
-                                <th>Price Impact</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="opportunities">
-                            <!-- Populated by WebSocket -->
-                            <tr><td colspan="6" class="text-center">Waiting for opportunities...</td></tr>
-                        </tbody>
-                    </table>
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <!-- Stats Overview -->
+            <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Total Profit</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="total-profit">$0.00</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Active Opportunities</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="active-opportunities">0</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Success Rate</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="success-rate">0%</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Gas Used (24h)</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="gas-used">0 ETH</dd>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <h2>Market Overview</h2>
-    </div>
-</div>
-
-<!-- Market Data Section -->
-<div class="row">
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">WETH/USDC Price</h5>
-                <div id="price-chart"></div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">DEX Status</h5>
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>DEX</th>
-                                <th>Status</th>
-                                <th>Liquidity</th>
-                                <th>24h Volume</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dex-status">
-                            <!-- Populated by WebSocket -->
-                            <tr><td colspan="4" class="text-center">Loading DEX status...</td></tr>
-                        </tbody>
-                    </table>
+            <!-- Charts -->
+            <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Profit History</h3>
+                        <div class="mt-4" style="height: 300px;">
+                            <canvas id="profit-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Gas Price History</h3>
+                        <div class="mt-4" style="height: 300px;">
+                            <canvas id="gas-chart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <h2>Performance Overview</h2>
+            <!-- Recent Activity -->
+            <div class="mt-8">
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Recent Activity</h3>
+                        <div class="mt-4">
+                            <div class="flow-root">
+                                <ul role="list" class="-my-5 divide-y divide-gray-200" id="activity-list">
+                                    <li class="py-4">
+                                        <div class="flex space-x-3">
+                                            <div class="flex-1 space-y-1">
+                                                <p class="text-sm text-gray-500">Waiting for data...</p>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
-</div>
 
-<div class="row">
-    <!-- Metrics Cards -->
-    <div class="col-md-4 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Total Trades</h5>
-                <h2 class="card-text" id="total-trades">{{ metrics.get('total_trades', 0) }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">24h Trades</h5>
-                <h2 class="card-text" id="trades-24h">{{ metrics.get('trades_24h', 0) }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Success Rate</h5>
-                <h2 class="card-text" id="success-rate">{{ "%.1f"|format(metrics.get('success_rate', 0) * 100) }}%</h2>
-            </div>
-        </div>
-    </div>
-</div>
+    <script>
+        // Initialize Socket.IO with reconnection options
+        const socket = io({
+            path: '/socket.io/',
+            transports: ['polling', 'websocket'],
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000,
+            autoConnect: true
+        });
 
-<div class="row">
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Total Profit</h5>
-                <h2 class="card-text" id="total-profit">${{ "%.2f"|format(metrics.get('total_profit', 0)) }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">24h Profit</h5>
-                <h2 class="card-text" id="profit-24h">${{ "%.2f"|format(metrics.get('profit_24h', 0)) }}</h2>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <!-- Charts -->
-    <div class="col-md-12 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Profit History</h5>
-                <div id="profit-chart"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Trade Volume History</h5>
-                <div id="volume-chart"></div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Initialize charts when document is ready
-document.addEventListener('DOMContentLoaded', function() {
-    // Price chart options
-    const priceChartOptions = {
-        series: [{
-            name: 'WETH/USDC',
-            data: []
-        }],
-        chart: {
+        // Initialize charts
+        const profitChart = new Chart(document.getElementById('profit-chart'), {
             type: 'line',
-            height: 350,
-            animations: {
-                enabled: true,
-                easing: 'easeinout',
-                dynamicAnimation: {
-                    speed: 1000
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Profit (USD)',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
                 }
             }
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        xaxis: {
-            type: 'datetime'
-        },
-        yaxis: {
-            labels: {
-                formatter: function(val) {
-                    return '$' + val.toFixed(2);
-                }
-            }
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM yyyy HH:mm:ss'
-            }
-        }
-    };
+        });
 
-    // Profit chart options
-    const profitChartOptions = {
-        series: [{
-            name: 'Profit',
-            data: []
-        }],
-        chart: {
+        const gasChart = new Chart(document.getElementById('gas-chart'), {
             type: 'line',
-            height: 350,
-            animations: {
-                enabled: true,
-                easing: 'easeinout',
-                dynamicAnimation: {
-                    speed: 1000
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Gas Price (Gwei)',
+                    data: [],
+                    borderColor: 'rgb(153, 102, 255)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
                 }
             }
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        xaxis: {
-            type: 'datetime'
-        },
-        yaxis: {
-            labels: {
-                formatter: function(val) {
-                    return '$' + val.toFixed(2);
-                }
+        });
+
+        // Connection status handling
+        const connectionStatus = document.getElementById('connection-status');
+        
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            connectionStatus.textContent = 'Connected';
+            connectionStatus.classList.remove('bg-yellow-200', 'bg-red-200');
+            connectionStatus.classList.add('bg-green-200', 'text-green-800');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            connectionStatus.textContent = 'Disconnected';
+            connectionStatus.classList.remove('bg-green-200', 'bg-yellow-200');
+            connectionStatus.classList.add('bg-red-200', 'text-red-800');
+        });
+
+        socket.on('connect_error', () => {
+            console.log('Connection error');
+            connectionStatus.textContent = 'Connection Error';
+            connectionStatus.classList.remove('bg-green-200', 'bg-red-200');
+            connectionStatus.classList.add('bg-yellow-200', 'text-yellow-800');
+        });
+
+        // Socket.IO event handlers
+        socket.on('execution_stats', (data) => {
+            if (data.type === 'performance_stats') {
+                updateStats(data.stats);
             }
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM yyyy HH:mm'
+        });
+
+        socket.on('storage_stats', (data) => {
+            if (data.type === 'activity_log') {
+                updateActivityList(data.activities);
+            }
+        });
+
+        // Update functions
+        function updateStats(stats) {
+            document.getElementById('total-profit').textContent = 
+                `$${(stats.total_profit || 0).toFixed(2)}`;
+            document.getElementById('active-opportunities').textContent = 
+                stats.active_opportunities || 0;
+            document.getElementById('success-rate').textContent = 
+                `${((stats.successful_executions / (stats.total_executions || 1)) * 100 || 0).toFixed(1)}%`;
+            document.getElementById('gas-used').textContent = 
+                `${stats.total_gas_cost || 0} ETH`;
+
+            // Update profit chart if there's historical data
+            if (stats.profit_history) {
+                profitChart.data.labels = stats.profit_history.map(h => new Date(h.timestamp).toLocaleTimeString());
+                profitChart.data.datasets[0].data = stats.profit_history.map(h => h.profit);
+                profitChart.update();
+            }
+
+            // Update gas chart if there's historical data
+            if (stats.gas_history) {
+                gasChart.data.labels = stats.gas_history.map(h => new Date(h.timestamp).toLocaleTimeString());
+                gasChart.data.datasets[0].data = stats.gas_history.map(h => h.gas_price);
+                gasChart.update();
             }
         }
-    };
 
-    // Volume chart options
-    const volumeChartOptions = {
-        series: [{
-            name: 'Volume',
-            data: []
-        }],
-        chart: {
-            type: 'bar',
-            height: 350,
-            animations: {
-                enabled: true
+        function updateActivityList(activities) {
+            const list = document.getElementById('activity-list');
+            if (!activities || activities.length === 0) {
+                list.innerHTML = `
+                    <li class="py-4">
+                        <div class="flex space-x-3">
+                            <div class="flex-1 space-y-1">
+                                <p class="text-sm text-gray-500">No recent activity</p>
+                            </div>
+                        </div>
+                    </li>
+                `;
+                return;
             }
-        },
-        xaxis: {
-            type: 'datetime'
-        },
-        yaxis: {
-            labels: {
-                formatter: function(val) {
-                    return Math.round(val);
-                }
-            }
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM yyyy HH:mm'
-            }
+
+            list.innerHTML = activities.map(activity => `
+                <li class="py-4">
+                    <div class="flex space-x-3">
+                        <div class="flex-1 space-y-1">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-medium">${activity.category}</h3>
+                                <p class="text-sm text-gray-500">${new Date(activity.timestamp * 1000).toLocaleString()}</p>
+                            </div>
+                            <p class="text-sm text-gray-500">${activity.action}: ${activity.key}</p>
+                        </div>
+                    </div>
+                </li>
+            `).join('');
         }
-    };
 
-    // Create charts
-    window.priceChart = new ApexCharts(document.querySelector("#price-chart"), priceChartOptions);
-    window.profitChart = new ApexCharts(document.querySelector("#profit-chart"), profitChartOptions);
-    window.volumeChart = new ApexCharts(document.querySelector("#volume-chart"), volumeChartOptions);
-
-    // Render charts
-    window.priceChart.render();
-    window.profitChart.render();
-    window.volumeChart.render();
-});
-</script>
-{% endblock %}
+        // Set initial connection status
+        connectionStatus.textContent = 'Connecting...';
+        connectionStatus.classList.add('bg-yellow-200', 'text-yellow-800');
+    </script>
+</body>
+</html>

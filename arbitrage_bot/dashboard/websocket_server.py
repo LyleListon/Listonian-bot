@@ -1,467 +1,208 @@
-"""
-WebSocket server for real-time dashboard updates.
-"""
+"""WebSocket server for real-time data streaming."""
 
 import asyncio
-import json
 import logging
-import os
-import time
+from typing import Dict, Any, Optional, cast
 from datetime import datetime
-from typing import Dict, Any, Set, Optional
-import websockets
-from websockets.server import WebSocketServerProtocol
+from web3 import Web3
+from web3.types import BlockData
+from arbitrage_bot.core.web3.web3_manager import Web3Manager
+from arbitrage_bot.core.analytics.analytics_system import create_analytics_system
+from arbitrage_bot.core.analysis.market_analyzer import create_market_analyzer
+from arbitrage_bot.core.gas.gas_optimizer import create_gas_optimizer
 
 logger = logging.getLogger(__name__)
 
 class WebSocketServer:
-    """WebSocket server for real-time dashboard updates."""
-    
-    def __init__(self, analytics_system=None, alert_system=None, metrics_manager=None, host="0.0.0.0", port=None):
+    """WebSocket server for streaming real-time data."""
+
+    def __init__(self, socketio):
         """Initialize WebSocket server."""
-        self.clients: Dict[WebSocketServerProtocol, Dict] = {}  # client -> {channels: Set[str], last_ping: float}
-        self.server = None
-        self.analytics_system = analytics_system
-        self.alert_system = alert_system
-        self.metrics_manager = metrics_manager
-        self.host = host
-        self.base_port = port or int(os.getenv('DASHBOARD_WEBSOCKET_PORT', '8771'))
-        self.port = self.base_port
-        self.max_port_attempts = 10
-        self.update_task = None
-        self.monitoring_task = None
-        self.running = False
-        self.start_time = time.time()
-        self.connection_stats = {
-            'total_messages': 0,
-            'error_count': 0,
-            'last_error_time': None,
-            'client_latencies': {}
+        self.socketio = socketio
+        self.connected_clients = set()
+        self.last_update = {
+            'state': 0,
+            'metrics': 0,
+            'market': 0
         }
-
-    async def register(self, websocket: WebSocketServerProtocol):
-        """Register a new client connection."""
-        self.clients[websocket] = {
-            'channels': set(),
-            'last_ping': time.time(),
-            'latency': 0,
-            'messages_received': 0,
-            'errors': 0
-        }
-        logger.info(f"Client connected. Total clients: {len(self.clients)}")
-        await self.send_system_status(websocket)
-
-    async def unregister(self, websocket: WebSocketServerProtocol):
-        """Unregister a client connection."""
-        if websocket in self.clients:
-            del self.clients[websocket]
-        logger.info(f"Client disconnected. Total clients: {len(self.clients)}")
-
-    async def subscribe(self, websocket: WebSocketServerProtocol, channels: list):
-        """Subscribe client to specified channels."""
-        if websocket in self.clients:
-            self.clients[websocket]['channels'].update(channels)
-            logger.info(f"Client subscribed to channels: {channels}")
-            # Send initial data for subscribed channels
-            await self.send_initial_data(websocket, channels)
-
-    async def get_dex_status(self) -> list:
-        """Get status of all DEXes."""
-        if not self.analytics_system:
-            return []
-
-        dexes = []
-        try:
-            metrics = await self.analytics_system.get_performance_metrics()
-            if metrics and len(metrics) > 0 and 'dex_metrics' in metrics[0]:
-                for dex_name, dex_data in metrics[0]['dex_metrics'].items():
-                    # Format DEX name for display
-                    display_name = dex_name.replace('_', ' ').title()
-                    if dex_name.lower() == 'uniswap_v3':
-                        display_name = 'Uniswap V3'
-                    elif dex_name.lower() == 'sushiswap':
-                        display_name = 'SushiSwap'
-                    elif dex_name.lower() == 'baseswap':
-                        display_name = 'BaseSwap'
-                    elif dex_name.lower() == 'pancakeswap':
-                        display_name = 'PancakeSwap'
-
-                    dexes.append({
-                        'name': display_name,
-                        'active': dex_data.get('active', False),
-                        'liquidity': dex_data.get('liquidity', 0),
-                        'volume_24h': dex_data.get('volume_24h', 0)
-                    })
-        except Exception as e:
-            logger.error(f"Error getting DEX status: {e}")
-
-        return dexes
-
-    async def get_arbitrage_opportunities(self) -> list:
-        """Get current arbitrage opportunities."""
-        if not self.analytics_system:
-            return []
-
-        opportunities = []
-        try:
-            if hasattr(self.analytics_system, 'market_conditions'):
-                for symbol, condition in self.analytics_system.market_conditions.items():
-                    if condition.price_impact < 0.01:  # Less than 1% impact
-                        opportunities.append({
-                            'token_pair': f"{symbol}/USDC",
-                            'potential_profit': 0.0,  # Will be calculated in real-time
-                            'gas_cost': 0.0,  # Will be calculated in real-time
-                            'net_profit': 0.0,
-                            'price_impact': float(condition.price_impact),
-                            'executable': condition.price_impact < 0.01
-                        })
-        except Exception as e:
-            logger.error(f"Error getting arbitrage opportunities: {e}")
-
-        return opportunities
-
-    async def send_initial_data(self, websocket: WebSocketServerProtocol, channels: list):
-        """Send initial data for subscribed channels."""
-        try:
-            if 'metrics' in channels and self.analytics_system:
-                metrics = await self.analytics_system.get_performance_metrics()
-                if metrics and len(metrics) > 0:
-                    latest = metrics[0]  # Latest metrics are first in the list
-                    data = {
-                        'type': 'metrics',
-                        'metrics': {
-                            'total_trades': latest['total_trades'],
-                            'trades_24h': latest['trades_24h'],
-                            'success_rate': latest['success_rate'],
-                            'total_profit': latest['total_profit_usd'],
-                            'profit_24h': latest['portfolio_change_24h'],
-                            'active_opportunities': latest['active_opportunities'],
-                            'dex_status': await self.get_dex_status()
-                        }
-                    }
-                    await websocket.send(json.dumps(data))
-
-            if 'performance' in channels and self.analytics_system:
-                metrics = await self.analytics_system.get_performance_metrics()
-                if metrics and len(metrics) > 0:
-                    now = int(time.time() * 1000)
-                    latest = metrics[0]
-
-                    # Get market conditions for price history
-                    price_history = []
-                    if hasattr(self.analytics_system, 'market_conditions'):
-                        for symbol, condition in self.analytics_system.market_conditions.items():
-                            if symbol == 'WETH':
-                                price_history.append([now, float(condition.price)])
-
-                    data = {
-                        'type': 'performance',
-                        'price_history': price_history,
-                        'profit_history': [[now, float(latest['total_profit_usd'])]],
-                        'volume_history': [[now, latest['total_trades']]],
-                        'opportunities': await self.get_arbitrage_opportunities()
-                    }
-                    await websocket.send(json.dumps(data))
-
-        except Exception as e:
-            logger.error(f"Error sending initial data: {e}", exc_info=True)
-
-    async def broadcast(self, data: Dict[str, Any], channel: str):
-        """Broadcast data to subscribed clients."""
-        if not self.clients:
-            return
-
-        message = json.dumps(data)
-        timestamp = time.time()
         
-        for websocket, client_data in list(self.clients.items()):
-            if channel in client_data['channels']:
-                try:
-                    await websocket.send(message)
-                    self.connection_stats['total_messages'] += 1
-                    client_data['last_ping'] = timestamp
-                except Exception as e:
-                    logger.error(f"Error sending to client: {e}")
-                    client_data['errors'] += 1
-                    self.connection_stats['error_count'] += 1
-                    self.connection_stats['last_error_time'] = timestamp
+        # Core components
+        self.web3_manager = None
+        self.analytics_system = None
+        self.market_analyzer = None
+        self.gas_optimizer = None
 
-    async def send_periodic_updates(self):
-        """Send periodic updates to subscribed clients."""
-        while self.running:
-            try:
-                if self.analytics_system and self.clients:
-                    metrics = await self.analytics_system.get_performance_metrics()
-                    opportunities = await self.get_arbitrage_opportunities()
-                    
-                    if metrics and len(metrics) > 0:
-                        latest = metrics[0]  # Latest metrics are first in the list
-                        await self.broadcast({
-                            'type': 'metrics',
-                            'metrics': {
-                                'total_trades': latest['total_trades'],
-                                'trades_24h': latest['trades_24h'],
-                                'success_rate': latest['success_rate'],
-                                'total_profit': latest['total_profit_usd'],
-                                'profit_24h': latest['portfolio_change_24h'],
-                                'active_opportunities': latest['active_opportunities'],
-                                'dex_status': await self.get_dex_status()
-                            }
-                        }, 'metrics')
-
-                        # Send performance updates
-                        now = int(time.time() * 1000)
-                        price_history = []
-                        if hasattr(self.analytics_system, 'market_conditions'):
-                            for symbol, condition in self.analytics_system.market_conditions.items():
-                                if symbol == 'WETH':
-                                    price_history.append([now, float(condition.price)])
-
-                        await self.broadcast({
-                            'type': 'performance',
-                            'price_history': price_history,
-                            'profit_history': [[now, float(latest['total_profit_usd'])]],
-                            'volume_history': [[now, latest['total_trades']]],
-                            'opportunities': opportunities
-                        }, 'performance')
-
-            except Exception as e:
-                logger.error(f"Error in periodic updates: {e}", exc_info=True)
-
-            await asyncio.sleep(1)  # Update every second for real-time opportunities
-
-    async def handler(self, websocket: WebSocketServerProtocol, path: str):
-        """Handle WebSocket connection."""
-        client_id = id(websocket)
-        logger.info(f"New client connected. ID: {client_id}")
-
+    async def initialize(self, config: Dict[str, Any]) -> bool:
+        """Initialize core components."""
         try:
-            # Send welcome message
-            await websocket.send(json.dumps({
-                'type': 'system',
-                'message': 'Connected to WebSocket server',
-                'port': self.port
-            }))
-
-            await self.register(websocket)
+            # Initialize Web3 manager
+            self.web3_manager = Web3Manager(config)
             
-            # Auto-subscribe to all channels
-            await self.subscribe(websocket, ['metrics', 'performance', 'system'])
+            # Initialize analytics system
+            self.analytics_system = await create_analytics_system(config)
             
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    msg_type = data.get('type')
-
-                    if msg_type == 'subscribe':
-                        channels = data.get('channels', [])
-                        await self.subscribe(websocket, channels)
-                        await websocket.send(json.dumps({
-                            'type': 'system',
-                            'message': f'Subscribed to channels: {channels}'
-                        }))
-                    elif msg_type == 'ping':
-                        await websocket.send(json.dumps({
-                            'type': 'pong',
-                            'timestamp': time.time()
-                        }))
-                    elif msg_type == 'health':
-                        await websocket.send(json.dumps({
-                            'type': 'system',
-                            'status': 'ok',
-                            'port': self.port,
-                            'uptime': time.time() - self.start_time,
-                            'connections': len(self.clients),
-                            'message': 'WebSocket server is healthy'
-                        }))
-
-                except json.JSONDecodeError:
-                    logger.error(f"Invalid JSON from client {client_id}")
-                    await websocket.send(json.dumps({
-                        'type': 'error',
-                        'message': 'Invalid JSON message'
-                    }))
-                except Exception as e:
-                    logger.error(f"Error handling message: {e}")
-                    await websocket.send(json.dumps({
-                        'type': 'error',
-                        'message': str(e)
-                    }))
-
-        except websockets.exceptions.ConnectionClosed:
-            logger.info(f"Client {client_id} connection closed")
-        except Exception as e:
-            logger.error(f"Error handling client {client_id}: {e}")
-        finally:
-            await self.unregister(websocket)
-
-    async def monitor_connections(self):
-        """Monitor client connections and performance."""
-        while self.running:
-            try:
-                current_time = time.time()
-                for client, data in list(self.clients.items()):
-                    # Check client health
-                    if current_time - data['last_ping'] > 30:  # No response for 30 seconds
-                        logger.warning(f"Client unresponsive: {id(client)}")
-                        await self.broadcast({
-                            'type': 'system',
-                            'status': 'warning',
-                            'message': 'Connection quality degraded'
-                        }, 'system')
-                    
-                    # Calculate and store latency
-                    try:
-                        pong_waiter = await client.ping()
-                        start_time = time.time()
-                        await pong_waiter
-                        latency = time.time() - start_time
-                        data['latency'] = latency
-                        self.connection_stats['client_latencies'][id(client)] = latency
-                    except Exception as e:
-                        logger.error(f"Error checking client latency: {e}")
-                
-                # Send connection stats to clients
-                stats_message = {
-                    'type': 'system',
-                    'status': 'info',
-                    'stats': {
-                        'total_clients': len(self.clients),
-                        'total_messages': self.connection_stats['total_messages'],
-                        'error_rate': self.connection_stats['error_count'] / max(1, self.connection_stats['total_messages']),
-                        'average_latency': sum(self.connection_stats['client_latencies'].values()) / max(1, len(self.connection_stats['client_latencies']))
-                    }
-                }
-                await self.broadcast(stats_message, 'system')
-                
-            except Exception as e:
-                logger.error(f"Error in connection monitoring: {e}")
-            
-            await asyncio.sleep(5)  # Check every 5 seconds
-
-    async def check_port_available(self, port: int) -> bool:
-        """Check if a port is available."""
-        try:
-            # Try to create a socket with the port
-            test_socket = await websockets.serve(
-                lambda x, y: None,  # Dummy handler
-                self.host,
-                port
+            # Initialize market analyzer
+            self.market_analyzer = await create_market_analyzer(
+                web3_manager=self.web3_manager,
+                config=config
             )
-            test_socket.close()
-            await test_socket.wait_closed()
+            
+            # Initialize gas optimizer
+            self.gas_optimizer = await create_gas_optimizer(
+                web3_manager=self.web3_manager,
+                config=config
+            )
+            
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to initialize WebSocket server: {e}")
             return False
 
-    async def find_available_port(self) -> Optional[int]:
-        """Find an available port starting from base_port."""
-        logger.info(f"Finding available port starting from {self.base_port}")
-        
-        for port_offset in range(self.max_port_attempts):
-            try_port = self.base_port + port_offset
-            if await self.check_port_available(try_port):
-                logger.info(f"Found available port: {try_port}")
-                return try_port
-            else:
-                logger.warning(f"Port {try_port} is not available, trying next port")
-        
-        logger.error(f"No available ports found after {self.max_port_attempts} attempts")
-        return None
-
     async def start(self):
-        """Start WebSocket server with port conflict resolution."""
-        retries = 0
-        max_retries = 3
-        
-        while retries < max_retries:
+        """Start the WebSocket server."""
+        await asyncio.gather(
+            self._state_loop(),
+            self._metrics_loop(),
+            self._market_loop()
+        )
+
+    async def _state_loop(self):
+        """Stream real-time state data (2s updates)."""
+        while True:
             try:
-                # Try to find an available port
-                available_port = await self.find_available_port()
-                if not available_port:
-                    raise RuntimeError("No available ports found")
+                # Get opportunities
+                opportunities = await self.market_analyzer.get_opportunities()
                 
-                self.port = available_port
-                logger.info(f"Attempting to start WebSocket server on {self.host}:{self.port}")
+                # Get gas data
+                gas_analysis = await self.gas_optimizer.analyze_gas_usage()
+                optimal_gas = await self.gas_optimizer.get_optimal_gas_price()
                 
-                # Start WebSocket server without SSL for development
-                self.server = await websockets.serve(
-                    self.handler,
-                    self.host,
-                    self.port,
-                    ping_interval=20,
-                    ping_timeout=20
-                )
+                # Get latest block
+                block = self.web3_manager.get_block()
+                block_data = self._get_block_data(block)
                 
-                self.running = True
-                self.update_task = asyncio.create_task(self.send_periodic_updates())
-                self.monitoring_task = asyncio.create_task(self.monitor_connections())
-                
-                logger.info(f"WebSocket server successfully running on {self.host}:{self.port}")
-                return self
-                
-            except Exception as e:
-                retries += 1
-                logger.error(f"Attempt {retries}/{max_retries} failed to start WebSocket server: {e}")
-                
-                if retries < max_retries:
-                    logger.info(f"Retrying with different port in 1 second...")
-                    await asyncio.sleep(1)
-                    continue
-                else:
-                    logger.error("Maximum retry attempts reached. Failed to start WebSocket server.")
-                    raise RuntimeError(f"Failed to start WebSocket server after {max_retries} attempts: {str(e)}")
-
-    def is_running(self) -> bool:
-        """Check if server is running."""
-        return self.running and self.server is not None and self.server.is_serving()
-
-    async def stop(self):
-        """Stop WebSocket server."""
-        self.running = False
-        for task in [self.update_task, self.monitoring_task]:
-            if task:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-        if self.server:
-            self.server.close()
-            await self.server.wait_closed()
-        logger.info("WebSocket server stopped")
-
-    async def send_system_status(self, websocket: WebSocketServerProtocol):
-        """Send system status to a client."""
-        try:
-            status = {
-                'type': 'system',
-                'status': 'info',
-                'message': 'Connected to WebSocket server',
-                'stats': {
-                    'total_clients': len(self.clients),
-                    'uptime': time.time() - self.start_time,
-                    'error_rate': self.connection_stats['error_count'] / max(1, self.connection_stats['total_messages'])
+                # Combine data
+                data = {
+                    'opportunities': [opp.__dict__ for opp in opportunities],
+                    'gas': {
+                        'analysis': gas_analysis,
+                        'optimal_price': optimal_gas,
+                        'current_price': block_data.get('base_fee')
+                    },
+                    'network': {
+                        'status': 'connected' if self.web3_manager.is_connected() else 'disconnected',
+                        'block': block_data
+                    }
                 }
-            }
-            await websocket.send(json.dumps(status))
-        except Exception as e:
-            logger.error(f"Error sending system status: {e}")
+                
+                self.socketio.emit('state_update', data, namespace='/')
+            except Exception as e:
+                logger.error(f"Error in state loop: {e}")
+            await asyncio.sleep(2)  # 2 second updates
 
-async def create_websocket_server(
-    analytics_system=None,
-    alert_system=None,
-    metrics_manager=None,
-    host="0.0.0.0",
-    port=None
-) -> WebSocketServer:
-    """Create and start a new WebSocket server instance."""
-    server = WebSocketServer(
-        analytics_system=analytics_system,
-        alert_system=alert_system,
-        metrics_manager=metrics_manager,
-        host=host,
-        port=port
-    )
-    await server.start()
-    return server
+    async def _metrics_loop(self):
+        """Stream performance metrics data (5s updates)."""
+        while True:
+            try:
+                # Get analytics metrics
+                analytics = await self.analytics_system.get_metrics()
+                
+                # Get performance metrics
+                performance = await self.market_analyzer.get_performance_metrics()
+                
+                # Get DEX metrics
+                dex_metrics = {}
+                for dex_name in self.web3_manager.config['dexes']:
+                    if not self.config['dexes'][dex_name].get('enabled', True):
+                        continue
+                        
+                    dex_class = self._get_dex_class(dex_name)
+                    if not dex_class:
+                        continue
+                        
+                    dex = dex_class(self.web3_manager, self.config['dexes'][dex_name])
+                    await dex.initialize()
+                    
+                    liquidity = await dex.get_total_liquidity()
+                    volume = await dex.get_24h_volume()
+                    
+                    dex_metrics[dex_name] = {
+                        'active': True,
+                        'liquidity': float(liquidity) if liquidity else 0,
+                        'volume_24h': float(volume) if volume else 0
+                    }
+                
+                # Combine data
+                data = {
+                    'analytics': analytics,
+                    'performance': performance,
+                    'dex_metrics': dex_metrics
+                }
+                
+                self.socketio.emit('metrics_update', data, namespace='/')
+            except Exception as e:
+                logger.error(f"Error in metrics loop: {e}")
+            await asyncio.sleep(5)  # 5 second updates
+
+    async def _market_loop(self):
+        """Stream market analysis data (10s updates)."""
+        while True:
+            try:
+                market_data = {}
+                
+                # Get market conditions for each token
+                for token in self.web3_manager.config['tokens']:
+                    condition = await self.market_analyzer.get_market_condition(token)
+                    if condition:
+                        market_data[token] = condition.__dict__
+                
+                # Get competition analysis
+                competition = await self.tx_monitor.get_metrics()
+                
+                # Get ML analysis
+                ml_state = self.ml_system.get_state()
+                
+                data = {
+                    'market_conditions': market_data,
+                    'competition': competition,
+                    'analysis': ml_state.get('market_state', {})
+                }
+                
+                self.socketio.emit('market_update', data, namespace='/')
+            except Exception as e:
+                logger.error(f"Error in market loop: {e}")
+            await asyncio.sleep(10)  # 10 second updates
+
+    def _get_block_data(self, block: BlockData) -> Dict[str, Any]:
+        """Safely extract block data."""
+        block_dict = cast(Dict[str, Any], block)
+        
+        timestamp = block_dict.get('timestamp')
+        timestamp_str = datetime.fromtimestamp(timestamp).isoformat() if timestamp else None
+        
+        base_fee = block_dict.get('baseFeePerGas')
+        base_fee_gwei = Web3.from_wei(base_fee, 'gwei') if base_fee else None
+        
+        return {
+            'number': block_dict.get('number'),
+            'timestamp': timestamp_str,
+            'gas_used': block_dict.get('gasUsed'),
+            'gas_limit': block_dict.get('gasLimit'),
+            'base_fee': base_fee_gwei,
+            'transaction_count': len(block_dict.get('transactions', []))
+        }
+
+    def handle_client_connect(self, client_id: str):
+        """Handle client connection."""
+        self.connected_clients.add(client_id)
+        logger.info(f"Client {client_id} connected. Total clients: {len(self.connected_clients)}")
+
+    def handle_client_disconnect(self, client_id: str):
+        """Handle client disconnection."""
+        self.connected_clients.discard(client_id)
+        logger.info(f"Client {client_id} disconnected. Total clients: {len(self.connected_clients)}")
+
+    def broadcast(self, event: str, data: Dict[str, Any]):
+        """Broadcast data to all connected clients."""
+        for client_id in self.connected_clients:
+            self.socketio.emit(event, data, room=client_id)

@@ -4,53 +4,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arbitrage Bot Dashboard</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- ApexCharts CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.css" rel="stylesheet">
-    <!-- Custom CSS -->
-    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">Arbitrage Bot</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/opportunities">Opportunities</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/performance">Performance</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/settings">Settings</a>
-                    </li>
-                </ul>
+    <div class="dashboard">
+        <header>
+            <h1>Arbitrage Bot Dashboard</h1>
+            <div id="connection-status" class="status-indicator">
+                <div class="status-dot"></div>
+                <span class="status-text">Disconnected</span>
             </div>
-        </div>
-    </nav>
+        </header>
 
-    <div class="container-fluid mt-4">
-        {% block content %}{% endblock %}
+        <nav class="main-nav">
+            <ul>
+                <li><a href="/" class="{{ 'active' if request.endpoint == 'index' }}">Overview</a></li>
+                <li><a href="/opportunities" class="{{ 'active' if request.endpoint == 'opportunities' }}">Opportunities</a></li>
+                <li><a href="/history" class="{{ 'active' if request.endpoint == 'history' }}">History</a></li>
+                <li><a href="/analytics" class="{{ 'active' if request.endpoint == 'analytics' }}">Analytics</a></li>
+                <li><a href="/memory" class="{{ 'active' if request.endpoint == 'memory' }}">Memory</a></li>
+                <li><a href="/storage" class="{{ 'active' if request.endpoint == 'storage' }}">Storage</a></li>
+                <li><a href="/distribution" class="{{ 'active' if request.endpoint == 'distribution' }}">Distribution</a></li>
+                <li><a href="/execution" class="{{ 'active' if request.endpoint == 'execution' }}">Execution</a></li>
+                <li><a href="/settings" class="{{ 'active' if request.endpoint == 'settings' }}">Settings</a></li>
+            </ul>
+        </nav>
+
+        <main>
+            {% block content %}{% endblock %}
+        </main>
     </div>
 
-    <!-- Bootstrap Bundle with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- ApexCharts -->
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.min.js"></script>
-    <!-- WebSocket Connection -->
     <script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
-    <!-- Custom Scripts -->
-    <script type="text/javascript">
-        window.wsPort = "{{ websocket_port }}";
-    </script>
-    {% block scripts %}{% endblock %}
+    {% block extra_js %}{% endblock %}
 </body>
 </html>
