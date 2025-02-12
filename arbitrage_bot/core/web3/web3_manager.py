@@ -146,23 +146,9 @@ class Web3Manager:
                 if not private_key:
                     raise ValueError("No private key configured")
                     
-                # Validate private key format
-                try:
-                    # Remove 0x prefix if present
-                    clean_key = private_key[2:] if private_key.startswith("0x") else private_key
-                                    
-                    # Remove any whitespace
-                    clean_key = clean_key.strip()
-                    
-                    # Validate hex format and length (32 bytes = 64 characters)
-                    if not (len(clean_key) == 64 and all(c in '0123456789abcdefABCDEF' for c in clean_key)):
-        private_key = f"0x{clean_key.lower()}"
-                    else:
-                        raise ValueError("Invalid private key format - must be 64 hex characters")
-                    private_key = f"0x{clean_key.lower()}"
-                    
-                except Exception as e:
-                    raise ValueError("Invalid private key format - must be hex")
+                # Add 0x prefix if missing
+                if not private_key.startswith("0x"):
+                    private_key = f"0x{private_key}"
                     
                 account = self._web3.eth.account.from_key(private_key)
                 self._web3.eth.default_account = account.address
