@@ -14,7 +14,6 @@ from ..dex.utils import (
     format_amount_with_decimals,
     COMMON_TOKENS
 )
-from ..gas.gas_optimizer import GasOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,11 @@ class ArbitrageExecutor:
         max_gas_price_gwei: int = 100,  # Maximum gas price in gwei
         tx_timeout_seconds: int = 30,  # Transaction timeout in seconds
         tx_monitor: Optional[Any] = None,
-        market_analyzer: Optional[Any] = None
+        market_analyzer: Optional[Any] = None,
+        analytics_system: Optional[Any] = None,
+        ml_system: Optional[Any] = None,
+        memory_bank: Optional[Any] = None,
+        config: Optional[Dict[str, Any]] = None
     ):
         """Initialize arbitrage executor."""
         self.dex_manager = dex_manager
@@ -50,6 +53,10 @@ class ArbitrageExecutor:
         self.tx_timeout_seconds = tx_timeout_seconds
         self.tx_monitor = tx_monitor
         self.market_analyzer = market_analyzer
+        self.analytics_system = analytics_system
+        self.ml_system = ml_system
+        self.memory_bank = memory_bank
+        self.config = config or {}
         self.last_error = None
         self._cached_eth_price = None
         self._last_price_update = 0
@@ -95,6 +102,73 @@ class ArbitrageExecutor:
         except Exception as e:
             logger.error(f"Failed to initialize arbitrage executor: {e}")
             return False
+
+    async def detect_opportunities(self) -> List[Dict[str, Any]]:
+        """Detect arbitrage opportunities."""
+        try:
+            if not self.market_analyzer:
+                logger.warning("No market analyzer available")
+                return []
+                
+            # Get opportunities from market analyzer
+            opportunities = await self.market_analyzer.get_opportunities()
+            
+            # Filter opportunities
+            valid_opportunities = []
+            for opp in opportunities:
+                try:
+                    # Validate opportunity
+                    if opp['profit_usd'] < self.min_profit_usd:
+                        continue
+                        
+                    # Get DEX instance
+                    dex_from = self.dex_manager.get_dex(opp['dex_from'])
+                    if not dex_from:
+                        logger.error(f"DEX {opp['dex_from']} not found")
+                        continue
+                    
+                    # Validate gas costs
+                    estimated_gas = await dex_from.estimate_gas(
+                        amount_in=Decimal(str(opp['amount_in'])),
+                        amount_out_min=Decimal(str(opp['amount_out'] * (1 - self.slippage_tolerance))),
+                        path=opp['token_path'],
+                        to=self.wallet_address
+                    )
+                    
+                    gas_price = await self.web3_manager.w3.eth.gas_price
+                    gas_cost_wei = estimated_gas * gas_price
+                    gas_cost_eth = self.web3_manager.w3.from_wei(gas_cost_wei, 'ether')
+                    
+                    # Get ETH price from market analyzer
+                    eth_price = await self.market_analyzer.get_market_condition("WETH")
+                    if not eth_price:
+                        logger.error("Failed to get ETH price")
+                        continue
+                        
+                    gas_cost_usd = float(gas_cost_eth) * float(eth_price['price'])
+                    
+                    # Verify profit after gas
+                    net_profit = opp['profit_usd'] - gas_cost_usd
+                    if net_profit < self.min_profit_usd:
+                        logger.debug(f"Trade not profitable after gas: ${net_profit:.2f}")
+                        continue
+                    
+                    # Add gas cost info to opportunity
+                    opp['estimated_gas'] = estimated_gas
+                    opp['gas_cost_usd'] = gas_cost_usd
+                    opp['net_profit'] = net_profit
+                    
+                    valid_opportunities.append(opp)
+                    
+                except Exception as e:
+                    logger.error(f"Error validating opportunity: {e}")
+                    continue
+            
+            return valid_opportunities
+            
+        except Exception as e:
+            logger.error(f"Error detecting opportunities: {e}")
+            return []
 
     async def start_execution(self):
         """Start arbitrage execution loop."""
@@ -220,22 +294,13 @@ async def create_arbitrage_executor(
     max_price_impact: float = 0.02,
     slippage_tolerance: float = 0.005,
     tx_monitor: Optional[Any] = None,
-    market_analyzer: Optional[Any] = None
+    market_analyzer: Optional[Any] = None,
+    analytics_system: Optional[Any] = None,
+    ml_system: Optional[Any] = None,
+    memory_bank: Optional[Any] = None,
+    config: Optional[Dict[str, Any]] = None
 ) -> ArbitrageExecutor:
-    """
-    Create arbitrage executor instance.
-
-    Args:
-        web3_manager: Web3Manager instance
-        dex_manager: Optional DEXManager instance
-        gas_optimizer: Optional GasOptimizer instance
-        min_profit_usd: Minimum profit in USD
-        max_price_impact: Maximum price impact
-        slippage_tolerance: Slippage tolerance
-
-    Returns:
-        ArbitrageExecutor: Arbitrage executor instance
-    """
+    """Create arbitrage executor instance."""
     if not web3_manager:
         web3_manager = await create_web3_manager()
     if not isinstance(web3_manager, Web3Manager):
@@ -253,7 +318,11 @@ async def create_arbitrage_executor(
         max_price_impact=max_price_impact,
         slippage_tolerance=slippage_tolerance,
         tx_monitor=tx_monitor,
-        market_analyzer=market_analyzer
+        market_analyzer=market_analyzer,
+        analytics_system=analytics_system,
+        ml_system=ml_system,
+        memory_bank=memory_bank,
+        config=config
     )
     await executor.initialize()
     return executor

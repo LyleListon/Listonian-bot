@@ -1,168 +1,206 @@
 # Technical Context
 
-## Technology Stack
+## Current Architecture
 
-### Core Technologies
-1. **Programming Languages**
-   - Python (Primary language)
-   - Solidity (Smart Contracts)
-   - JavaScript (Dashboard)
+### Core Components
+1. Blockchain Layer
+   - Web3 manager for RPC interactions
+   - Provider system with retry logic
+   - Transaction handling and monitoring
+   - Event subscription system
 
-2. **Blockchain Integration**
-   - Web3.py for blockchain interaction
-   - Active DEXes: BaseSwap, SwapBased, PancakeSwap
-   - Smart contract ABIs in /abi directory
-
-3. **Machine Learning**
-   - Predictive models for market analysis
-   - Reinforcement learning for strategy optimization
-   - Model persistence and versioning
-
-### Infrastructure
-
-1. **Development Environment**
-   - Windows 11 Operating System
-   - VSCode as primary IDE
-   - Git for version control
-
-2. **Runtime Environment**
-   - Python virtual environment
-   - Node.js for dashboard
-   - Local blockchain nodes
-
-3. **Monitoring**
-   - Flask-based dashboard
-   - Real-time WebSocket updates
-   - Performance tracking system
-
-## Development Setup
-
-### Prerequisites
-1. **System Requirements**
-   - Python 3.x
-   - Node.js
-   - Git
-
-2. **Environment Configuration**
-   - Virtual environment setup
-   - Environment variables
-   - Configuration files in docs/reference/configuration.md
-   - Secure configuration templates
-   - Environment-based configuration
-
-3. **Dependencies**
-   - Python packages in requirements.txt
-   - Node packages for dashboard
-   - Smart contract dependencies
-
-### Build Process
-1. **Local Development**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   pip install -r requirements.txt
-   pip install -r requirements-dev.txt
-   ```
-
-2. **Configuration Setup**
-   ```bash
-   # Copy configuration template
-   cp docs/reference/configuration.md system.conf
-   # Update configuration with actual values
-   ```
-
-3. **Running the System**
-   ```bash
-   # Start the dashboard
-   .\start_dashboard.bat
-   ```
-
-## Technical Constraints
-
-### Performance Requirements
-1. **Latency**
-   - Sub-second opportunity detection
-   - Minimal execution delay
-   - Real-time price updates
-
-2. **Scalability**
-   - Selective DEX initialization
-   - Concurrent trade execution
-   - Efficient resource utilization
-
-3. **Reliability**
-   - Error recovery mechanisms
-   - Transaction validation
-   - System health monitoring
-   - Configuration validation
-
-### Security Considerations
-1. **Transaction Security**
-   - Private key management
-   - Signature validation
-   - Gas price optimization
-
-2. **System Security**
-   - Access control
-   - Rate limiting
-   - Data encryption
-   - Configuration protection
-
-3. **Configuration Security**
-   - Sensitive data handling
-   - Environment isolation
-   - Secure templates
-   - Documentation security
-
-### Integration Points
-1. **Blockchain Networks**
-   - Base Network (Chain ID: 8453)
-   - RPC endpoint configuration
-   - Gas estimation
-
-2. **DEX Integration**
-   - Enabled DEXes:
+2. DEX Layer
+   - Base DEX interface
+   - Protocol-specific adapters:
      * BaseSwap (V2)
      * SwapBased (V2)
      * PancakeSwap (V3)
-   - Disabled DEXes:
-     * UniswapV3
-     * RocketSwap
-     * Aerodrome
-     * AerodromeV3
+   - Utility functions:
+     * Price calculations
+     * Contract interactions
+     * Validation helpers
 
-3. **External Services**
-   - Price feed integration
-   - Market data providers
-   - Analytics services
+3. Test Framework
+   - Mock contracts
+   - Test fixtures
+   - Unit tests
+   - Error scenarios
 
-## MCP Servers
-1. **crypto-price**
-   - Real-time cryptocurrency price data
-   - Multiple coin support
-   - 24h price change tracking
+## Technical Requirements
 
-2. **market-analysis**
-   - Arbitrage opportunity analysis
-   - Market condition assessment
-   - Risk factor evaluation
+### Integration Testing Environment
+1. Local Network
+   ```bash
+   # Required tools
+   npm install -g hardhat
+   npm install -g @nomiclabs/hardhat-ethers
+   npm install -g @openzeppelin/contracts
+   ```
 
-3. **pool-insight**
-   - DEX pool analysis
-   - Trade quote assessment
-   - Impact analysis
+2. Network Configuration
+   ```javascript
+   // hardhat.config.js
+   module.exports = {
+     networks: {
+       local: {
+         url: "http://127.0.0.1:8545",
+         chainId: 8453,
+         accounts: {
+           mnemonic: "test test test test test test test test test test test junk"
+         }
+       }
+     }
+   }
+   ```
 
-## Monitoring and Maintenance
-1. **System Health**
-   - Performance metrics
-   - Error tracking
-   - Resource utilization
-   - Configuration validation
+3. Test Tokens
+   ```solidity
+   // TestToken.sol
+   contract TestToken is ERC20 {
+     constructor(string memory name, string memory symbol) 
+       ERC20(name, symbol) {
+       _mint(msg.sender, 1000000 * 10**18);
+     }
+   }
+   ```
 
-2. **Updates and Maintenance**
-   - Version control
-   - Dependency updates
-   - Security patches
-   - Configuration management
+### Required Dependencies
+```json
+{
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.0",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "ethers": "^5.7.2",
+    "hardhat": "^2.17.0",
+    "web3": "^1.10.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.3",
+    "jest": "^29.6.1",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.1.6"
+  }
+}
+```
 
-Last Updated: 2024-01-24
+### Environment Variables
+```bash
+# Network
+HARDHAT_NETWORK=local
+BASE_RPC_URL=http://127.0.0.1:8545
+CHAIN_ID=8453
+
+# Test Accounts
+TEST_PRIVATE_KEY=0x...
+TEST_ACCOUNT=0x...
+
+# Contract Addresses
+TEST_TOKEN_1=0x...
+TEST_TOKEN_2=0x...
+TEST_POOL=0x...
+```
+
+## Integration Test Structure
+
+### 1. Test Environment
+```typescript
+// tests/integration/setup.ts
+export class TestEnvironment {
+  public web3: Web3Manager;
+  public tokens: Map<string, Token>;
+  public pools: Map<string, PoolInfo>;
+  
+  async initialize() {
+    // Set up network
+    // Deploy contracts
+    // Create pools
+  }
+}
+```
+
+### 2. Test Scenarios
+```typescript
+// tests/integration/scenarios/swap.ts
+describe('Swap Integration', () => {
+  let env: TestEnvironment;
+  
+  beforeAll(async () => {
+    env = new TestEnvironment();
+    await env.initialize();
+  });
+  
+  test('Execute Swap', async () => {
+    // Perform swap
+    // Verify state changes
+    // Check events
+  });
+});
+```
+
+### 3. Performance Tests
+```typescript
+// tests/integration/performance/load.ts
+describe('Load Testing', () => {
+  test('Concurrent Swaps', async () => {
+    // Execute multiple swaps
+    // Measure performance
+    // Check resource usage
+  });
+});
+```
+
+## Monitoring Setup
+
+### 1. Metrics Collection
+```typescript
+interface Metrics {
+  transactionCount: number;
+  successRate: number;
+  averageGasUsed: number;
+  averageConfirmationTime: number;
+}
+```
+
+### 2. Error Tracking
+```typescript
+interface ErrorLog {
+  timestamp: number;
+  operation: string;
+  error: Error;
+  context: any;
+}
+```
+
+### 3. Performance Monitoring
+```typescript
+interface PerformanceMetrics {
+  responseTime: number;
+  memoryUsage: number;
+  cpuUsage: number;
+  networkLatency: number;
+}
+```
+
+## Next Technical Steps
+
+1. Set up local Base network
+   - Configure Hardhat
+   - Deploy test contracts
+   - Create test accounts
+
+2. Implement integration tests
+   - Write test scenarios
+   - Add performance tests
+   - Set up monitoring
+
+3. Create test utilities
+   - Helper functions
+   - Test data generators
+   - Monitoring tools
+
+4. Document test procedures
+   - Setup instructions
+   - Test scenarios
+   - Performance benchmarks
+
+Last Updated: 2025-02-10

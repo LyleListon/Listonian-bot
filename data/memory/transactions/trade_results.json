@@ -1,0 +1,142 @@
+[
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": true,
+    "timestamp": 1739282751.6380303,
+    "net_profit": 0.01866243452239979,
+    "gas_cost": 0.0023075695270051346,
+    "tx_hash": "0x3961e456619bb480ed7b2bb8bfc00eb4b732ac0cf530b2c7f01f5615d0f4eaa8",
+    "error": null
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": false,
+    "timestamp": 1739282751.643028,
+    "net_profit": 0,
+    "gas_cost": 0.0016801799291122795,
+    "tx_hash": "0x35480707c1ecce4c8116fef98ede80f3a6790bca45bbcb4a532739b1d8cd044b",
+    "error": "Insufficient liquidity"
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": true,
+    "timestamp": 1739282751.6468039,
+    "net_profit": 0.039329715212879965,
+    "gas_cost": 0.0015040347634883112,
+    "tx_hash": "0x7da18f376f36da72d32759d847bc59a001de462d48290eb074218876d1190da8",
+    "error": null
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": true,
+    "timestamp": 1739282751.6484923,
+    "net_profit": 0.03300989929998192,
+    "gas_cost": 0.0012112054293057218,
+    "tx_hash": "0x9983ac0bb7377d89153301f0670f03b1f35b14d2c20980729cbd7fbb7358ae6b",
+    "error": null
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": false,
+    "timestamp": 1739282751.6499991,
+    "net_profit": 0,
+    "gas_cost": 0.0012765459680492866,
+    "tx_hash": "0x36428b956947ee0d5802181ddc2a618f2a8ffafeb486b61f53dda73f0faf1a54",
+    "error": "Insufficient liquidity"
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": false,
+    "timestamp": 1739282751.6514263,
+    "net_profit": 0,
+    "gas_cost": 0.00142945050220465,
+    "tx_hash": "0xa4a56b2af31e1f16813d7dfec1bf9d6134ffc457813dff69a87a09de1d1c5bde",
+    "error": "Insufficient liquidity"
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": true,
+    "timestamp": 1739282751.652645,
+    "net_profit": 0.027724097348182028,
+    "gas_cost": 0.0011859340938260238,
+    "tx_hash": "0x5776d6eb588777a0f2fd1a086cf590ec45762afc14a9dea3a2243f5724baa0cf",
+    "error": null
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": true,
+    "timestamp": 1739282751.6541378,
+    "net_profit": 0.016490229400850126,
+    "gas_cost": 0.0019507652285527298,
+    "tx_hash": "0x36df5fbec6996b2c93aa352123122db812c78de994a7979739a4ccda5a740bfc",
+    "error": null
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": true,
+    "timestamp": 1739282751.6559618,
+    "net_profit": 0.02101019927348899,
+    "gas_cost": 0.0011555512217507119,
+    "tx_hash": "0x174ad775638575d2318d9aa556b12ee4703cd7904aa4a4703b5e057529562c44",
+    "error": null
+  },
+  {
+    "opportunity": {
+      "buy_dex": "BaseSwap",
+      "sell_dex": "SwapBased",
+      "token_pair": "ETH/USDC",
+      "profit_percent": 0.03
+    },
+    "success": true,
+    "timestamp": 1739282751.6572073,
+    "net_profit": 0.017551178784501808,
+    "gas_cost": 0.0024493654523157827,
+    "tx_hash": "0xd5cc2e3a88da007a9f10b86bc0908ee04fb1049e666483a103b7164ead36a29d",
+    "error": null
+  }
+]

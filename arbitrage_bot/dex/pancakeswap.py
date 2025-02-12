@@ -5,7 +5,7 @@ import logging
 from decimal import Decimal
 from typing import Dict, List, Any, Tuple
 from web3 import Web3
-
+from ..core.web3.web3_manager import Web3Manager
 from .base_dex import BaseDEX
 
 logger = logging.getLogger(__name__)
@@ -13,31 +13,42 @@ logger = logging.getLogger(__name__)
 class Pancakeswap(BaseDEX):
     """Pancakeswap DEX implementation."""
     
-    def __init__(self, web3: Web3, config: Dict[str, Any]):
+    def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
         """Initialize Pancakeswap."""
-        super().__init__(web3, config)
-        
-        # Load contract ABIs
-        with open("abi/pancakeswap_v3_factory.json", "r") as f:
-            factory_abi = json.load(f)
-        with open("abi/pancakeswap_v3_router.json", "r") as f:
-            router_abi = json.load(f)
-        with open("abi/pancakeswap_v3_quoter.json", "r") as f:
-            quoter_abi = json.load(f)
+        super().__init__(web3_manager, config)
+        self.initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize Pancakeswap."""
+        try:
+            # Load contract ABIs
+            with open("abi/pancakeswap_v3_factory.json", "r") as f:
+                factory_abi = json.load(f)
+            with open("abi/pancakeswap_v3_router.json", "r") as f:
+                router_abi = json.load(f)
+            with open("abi/pancakeswap_v3_quoter.json", "r") as f:
+                quoter_abi = json.load(f)
+                
+            # Initialize contracts
+            self.factory = self.w3.eth.contract(
+                address=self.config["factory"],
+                abi=factory_abi
+            )
+            self.router = self.w3.eth.contract(
+                address=self.config["router"],
+                abi=router_abi
+            )
+            self.quoter = self.w3.eth.contract(
+                address=self.config["quoter"],
+                abi=quoter_abi
+            )
+
+            self.initialized = True
+            return True
             
-        # Initialize contracts
-        self.factory = self.w3.eth.contract(
-            address=config["factory"],
-            abi=factory_abi
-        )
-        self.router = self.w3.eth.contract(
-            address=config["router"],
-            abi=router_abi
-        )
-        self.quoter = self.w3.eth.contract(
-            address=config["quoter"],
-            abi=quoter_abi
-        )
+        except Exception as e:
+            logger.error(f"Failed to initialize Pancakeswap: {e}")
+            return False
         
     async def get_pool_address(self, token_a: str, token_b: str, **kwargs) -> str:
         """Get pool address for token pair."""

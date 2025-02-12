@@ -2,6 +2,7 @@
 
 from typing import Dict, Any, List, Optional
 from web3.types import TxReceipt
+from decimal import Decimal
 
 from .base_dex import BaseDEX
 from ..web3.web3_manager import Web3Manager
@@ -42,10 +43,25 @@ class BaseDEXV3(BaseDEX):
                     abi=self.quoter_abi
                 )
             
-            # Test connection
-            await self.router.functions.factory().call()
+            # Test connection by checking if contracts are deployed
+            code = await self._retry_async(
+                lambda: self.w3.eth.get_code(self.router_address)
+            )
+            if len(code) <= 2:  # Empty or just '0x'
+                raise ValueError(f"No contract deployed at router address {self.router_address}")
+                
+            code = await self._retry_async(
+                lambda: self.w3.eth.get_code(self.factory_address)
+            )
+            if len(code) <= 2:
+                raise ValueError(f"No contract deployed at factory address {self.factory_address}")
+                
             if self.quoter_address:
-                await self.quoter.functions.factory().call()
+                code = await self._retry_async(
+                    lambda: self.w3.eth.get_code(self.quoter_address)
+                )
+                if len(code) <= 2:
+                    raise ValueError(f"No contract deployed at quoter address {self.quoter_address}")
                 
             self.initialized = True
             self.logger.info(f"{self.name} V3 interface initialized")
@@ -70,11 +86,12 @@ class BaseDEXV3(BaseDEX):
                 raise ValueError("Quoter address not configured")
                 
             # Get pool info
-            pool_address = await self.factory.functions.getPool(
-                path[0],
-                path[1],
-                self.fee
-            ).call()
+            pool_address = await self._retry_async(
+                lambda: self.factory.functions.getPair(
+                    path[0],
+                    path[1]
+                ).call()
+            )
             
             if pool_address == "0x0000000000000000000000000000000000000000":
                 return None
@@ -86,15 +103,21 @@ class BaseDEXV3(BaseDEX):
             )
             
             # Get pool state
-            slot0 = await pool.functions.slot0().call()
-            liquidity = await pool.functions.liquidity().call()
+            slot0 = await self._retry_async(
+                lambda: pool.functions.slot0().call()
+            )
+            liquidity = await self._retry_async(
+                lambda: pool.functions.liquidity().call()
+            )
             
             # Get quote from quoter
             encoded_path = self._encode_path(path)
-            quote = await self.quoter.functions.quoteExactInput(
-                encoded_path,
-                amount_in
-            ).call()
+            quote = await self._retry_async(
+                lambda: self.quoter.functions.quoteExactInput(
+                    encoded_path,
+                    amount_in
+                ).call()
+            )
             
             # Calculate price impact
             sqrt_price_x96 = slot0[0]
@@ -118,6 +141,83 @@ class BaseDEXV3(BaseDEX):
         except Exception as e:
             self._handle_error(e, "V3 quote calculation")
             return None
+
+    async def get_total_liquidity(self) -> Decimal:
+        """Get total liquidity across all pairs."""
+        try:
+            total_liquidity = Decimal(0)
+            
+            # Get all pairs
+            pair_count = await self._retry_async(
+                lambda: self.factory.functions.allPairsLength().call()
+            )
+            
+            for i in range(min(pair_count, 100)):  # Limit to 100 pairs for performance
+                try:
+                    pair_address = await self._retry_async(
+                        lambda: self.factory.functions.allPairs(i).call()
+                    )
+                    
+                    # Get pair contract
+                    pair = self.w3.eth.contract(
+                        address=pair_address,
+                        abi=self.pool_abi
+                    )
+                    
+                    # Get liquidity
+                    liquidity = await self._retry_async(
+                        lambda: pair.functions.liquidity().call()
+                    )
+                    total_liquidity += Decimal(liquidity)
+                    
+                except Exception as e:
+                    self.logger.warning(f"Failed to get liquidity for pair {i}: {e}")
+                    continue
+            
+            return total_liquidity
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get total liquidity: {e}")
+            return Decimal(0)
+
+    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+        """Get 24-hour trading volume for a token pair."""
+        try:
+            # Get pair address
+            pair_address = await self._retry_async(
+                lambda: self.factory.functions.getPair(token0, token1).call()
+            )
+            
+            if pair_address == "0x0000000000000000000000000000000000000000":
+                return Decimal(0)
+            
+            # Get pair contract
+            pair = self.w3.eth.contract(
+                address=pair_address,
+                abi=self.pool_abi
+            )
+            
+            # Get volume from events in last 24h
+            current_block = await self.web3_manager.w3.eth.block_number
+            from_block = current_block - 7200  # ~24h of blocks
+            
+            swap_events = await self._retry_async(
+                lambda: pair.events.Swap.get_logs(
+                    fromBlock=from_block
+                )
+            )
+            
+            volume = Decimal(0)
+            for event in swap_events:
+                amount0 = abs(Decimal(event['args']['amount0']))
+                amount1 = abs(Decimal(event['args']['amount1']))
+                volume += max(amount0, amount1)
+            
+            return volume
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get 24h volume: {e}")
+            return Decimal(0)
 
     async def swap_exact_tokens_for_tokens(
         self,

@@ -1,0 +1,83 @@
+{
+    "metrics": {
+        "performance": {
+            "min_success_rate": 0.95,
+            "max_execution_time_seconds": 5.0,
+            "min_profit_per_trade": 0.5,
+            "max_gas_per_trade": 0.01,
+            "min_uptime_percent": 99.9
+        },
+        "monitoring": {
+            "update_interval_seconds": 1.0,
+            "alert_thresholds": {
+                "error_rate_percent": 1.0,
+                "memory_usage_mb": 500,
+                "cpu_usage_percent": 80,
+                "warning_threshold_count": 3
+            }
+        },
+        "logging": {
+            "log_directory": "logs",
+            "max_file_size": 10485760,
+            "backup_count": 5,
+            "formatters": {
+                "trade": "%(asctime)s - %(message)s",
+                "error": "%(asctime)s - %(levelname)s - %(message)s",
+                "system": "%(asctime)s - %(message)s"
+            },
+            "status_interval": 60,
+            "retention_days": 30,
+            "compression": true
+        }
+    },
+    "tokens": {
+        "WETH": {
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18,
+            "min_balance": 0.1
+        },
+        "USDC": {
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6,
+            "min_balance": 100.0
+        },
+        "DAI": {
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 18,
+            "min_balance": 100.0
+        }
+    },
+    "pairs": [
+        {
+            "token0": "WETH",
+            "token1": "USDC",
+            "dexes": ["baseswap", "aerodrome", "pancakeswap", "sushiswap"],
+            "min_profit_usd": 0.10,
+            "max_trade_size_usd": 1000.0,
+            "slippage_tolerance": 0.005
+        },
+        {
+            "token0": "WETH",
+            "token1": "DAI",
+            "dexes": ["baseswap", "aerodrome", "pancakeswap", "sushiswap"],
+            "min_profit_usd": 0.10,
+            "max_trade_size_usd": 1000.0,
+            "slippage_tolerance": 0.005
+        }
+    ],
+    "trading": {
+        "max_concurrent_trades": 2,
+        "gas_limit_multiplier": 1.2,
+        "retry_attempts": 3,
+        "confirmation_blocks": 2,
+        "safety": {
+            "max_daily_trades": 50,
+            "emergency_stop_loss": 0.05,
+            "min_eth_balance": 0.1,
+            "retry_attempts": 3,
+            "confirmation_blocks": 2,
+            "max_pending_time": 300,
+            "check_interval": 5
+        }
+    }
+}

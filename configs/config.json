@@ -5,13 +5,13 @@
         "rpc_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0"
     },
     "wallet": {
-        "wallet_address": "0xc9eC57087138210a8cbbDD430D5763b94C6122b1",
-        "private_key": "/////"
+        "wallet_address": "0xc9eC57087138210a8cbbDD430D5763b94C6122b1"
     },
     "arbitrage": {
         "min_profit_usd": 0.05,
         "max_price_impact": 0.01,
         "slippage_tolerance": 0.001,
+        "max_trade_size_usd": 1000.0,
         "max_hops": 2,
         "gas_limit": 300000,
         "deadline_seconds": 300
@@ -58,7 +58,7 @@
             "priority": 1,
             "min_liquidity_usd": 10000,
             "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
-            "factory": "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",
+            "factory": "0xb5620F90e803C7F957A9EF351B8DB3C746021BEa",
             "fee": 3000,
             "pools": {
                 "WETH/USDC": true,
@@ -132,6 +132,31 @@
                     "fee_500": true,
                     "fee_3000": true
                 }
+            }
+        }
+    },
+    "pairs": [
+        {
+            "token0": "WETH",
+            "token1": "USDC",
+            "priority": 1,
+            "historical_profit": 0.0
+        },
+        {
+            "token0": "WETH",
+            "token1": "DAI",
+            "priority": 2,
+            "historical_profit": 0.0
+        }
+    ],
+    "trading": {
+        "min_profit_usd": 0.05,
+        "max_price_impact": 0.01,
+        "slippage_tolerance": 0.001,
+        "max_trade_size_usd": 1000.0,
+        "safety": {
+            "protection_limits": {
+                "max_slippage_percent": 0.1
             }
         }
     },

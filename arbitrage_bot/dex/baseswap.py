@@ -2,10 +2,11 @@
 
 import json
 import logging
+import asyncio
 from decimal import Decimal
 from typing import Dict, List, Any, Tuple
 from web3 import Web3
-
+from ..core.web3.web3_manager import Web3Manager
 from .base_dex import BaseDEX
 
 logger = logging.getLogger(__name__)
@@ -13,36 +14,51 @@ logger = logging.getLogger(__name__)
 class Baseswap(BaseDEX):
     """Baseswap DEX implementation."""
     
-    def __init__(self, web3: Web3, config: Dict[str, Any]):
+    def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
         """Initialize Baseswap."""
-        super().__init__(web3, config)
-        
-        # Load contract ABIs
-        with open("abi/baseswap_factory.json", "r") as f:
-            factory_abi = json.load(f)
-        with open("abi/baseswap_router_v3.json", "r") as f:
-            router_abi = json.load(f)
-        with open("abi/baseswap_quoter.json", "r") as f:
-            quoter_abi = json.load(f)
+        super().__init__(web3_manager, config)
+        self.initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize Baseswap."""
+        try:
+            # Load contract ABIs
+            with open("abi/baseswap_factory.json", "r") as f:
+                factory_abi = json.load(f)
+            with open("abi/baseswap_router_v3.json", "r") as f:
+                router_abi = json.load(f)
+            with open("abi/baseswap_quoter.json", "r") as f:
+                quoter_abi = json.load(f)
+                
+            # Initialize contracts
+            self.factory = self.w3.eth.contract(
+                address=self.config["factory"],
+                abi=factory_abi
+            )
+            self.router = self.w3.eth.contract(
+                address=self.config["router"],
+                abi=router_abi
+            )
+            self.quoter = self.w3.eth.contract(
+                address=self.config["quoter"],
+                abi=quoter_abi
+            )
+
+            self.initialized = True
+            return True
             
-        # Initialize contracts
-        self.factory = self.w3.eth.contract(
-            address=config["factory"],
-            abi=factory_abi
-        )
-        self.router = self.w3.eth.contract(
-            address=config["router"],
-            abi=router_abi
-        )
-        self.quoter = self.w3.eth.contract(
-            address=config["quoter"],
-            abi=quoter_abi
-        )
+        except Exception as e:
+            logger.error(f"Failed to initialize Baseswap: {e}")
+            return False
         
     async def get_pool_address(self, token_a: str, token_b: str, **kwargs) -> str:
         """Get pool address for token pair."""
         try:
-            pool = self.factory.functions.getPool(token_a, token_b).call()
+            loop = asyncio.get_event_loop()
+            pool = await loop.run_in_executor(
+                None,
+                lambda: self.factory.functions.getPool(token_a, token_b).call()
+            )
             if pool == "0x0000000000000000000000000000000000000000":
                 raise ValueError(f"No pool exists for {token_a}/{token_b}")
             return pool
@@ -58,7 +74,11 @@ class Baseswap(BaseDEX):
             pool = self.w3.eth.contract(address=pool_address, abi=pool_abi)
             
             # Get reserves directly from pool
-            reserves = pool.functions.getReserves().call()
+            loop = asyncio.get_event_loop()
+            reserves = await loop.run_in_executor(
+                None,
+                lambda: pool.functions.getReserves().call()
+            )
             return (
                 Decimal(reserves[0]),
                 Decimal(reserves[1])
@@ -78,12 +98,16 @@ class Baseswap(BaseDEX):
             amount_in_wei = self.to_wei(amount_in, await self.get_token_decimals(path[0]))
             
             # Use quoter contract to get quote
-            quote = self.quoter.functions.quoteExactInputSingle(
-                path[0],
-                path[1],
-                amount_in_wei,
-                0  # sqrt price limit
-            ).call()
+            loop = asyncio.get_event_loop()
+            quote = await loop.run_in_executor(
+                None,
+                lambda: self.quoter.functions.quoteExactInputSingle(
+                    path[0],
+                    path[1],
+                    amount_in_wei,
+                    0  # sqrt price limit
+                ).call()
+            )
             
             amount_out = self.from_wei(
                 quote[0],
@@ -107,7 +131,11 @@ class Baseswap(BaseDEX):
             pool = self.w3.eth.contract(address=pool_address, abi=pool_abi)
             
             # Get current reserves
-            reserves = pool.functions.getReserves().call()
+            loop = asyncio.get_event_loop()
+            reserves = await loop.run_in_executor(
+                None,
+                lambda: pool.functions.getReserves().call()
+            )
             reserve_in = Decimal(reserves[0])
             reserve_out = Decimal(reserves[1])
             
@@ -141,9 +169,19 @@ class Baseswap(BaseDEX):
             pool = self.w3.eth.contract(address=pool_address, abi=pool_abi)
             
             # Get basic pool info
-            token0 = pool.functions.token0().call()
-            token1 = pool.functions.token1().call()
-            reserves = pool.functions.getReserves().call()
+            loop = asyncio.get_event_loop()
+            token0 = await loop.run_in_executor(
+                None,
+                lambda: pool.functions.token0().call()
+            )
+            token1 = await loop.run_in_executor(
+                None,
+                lambda: pool.functions.token1().call()
+            )
+            reserves = await loop.run_in_executor(
+                None,
+                lambda: pool.functions.getReserves().call()
+            )
             
             return {
                 "token0": token0,
@@ -165,7 +203,11 @@ class Baseswap(BaseDEX):
             pool = self.w3.eth.contract(address=pool_address, abi=pool_abi)
             
             # Check if pool has reserves
-            reserves = pool.functions.getReserves().call()
+            loop = asyncio.get_event_loop()
+            reserves = await loop.run_in_executor(
+                None,
+                lambda: pool.functions.getReserves().call()
+            )
             return reserves[0] > 0 and reserves[1] > 0
         except Exception as e:
             logger.error(f"Failed to validate pool: {e}")
@@ -181,7 +223,12 @@ class Baseswap(BaseDEX):
     ) -> int:
         """Estimate gas cost for a trade."""
         try:
-            deadline = kwargs.get("deadline", self.w3.eth.get_block("latest").timestamp + 300)
+            loop = asyncio.get_event_loop()
+            latest_block = await loop.run_in_executor(
+                None,
+                lambda: self.w3.eth.get_block("latest")
+            )
+            deadline = latest_block.timestamp + kwargs.get("deadline", 300)
             
             # Convert amounts to wei
             amount_in_wei = self.to_wei(amount_in, await self.get_token_decimals(path[0]))
@@ -199,7 +246,11 @@ class Baseswap(BaseDEX):
             }
             
             # Estimate gas
-            return self.router.functions.exactInputSingle(params).estimate_gas()
+            gas = await loop.run_in_executor(
+                None,
+                lambda: self.router.functions.exactInputSingle(params).estimate_gas()
+            )
+            return gas
         except Exception as e:
             logger.error(f"Failed to estimate gas: {e}")
             raise
@@ -230,11 +281,18 @@ class Baseswap(BaseDEX):
                 "sqrtPriceLimitX96": 0
             }
             
+            # Get nonce
+            loop = asyncio.get_event_loop()
+            nonce = await loop.run_in_executor(
+                None,
+                lambda: self.w3.eth.get_transaction_count(to)
+            )
+            
             # Build transaction
             return self.router.functions.exactInputSingle(params).build_transaction({
                 "from": to,
                 "gas": await self.estimate_gas(amount_in, amount_out_min, path, to, **kwargs),
-                "nonce": self.w3.eth.get_transaction_count(to)
+                "nonce": nonce
             })
         except Exception as e:
             logger.error(f"Failed to build swap transaction: {e}")

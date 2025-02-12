@@ -24,17 +24,20 @@ class BaseDEXV2(BaseDEX):
             self.pair_abi = self.web3_manager.load_abi(f"{self.name.lower()}_pair")
             
             # Initialize contracts
-            self.router = self.w3.eth.contract(
+            self.router = await self.web3_manager.get_contract_async(
                 address=self.router_address,
                 abi=self.router_abi
             )
-            self.factory = self.w3.eth.contract(
+            self.factory = await self.web3_manager.get_contract_async(
                 address=self.factory_address,
                 abi=self.factory_abi
             )
             
             # Test connection
-            await self.router.functions.factory().call()
+            factory_address = await self.router.functions.factory()
+            if factory_address != self.factory_address:
+                raise ValueError("Router factory address mismatch")
+                
             self.initialized = True
             self.logger.info(f"{self.name} interface initialized")
             return True
@@ -55,24 +58,28 @@ class BaseDEXV2(BaseDEX):
             await self._validate_amounts(amount_in=amount_in)
             
             # Get pair address
-            pair_address = await self.factory.functions.getPair(
-                path[0],
-                path[1]
-            ).call()
+            pair_address = await self.factory.functions.getPair(path[0], path[1])
             
             if pair_address == "0x0000000000000000000000000000000000000000":
                 return None
                 
             # Get pair contract
-            pair = self.w3.eth.contract(
+            pair = await self.web3_manager.get_contract_async(
                 address=pair_address,
                 abi=self.pair_abi
             )
             
             # Get reserves
-            reserves = await pair.functions.getReserves().call()
-            reserve_in = reserves[0] if path[0] < path[1] else reserves[1]
-            reserve_out = reserves[1] if path[0] < path[1] else reserves[0]
+            reserves = await pair.functions.getReserves()
+            token0 = await pair.functions.token0()
+            
+            # Determine which reserve corresponds to which token
+            if path[0].lower() == token0.lower():
+                reserve_in = reserves[0]
+                reserve_out = reserves[1]
+            else:
+                reserve_in = reserves[1]
+                reserve_out = reserves[0]
             
             if reserve_in == 0 or reserve_out == 0:
                 return None

@@ -1,0 +1,54 @@
+{
+  "network": {
+    "rpc_url": "http://localhost:8545",
+    "retry_count": 5
+  },
+  "trading": {
+    "min_profit": 0.1,
+    "gas_limit": 1000000,
+    "slippage": 1.0,
+    "max_trades_per_block": 5,
+    "pairs": [
+      {
+        "token0": "WETH",
+        "token1": "USDC",
+        "min_amount": 0.01,
+        "max_amount": 1.0
+      },
+      {
+        "token0": "USDC",
+        "token1": "DAI",
+        "min_amount": 100,
+        "max_amount": 10000
+      }
+    ]
+  },
+  "monitoring": {
+    "log_level": "DEBUG",
+    "metrics_enabled": true,
+    "alert_threshold": 95.0,
+    "collection_interval": 1000,
+    "log_rotation": {
+      "max_size": "50MB",
+      "backup_count": 3
+    }
+  },
+  "dashboard": {
+    "port": 5001,
+    "websocket_port": 8772,
+    "update_interval": 500,
+    "auth_enabled": false,
+    "cors": {
+      "enabled": true,
+      "origins": [
+        "http://localhost:3000",
+        "http://localhost:5001"
+      ]
+    },
+    "rate_limit": {
+      "enabled": false,
+      "max_requests": 1000,
+      "window_seconds": 60
+    }
+  }
+}

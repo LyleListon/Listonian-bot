@@ -1,8 +1,18 @@
 {
     "name": "Arbitrage Bot",
     "build": {
-        "dockerfile": "Dockerfile"
+        "dockerfile": "Dockerfile",
+        "context": ".."
     },
+    "mounts": [
+        "source=${localWorkspaceFolder}/.vscode-remote/data,target=/root/.vscode-remote/data,type=bind,consistency=cached",
+        "source=${localWorkspaceFolder}/.config/powershell,target=/root/.config/powershell,type=bind,consistency=cached"
+    ],
+    "remoteEnv": {
+        "POWERSHELL_TELEMETRY_OPTOUT": "1",
+        "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1"
+    },
+    "initializeCommand": "mkdir -p ${localWorkspaceFolder}/.vscode-remote/data ${localWorkspaceFolder}/.config/powershell",
     "forwardPorts": [5000, 8771],
     "portsAttributes": {
         "5000": {
@@ -14,13 +24,24 @@
             "onAutoForward": "notify"
         }
     },
-    "postCreateCommand": "pip install -r requirements.txt",
+    "postCreateCommand": "bash -c 'if [ -f requirements.txt ]; then pip install -r requirements.txt || echo \"Warning: pip install failed\"; fi'",
+    "postStartCommand": "pwsh -NoProfile -Command 'if (!(Test-Path \"$HOME/.config/powershell/Microsoft.PowerShell_profile.ps1\")) { New-Item -Path \"$HOME/.config/powershell/Microsoft.PowerShell_profile.ps1\" -Force }'",
+    "waitFor": "postCreateCommand",
+    "updateContentCommand": "pip install -r requirements.txt",
     "customizations": {
         "vscode": {
             "extensions": [
                 "ms-python.python",
                 "ms-python.vscode-pylance"
-            ]
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "pwsh",
+                "terminal.integrated.profiles.linux": {
+                    "pwsh": {
+                        "path": "/usr/bin/pwsh"
+                    }
+                }
+            }
         }
     }
 }

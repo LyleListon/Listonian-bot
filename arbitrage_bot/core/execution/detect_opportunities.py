@@ -2,330 +2,318 @@
 
 import logging
 import asyncio
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Set, Optional, cast
 from dataclasses import dataclass
 from decimal import Decimal
+from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict, deque
+import time
+import lru
 
-from ...utils.mcp_client import (
-    validate_prices,
-    assess_opportunity,
-    evaluate_risk,
-    use_market_analysis
-)
-from ..dex.aerodrome import AerodromeDEX
-from ..dex.swapbased import SwapBasedDEX
-from ..dex.rocketswap import RocketSwapDEX
+from ..dex.dex_manager import DEXManager
+from ..analytics.analytics_system import AnalyticsSystem
+from ..ml.ml_system import MLSystem
+from ..models.opportunity import Opportunity, OpportunityStatus
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class ArbitrageOpportunity:
-    """Represents an arbitrage opportunity."""
-    buy_dex: str
-    sell_dex: str
-    token_pair: str
-    profit_percent: float
-    buy_amount: float
-    sell_amount: float
-    estimated_gas: float
-    net_profit: float
-    priority: float
-    route_type: str = "direct"  # "direct", "triangular", or "cross_dex"
-    intermediate_token: str = None
-    intermediate_dex: str = None
-    confidence_score: float = 0.0
-    market_conditions: Dict[str, Any] = None
+# Cache settings
+CACHE_TTL = 60  # 60 seconds
+BATCH_SIZE = 50  # Process 50 items at a time
+QUOTE_BATCH_SIZE = 20  # Process 20 quotes at a time
+PATH_BATCH_SIZE = 10  # Process 10 paths at a time
+MAX_RETRIES = 3  # Maximum number of retries for failed operations
+RETRY_DELAY = 1  # Delay between retries in seconds
+CACHE_SIZE = 1000  # Maximum number of items in LRU cache
+PREFETCH_THRESHOLD = 0.8  # Threshold to trigger prefetch
+MAX_BATCH_SIZE = 100  # Maximum number of items to process in a batch
+BATCH_TIMEOUT = 5  # Maximum time to wait for batch to fill (seconds)
 
 class OpportunityDetector:
     """Detects arbitrage opportunities across DEXes."""
     
-    def __init__(self, config, web3_manager, balance_manager=None):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        web3_manager: Any,
+        dex_manager: DEXManager,
+        analytics: AnalyticsSystem,
+        ml_system: MLSystem
+    ):
+        """Initialize detector."""
         self.config = config
-        self.w3 = web3_manager
-        self.balance_manager = None  # Will be set during initialization
-        self.min_profit = float(config["trading"]["min_profit_usd"])
-        self.max_slippage = float(config["trading"]["safety"]["protection_limits"]["max_slippage_percent"]) / 100
-        self.max_trade_size = float(config["trading"]["max_trade_size_usd"])
+        self.web3_manager = web3_manager
+        self.w3 = web3_manager.w3
+        self.dex_manager = dex_manager
+        self.analytics = analytics
+        self.ml_system = ml_system
         
-        # Initialize DEX interfaces
-        self.dex_interfaces = {}
+        # Get trading config with defaults
+        self.config = config or {}
+        trading_config = self.config.get("arbitrage", {})  # Use arbitrage section from config
+        self.min_profit = Decimal(str(trading_config.get("min_profit_usd", "0.05")))
+        self.max_slippage = Decimal(str(trading_config.get("slippage_tolerance", "0.001")))
+        self.max_trade_size = Decimal(str(trading_config.get("max_trade_size_usd", "1000.0")))
+        
+        # Ensure required config sections exist
+        if "tokens" not in self.config:
+            self.config["tokens"] = {}
+        if "pairs" not in self.config:
+            self.config["pairs"] = []
+        
+        # Cache settings
+        self.cache_ttl = CACHE_TTL
+        self.batch_size = BATCH_SIZE
+        self.quote_batch_size = QUOTE_BATCH_SIZE
+        self.path_batch_size = PATH_BATCH_SIZE
+        
+        # LRU caches for frequently accessed data
+        self._dex_cache = lru.LRU(CACHE_SIZE)
+        self._quote_cache = lru.LRU(CACHE_SIZE)
+        self._path_cache = lru.LRU(CACHE_SIZE)
+        self._gas_cache = lru.LRU(CACHE_SIZE)
+        self._token_cache = lru.LRU(CACHE_SIZE)
+        
+        # Cache timestamps
+        self._dex_cache_times = {}
+        self._quote_cache_times = {}
+        self._path_cache_times = {}
+        self._gas_cache_times = {}
+        self._token_cache_times = {}
+        
+        # Thread pool for CPU-bound operations
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        
+        # Locks for thread safety
+        self._cache_lock = asyncio.Lock()
+        self._gas_lock = asyncio.Lock()
+        self._quote_lock = asyncio.Lock()
+        self._path_lock = asyncio.Lock()
+        self._batch_lock = asyncio.Lock()
+        
+        # Gas price tracking
+        self.gas_price = 0
+        self.last_gas_update = 0
+        self.gas_update_interval = 1  # 1 second
+        
+        # Opportunity batching
+        self._opportunity_batch = []
+        self._last_batch = time.time()
+        
+        # Quote batching
+        self._quote_batch = []
+        self._last_quote_batch = time.time()
+        
+        # Path batching
+        self._path_batch = []
+        self._last_path_batch = time.time()
+        
+        # Recent opportunities for deduplication
+        self._recent_opportunities = deque(maxlen=1000)
+        
+        # Prefetch settings
+        self._prefetch_size = 100  # Number of items to prefetch
+        self._prefetch_threshold = PREFETCH_THRESHOLD
+        
+        # Start periodic tasks
+        self._cleanup_task = None
+        self._batch_task = None
+        self._prefetch_task = None
+        
         self.initialized = False
-        
         logger.info("OpportunityDetector instance created")
 
-    async def initialize(self):
-        """Initialize DEX interfaces and get balance manager instance."""
-        if self.initialized:
+    async def initialize(self) -> bool:
+        """Initialize detector."""
+        try:
+            if self.initialized:
+                logger.debug("OpportunityDetector already initialized")
+                return True
+                
+            logger.info("Initializing OpportunityDetector...")
+            
+            # Initialize components concurrently with retries
+            for attempt in range(MAX_RETRIES):
+                try:
+                    init_tasks = [
+                        asyncio.create_task(self.dex_manager.initialize()),
+                        asyncio.create_task(self.analytics.initialize()),
+                        asyncio.create_task(self.ml_system.initialize())
+                    ]
+                    
+                    results = await asyncio.gather(*init_tasks)
+                    if not all(results):
+                        raise ValueError("Failed to initialize one or more components")
+                    break
+                except Exception as e:
+                    if attempt < MAX_RETRIES - 1:
+                        await asyncio.sleep(RETRY_DELAY)
+                        continue
+                    logger.error(f"Failed to initialize after {MAX_RETRIES} attempts: {e}")
+                    return False
+            
+            # Get initial gas price in thread pool
+            loop = asyncio.get_event_loop()
+            try:
+                self.gas_price = await loop.run_in_executor(
+                    self.executor,
+                    lambda: self.w3.eth.gas_price
+                )
+                logger.debug(f"Initial gas price: {self.w3.from_wei(self.gas_price, 'gwei')} gwei")
+            except Exception as e:
+                logger.warning(f"Failed to get initial gas price: {e}, using fallback")
+                self.gas_price = self.w3.to_wei(100, 'gwei')
+            
+            # Start periodic tasks
+            self._cleanup_task = asyncio.create_task(self._periodic_cache_cleanup())
+            self._batch_task = asyncio.create_task(self._periodic_batch())
+            self._prefetch_task = asyncio.create_task(self._periodic_prefetch())
+            
+            self.initialized = True
+            logger.info("OpportunityDetector initialization complete")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize OpportunityDetector: {e}", exc_info=True)
+            return False
+
+    async def ensure_initialized(self) -> None:
+        """Ensure detector is initialized."""
+        if not self.initialized:
+            logger.debug("OpportunityDetector not initialized, initializing now...")
+            if not await self.initialize():
+                raise RuntimeError("Failed to initialize OpportunityDetector")
+
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
+        if not self.initialized:
+            logger.debug("OpportunityDetector already cleaned up")
             return
             
         try:
-            # Get balance manager singleton instance
-            from ..balance_manager import BalanceManager
-            self.balance_manager = await BalanceManager.get_instance(
-                web3_manager=self.w3,
-                analytics=None,  # These will be set by the first instance
-                ml_system=None,
-                monitor=None,
-                dex_manager=None
-            )
+            logger.info("Cleaning up OpportunityDetector resources...")
             
-            if not self.balance_manager:
-                raise ValueError("Failed to get balance manager instance")
-                
-            if not hasattr(self.balance_manager, 'check_pair_balance'):
-                raise ValueError("Balance manager missing check_pair_balance method")
-                
-            # Initialize DEX interfaces
-            dex_classes = {
-                "aerodrome": AerodromeDEX,
-                "swapbased": SwapBasedDEX,
-                "rocketswap": RocketSwapDEX
-            }
+            # Cancel periodic tasks
+            tasks = [
+                self._cleanup_task,
+                self._batch_task,
+                self._prefetch_task
+            ]
             
-            # Initialize all configured DEXes
-            for dex_name, dex_config in self.config.get("dexes", {}).items():
-                if dex_name in dex_classes:
-                    dex = dex_classes[dex_name](self.w3, dex_config)
-                    if await dex.initialize():
-                        self.dex_interfaces[dex_name] = dex
-                        logger.info(f"Initialized {dex_name} interface")
-                        
-            # Test balance manager functionality
-            test_token0 = self.config["tokens"]["WETH"]["address"]
-            test_token1 = self.config["tokens"]["USDC"]["address"]
-            try:
-                await self.balance_manager.check_pair_balance(test_token0, test_token1)
-                logger.info("Balance manager check_pair_balance test successful")
-            except Exception as e:
-                logger.error(f"Balance manager check_pair_balance test failed: {e}")
-                raise
-                
-            self.initialized = True
-            logger.info("OpportunityDetector initialization complete")
+            for task in tasks:
+                if task:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            
+            # Process any remaining batches
+            await self._process_opportunity_batch()
+            await self._process_quote_batch()
+            await self._process_path_batch()
+            
+            # Clean up components concurrently
+            cleanup_tasks = []
+            
+            if self.dex_manager:
+                cleanup_tasks.append(asyncio.create_task(self.dex_manager.cleanup()))
+            if self.analytics:
+                cleanup_tasks.append(asyncio.create_task(self.analytics.cleanup()))
+            if self.ml_system:
+                cleanup_tasks.append(asyncio.create_task(self.ml_system.cleanup()))
+            
+            # Wait for all cleanups
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+            
+            # Reset state
+            self.initialized = False
+            self.gas_price = 0
+            self.last_gas_update = 0
+            
+            # Clear caches
+            self._dex_cache.clear()
+            self._quote_cache.clear()
+            self._path_cache.clear()
+            self._gas_cache.clear()
+            self._token_cache.clear()
+            self._dex_cache_times.clear()
+            self._quote_cache_times.clear()
+            self._path_cache_times.clear()
+            self._gas_cache_times.clear()
+            self._token_cache_times.clear()
+            
+            # Clear batches
+            self._opportunity_batch.clear()
+            self._quote_batch.clear()
+            self._path_batch.clear()
+            
+            # Clear recent opportunities
+            self._recent_opportunities.clear()
+            
+            # Shutdown thread pool
+            self.executor.shutdown(wait=True)
+            
+            logger.info("OpportunityDetector cleanup complete")
             
         except Exception as e:
-            logger.error(f"Failed to initialize OpportunityDetector: {e}")
+            logger.error(f"Error during OpportunityDetector cleanup: {e}", exc_info=True)
             raise
 
-    async def verify_liquidity(self, token: str, dex: str) -> bool:
-        """Verify liquidity conditions using Market Analysis Server."""
-        try:
-            conditions = await use_market_analysis("assess_market_conditions", {
-                "token": token,
-                "metrics": ["liquidity", "volume"]
-            })
-            
-            liquidity = conditions.get("liquidity", {})
-            volume = conditions.get("volume", {})
-            
-            liquidity_config = self.config["trading"]["liquidity"]
-            min_liquidity = liquidity_config["min_pool_depth_usd"]
-            min_volume = liquidity_config["min_volume_24h_usd"]
-            min_confidence = liquidity_config["min_confidence"]
-            
-            has_sufficient_liquidity = liquidity.get("value", 0) >= min_liquidity
-            has_sufficient_volume = volume.get("value", 0) >= min_volume
-            confidence = volume.get("confidence", 0)
-            
-            logger.debug(
-                f"Liquidity metrics for {token} on {dex}:\n"
-                f"  Liquidity: ${liquidity.get('value', 0):,.2f} (min: ${min_liquidity:,.2f})\n"
-                f"  Volume: ${volume.get('value', 0):,.2f} (min: ${min_volume:,.2f})\n"
-                f"  Confidence: {confidence:.2f} (min: {min_confidence:.2f})"
-            )
-            
-            conditions_met = (
-                has_sufficient_liquidity and 
-                has_sufficient_volume and 
-                confidence >= min_confidence
-            )
-            
-            if not conditions_met:
-                if not has_sufficient_liquidity:
-                    logger.warning(f"Insufficient liquidity for {token} on {dex}")
-                if not has_sufficient_volume:
-                    logger.warning(f"Insufficient volume for {token} on {dex}")
-                if confidence < min_confidence:
-                    logger.warning(f"Low confidence for {token} on {dex}")
-            
-            return conditions_met
-            
-        except Exception as e:
-            logger.error(f"Failed to verify liquidity for {token} on {dex}: {e}")
-            return False
-
-    async def get_prices_parallel(self, pair: Dict, dexes: Dict) -> Dict[str, Dict[str, float]]:
-        """Fetch prices from all DEXes in parallel."""
-        async def fetch_price(dex_name: str, dex_config: Dict) -> Tuple[str, Dict[str, float]]:
-            try:
-                if dex_name in self.dex_interfaces:
-                    dex = self.dex_interfaces[dex_name]
-                    pool_info = await dex.get_pool_info(pair["token0"], pair["token1"])
-                    
-                    if dex_name == "aerodrome":
-                        # Get both stable and volatile pool prices
-                        prices = {}
-                        try:
-                            amounts_stable = await dex.get_amounts_out(
-                                10**18,
-                                [pair["token0"], pair["token1"]],
-                                [True]
-                            )
-                            prices["stable"] = amounts_stable[-1] / 10**18
-                        except Exception as e:
-                            logger.debug(f"No stable pool price: {e}")
-                            
-                        try:
-                            amounts_volatile = await dex.get_amounts_out(
-                                10**18,
-                                [pair["token0"], pair["token1"]],
-                                [False]
-                            )
-                            prices["volatile"] = amounts_volatile[-1] / 10**18
-                        except Exception as e:
-                            logger.debug(f"No volatile pool price: {e}")
-                            
-                    elif dex_name == "swapbased":
-                        # SwapBased uses standard V2 pools
-                        amounts = await dex.get_amounts_out(
-                            10**18,
-                            [pair["token0"], pair["token1"]]
-                        )
-                        prices = {"v2": amounts[-1] / 10**18}
-                        
-                    elif dex_name == "rocketswap":
-                        # RocketSwap with dynamic fees
-                        amounts = await dex.get_amounts_out(
-                            10**18,
-                            [pair["token0"], pair["token1"]]
-                        )
-                        prices = {"dynamic": amounts[-1] / 10**18}
-                        
-                    return dex_name, prices
-                    
-            except Exception as e:
-                logger.debug(f"Failed to get price from {dex_name}: {e}")
-                return dex_name, None
-
-        tasks = [
-            fetch_price(dex_name, dex_config)
-            for dex_name, dex_config in dexes.items()
-        ]
-        results = await asyncio.gather(*tasks)
-        return {
-            dex_name: price
-            for dex_name, price in results
-            if price is not None
-        }
-
-    async def detect_opportunities(self) -> List[ArbitrageOpportunity]:
+    async def detect_opportunities(self) -> List[Opportunity]:
         """Detect arbitrage opportunities across configured DEXes."""
         try:
             await self.ensure_initialized()
             opportunities = []
             
-            if not self.balance_manager:
-                logger.error("Balance manager not initialized")
-                await self.cleanup()
-                return []
-                
             if not self.initialized:
                 logger.error("OpportunityDetector not properly initialized")
                 await self.cleanup()
                 return []
-                
-            pairs = sorted(
-                self.config.get("pairs", []),
-                key=lambda x: (x.get("priority", 0), x.get("historical_profit", 0)),
-                reverse=True
+            
+            # Update gas price if needed
+            await self._update_gas_price()
+            
+            # Get pairs sorted by priority
+            pairs = []
+            try:
+                pairs = sorted(
+                    self.config.get("pairs", []),
+                    key=lambda x: (x.get("priority", 0), x.get("historical_profit", 0)),
+                    reverse=True
+                )
+            except Exception as e:
+                logger.error(f"Error getting pairs from config: {e}")
+                pairs = []
+
+            # Detect opportunities concurrently
+            direct_task = asyncio.create_task(self._detect_direct_arbitrage(pairs))
+            triangular_task = asyncio.create_task(self._detect_triangular_arbitrage(pairs))
+            
+            direct_opportunities, triangular_opportunities = await asyncio.gather(
+                direct_task, triangular_task
             )
-            dexes = self.config.get("dexes", {})
+            
+            opportunities.extend(direct_opportunities)
+            opportunities.extend(triangular_opportunities)
 
-            for pair in pairs:
-                try:
-                    # Get token addresses from config
-                    token0_addr = self.config["tokens"][pair["token0"]]["address"]
-                    token1_addr = self.config["tokens"][pair["token1"]]["address"]
-                    
-                    if not await self.balance_manager.check_pair_balance(
-                        token0_addr, token1_addr
-                    ):
-                        continue
-                except Exception as e:
-                    logger.error(f"Error checking pair balance: {e}")
-                    continue
-
-                # Verify liquidity across all DEXes
-                liquidity_checks = await asyncio.gather(*[
-                    self.verify_liquidity(pair["token0"], dex_name)
-                    for dex_name in dexes
-                ])
+            # Sort by priority and filter by minimum profit in thread pool
+            loop = asyncio.get_event_loop()
+            opportunities = await loop.run_in_executor(
+                self.executor,
+                self._filter_and_sort_opportunities,
+                opportunities
+            )
+            
+            # Add to batch
+            async with self._batch_lock:
+                self._opportunity_batch.extend(opportunities)
                 
-                if not any(liquidity_checks):
-                    logger.info(f"Skipping pair {pair['token0']}/{pair['token1']} due to insufficient liquidity")
-                    continue
-
-                # Validate prices with MCP
-                token_prices = await validate_prices([pair["token0"], pair["token1"]])
-                if not token_prices:
-                    logger.warning(f"Could not validate prices for {pair['token0']}/{pair['token1']}")
-                    continue
-
-                # Get prices from all DEXes
-                prices = await self.get_prices_parallel(pair, dexes)
-
-                # Check for cross-DEX opportunities
-                for buy_dex, buy_prices in prices.items():
-                    for sell_dex, sell_prices in prices.items():
-                        if buy_dex == sell_dex:
-                            continue
-                            
-                        for buy_pool, buy_price in buy_prices.items():
-                            for sell_pool, sell_price in sell_prices.items():
-                                profit_percent = (sell_price - buy_price) / buy_price
-                                
-                                if profit_percent > self.min_profit / self.max_trade_size:
-                                    logger.info(
-                                        f"Found cross-DEX opportunity:\n"
-                                        f"  Buy: {buy_dex} ({buy_pool})\n"
-                                        f"  Sell: {sell_dex} ({sell_pool})\n"
-                                        f"  Profit: {profit_percent*100:.2f}%"
-                                    )
-                                    
-                                    # Validate with market analysis
-                                    assessment = await use_market_analysis(
-                                        "analyze_opportunities",
-                                        {
-                                            "token": pair["token0"],
-                                            "days": 1
-                                        }
-                                    )
-                                    
-                                    if assessment.get("success_probability", 0) > 0.8:
-                                        gas_estimate = await self._estimate_gas_cost(buy_dex, sell_dex)
-                                        gas_cost = gas_estimate * await self.w3.eth.gas_price
-                                        net_profit = profit_percent * self.max_trade_size - gas_cost
-                                        
-                                        if net_profit > self.min_profit:
-                                            opportunities.append(
-                                                ArbitrageOpportunity(
-                                                    buy_dex=f"{buy_dex}_{buy_pool}",
-                                                    sell_dex=f"{sell_dex}_{sell_pool}",
-                                                    token_pair=f"{pair['token0']}/{pair['token1']}",
-                                                    profit_percent=profit_percent,
-                                                    buy_amount=self.max_trade_size,
-                                                    sell_amount=self.max_trade_size * (1 - self.max_slippage),
-                                                    estimated_gas=gas_estimate,
-                                                    net_profit=net_profit,
-                                                    priority=assessment.get("priority", 0),
-                                                    route_type="cross_dex",
-                                                    confidence_score=assessment.get("confidence", 0),
-                                                    market_conditions=assessment
-                                                )
-                                            )
-
-            # Sort opportunities by priority
-            opportunities.sort(key=lambda x: x.priority, reverse=True)
+                # Process batch if full or timeout reached
+                current_time = time.time()
+                if (len(self._opportunity_batch) >= MAX_BATCH_SIZE or 
+                    current_time - self._last_batch >= BATCH_TIMEOUT):
+                    await self._process_opportunity_batch()
             
             if opportunities:
                 logger.info(f"Found {len(opportunities)} opportunities")
@@ -335,77 +323,494 @@ class OpportunityDetector:
             logger.error(f"Error detecting opportunities: {e}", exc_info=True)
             return []
 
-    async def ensure_initialized(self):
-        """Ensure detector is initialized."""
-        if not self.initialized:
-            await self.initialize()
-            
-    async def cleanup(self):
-        """Cleanup resources."""
+    async def _process_opportunity_batch(self) -> None:
+        """Process opportunity batch."""
         try:
-            # Cancel any ongoing tasks
-            if hasattr(self, '_tasks'):
-                for task in self._tasks:
-                    task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
-                        
-            # Clear references
-            self.balance_manager = None
-            self.dex_interfaces.clear()
-            self.initialized = False
+            async with self._batch_lock:
+                if not self._opportunity_batch:
+                    return
+                    
+                # Get batch
+                batch = self._opportunity_batch[:MAX_BATCH_SIZE]
+                self._opportunity_batch = self._opportunity_batch[MAX_BATCH_SIZE:]
+                self._last_batch = time.time()
             
-            logger.info("OpportunityDetector cleanup complete")
-        except Exception as e:
-            logger.error(f"Error during OpportunityDetector cleanup: {e}")
-            
-    async def _estimate_gas_cost(self, buy_dex: str, sell_dex: str) -> int:
-        """Estimate gas cost for arbitrage."""
-        try:
-            base_gas = 100000
-            
-            dex_gas = {
-                "swapbased": 150000,
-                "rocketswap": 160000,
-                "aerodrome": 200000
-            }
-            
-            total_gas = base_gas
-            if buy_dex in dex_gas:
-                total_gas += dex_gas[buy_dex]
-            if sell_dex in dex_gas and sell_dex != buy_dex:
-                total_gas += dex_gas[sell_dex]
+            # Process opportunities concurrently
+            tasks = []
+            for opportunity in batch:
+                # Skip if recently seen
+                key = f"{opportunity.buy_dex}:{opportunity.sell_dex}:{opportunity.token_pair}"
+                if key in self._recent_opportunities:
+                    continue
+                    
+                # Add to recent opportunities
+                self._recent_opportunities.append(key)
                 
-            return total_gas
+                # Create task
+                task = asyncio.create_task(self._process_single_opportunity(opportunity))
+                tasks.append(task)
+            
+            await asyncio.gather(*tasks)
             
         except Exception as e:
-            logger.error(f"Error estimating gas cost: {e}")
-            return 500000  # Conservative fallback
+            logger.error(f"Error processing opportunity batch: {e}")
+
+    async def _process_single_opportunity(self, opportunity: Opportunity) -> None:
+        """Process a single opportunity."""
+        try:
+            # Get ML prediction
+            prediction = await self.ml_system.predict_trade_success({
+                'profit_percent': opportunity.profit_percent,
+                'buy_amount': opportunity.buy_amount,
+                'gas_cost': opportunity.estimated_gas,
+                'price_impact': opportunity.market_conditions['price_impact']
+            })
             
-    def _calculate_priority_score(
+            if prediction[0] > 0.8:  # Success probability threshold
+                # Update analytics
+                await self.analytics.analyze_opportunity(opportunity)
+                
+                # Store opportunity
+                from ..memory import get_memory_bank
+                memory_bank = await get_memory_bank()
+                await memory_bank.store_opportunities([opportunity])
+                
+        except Exception as e:
+            logger.error(f"Error processing opportunity: {e}")
+
+    def _filter_and_sort_opportunities(
         self,
-        profit_percent: float,
-        net_profit: float,
-        gas_cost: float,
-        historical_success_rate: float,
-        confidence_score: float
-    ) -> float:
-        """Calculate priority score for an opportunity."""
-        profit_factor = min(net_profit / self.min_profit, 10.0)
-        gas_factor = 1.0 / (1.0 + gas_cost / net_profit)
-        success_factor = historical_success_rate
-        confidence_factor = confidence_score
-        
-        profit_weight = 0.4
-        gas_weight = 0.2
-        success_weight = 0.2
-        confidence_weight = 0.2
-        
-        return (
-            profit_factor * profit_weight +
-            gas_factor * gas_weight +
-            success_factor * success_weight +
-            confidence_factor * confidence_weight
-        )
+        opportunities: List[Opportunity]
+    ) -> List[Opportunity]:
+        """Filter and sort opportunities (CPU-bound)."""
+        try:
+            # Filter by minimum profit
+            opportunities = [
+                opp for opp in opportunities
+                if opp.net_profit > float(self.min_profit)
+            ]
+            
+            # Sort by priority
+            opportunities.sort(key=lambda x: x.priority, reverse=True)
+            
+            return opportunities
+            
+        except Exception as e:
+            logger.error(f"Error filtering and sorting opportunities: {e}")
+            return []
+
+    async def _get_dex_quotes(
+        self,
+        token0_addr: str,
+        token1_addr: str,
+        amount: int
+    ) -> Dict[str, Dict[str, Any]]:
+        """Get quotes from all DEXes concurrently."""
+        try:
+            # Check cache first
+            cache_key = f"{token0_addr}:{token1_addr}:{amount}"
+            quotes = await self._get_cached_data(
+                cache_key,
+                self._quote_cache,
+                self._quote_cache_times
+            )
+            if quotes:
+                return quotes
+            
+            # Add to quote batch
+            async with self._quote_lock:
+                self._quote_batch.append((token0_addr, token1_addr, amount))
+                
+                # Process batch if full or timeout reached
+                current_time = time.time()
+                if (len(self._quote_batch) >= QUOTE_BATCH_SIZE or 
+                    current_time - self._last_quote_batch >= BATCH_TIMEOUT):
+                    await self._process_quote_batch()
+            
+            # Create quote tasks for each DEX
+            quote_tasks = []
+            for dex_name, dex in self.dex_manager.dexes.items():
+                task = asyncio.create_task(self._get_single_quote(
+                    dex_name, dex, token0_addr, token1_addr, amount
+                ))
+                quote_tasks.append((dex_name, task))
+            
+            # Wait for all quotes with retries
+            quotes = {}
+            for dex_name, task in quote_tasks:
+                for attempt in range(MAX_RETRIES):
+                    try:
+                        quote = await task
+                        if quote:
+                            quotes[dex_name] = quote
+                        break
+                    except Exception as e:
+                        if attempt < MAX_RETRIES - 1:
+                            await asyncio.sleep(RETRY_DELAY)
+                            continue
+                        logger.debug(f"Error getting quote from {dex_name} after {MAX_RETRIES} attempts: {e}")
+            
+            # Update cache
+            await self._update_cache(
+                cache_key,
+                quotes,
+                self._quote_cache,
+                self._quote_cache_times
+            )
+            
+            return quotes
+            
+        except Exception as e:
+            logger.error(f"Error getting DEX quotes: {e}")
+            return {}
+
+    async def _process_quote_batch(self) -> None:
+        """Process quote batch."""
+        try:
+            async with self._quote_lock:
+                if not self._quote_batch:
+                    return
+                    
+                # Get batch
+                batch = self._quote_batch[:QUOTE_BATCH_SIZE]
+                self._quote_batch = self._quote_batch[QUOTE_BATCH_SIZE:]
+                self._last_quote_batch = time.time()
+            
+            # Process quotes concurrently
+            tasks = []
+            for token0_addr, token1_addr, amount in batch:
+                task = asyncio.create_task(self._get_dex_quotes(
+                    token0_addr, token1_addr, amount
+                ))
+                tasks.append(task)
+            
+            await asyncio.gather(*tasks)
+            
+        except Exception as e:
+            logger.error(f"Error processing quote batch: {e}")
+
+    async def _get_single_quote(
+        self,
+        dex_name: str,
+        dex: Any,
+        token0_addr: str,
+        token1_addr: str,
+        amount: int
+    ) -> Optional[Dict[str, Any]]:
+        """Get quote from a single DEX with caching."""
+        try:
+            cache_key = f"{dex_name}:{token0_addr}:{token1_addr}:{amount}"
+            
+            # Check cache first
+            quote = self._quote_cache.get(cache_key)
+            if quote is not None:
+                return quote
+            
+            # Get quote with retries
+            for attempt in range(MAX_RETRIES):
+                try:
+                    quote = await dex.get_quote_with_impact(amount, [token0_addr, token1_addr])
+                    if quote:
+                        # Update cache
+                        self._quote_cache[cache_key] = quote
+                        self._quote_cache_times[cache_key] = time.time()
+                        return quote
+                except Exception as e:
+                    if attempt < MAX_RETRIES - 1:
+                        await asyncio.sleep(RETRY_DELAY)
+                        continue
+                    logger.debug(f"Error getting quote from {dex_name} after {MAX_RETRIES} attempts: {e}")
+                    return None
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error getting quote from {dex_name}: {e}")
+            return None
+
+    async def _detect_direct_arbitrage(self, pairs: List[Dict]) -> List[Opportunity]:
+        """Detect direct arbitrage between two DEXes concurrently."""
+        try:
+            # Process pairs in batches
+            opportunities = []
+            for i in range(0, len(pairs), self.batch_size):
+                batch = pairs[i:i + self.batch_size]
+                
+                # Process batch in thread pool
+                loop = asyncio.get_event_loop()
+                batch_tasks = [
+                    loop.run_in_executor(
+                        self.executor,
+                        self._analyze_direct_pair,
+                        pair
+                    )
+                    for pair in batch
+                ]
+                
+                # Wait for batch results with retries
+                for task in batch_tasks:
+                    for attempt in range(MAX_RETRIES):
+                        try:
+                            result = await task
+                            if isinstance(result, list):
+                                opportunities.extend(result)
+                            break
+                        except Exception as e:
+                            if attempt < MAX_RETRIES - 1:
+                                await asyncio.sleep(RETRY_DELAY)
+                                continue
+                            logger.error(f"Error in pair analysis after {MAX_RETRIES} attempts: {e}")
+            
+            return opportunities
+            
+        except Exception as e:
+            logger.error(f"Error in direct arbitrage detection: {e}")
+            return []
+
+    async def _analyze_direct_pair(self, pair: Dict) -> List[Opportunity]:
+        """Analyze a single pair for direct arbitrage opportunities."""
+        opportunities = []
+        try:
+            # Safely get token addresses
+            token0 = pair.get("token0")
+            token1 = pair.get("token1")
+            if not token0 or not token1:
+                logger.error(f"Invalid pair configuration: {pair}")
+                return []
+                
+            tokens = self.config.get("tokens", {})
+            token0_info = tokens.get(token0, {})
+            token1_info = tokens.get(token1, {})
+            
+            token0_addr = token0_info.get("address")
+            token1_addr = token1_info.get("address")
+            
+            if not token0_addr or not token1_addr:
+                logger.error(f"Missing token addresses for pair {token0}/{token1}")
+                return []
+            
+            # Get quotes from all DEXes concurrently
+            quotes = await self._get_dex_quotes(
+                token0_addr,
+                token1_addr,
+                int(float(self.max_trade_size))
+            )
+            
+            # Check for arbitrage opportunities
+            for buy_dex, buy_quote in quotes.items():
+                for sell_dex, sell_quote in quotes.items():
+                    if buy_dex == sell_dex:
+                        continue
+                        
+                    # Calculate profit
+                    buy_price = Decimal(str(buy_quote['amount_out'])) / self.max_trade_size
+                    sell_price = Decimal(str(sell_quote['amount_in'])) / self.max_trade_size
+                    profit_percent = (sell_price - buy_price) / buy_price
+                    
+                    # Calculate optimal amount
+                    optimal_amount = min(
+                        self.max_trade_size,
+                        Decimal(str(buy_quote['liquidity_depth'])),
+                        Decimal(str(sell_quote['liquidity_depth']))
+                    )
+                    
+                    # Get gas cost and ML prediction concurrently
+                    gas_task = asyncio.create_task(self._estimate_gas_cost(buy_dex, sell_dex))
+                    ml_task = asyncio.create_task(self.ml_system.predict_trade_success({
+                        'profit_percent': float(profit_percent),
+                        'buy_amount': float(optimal_amount),
+                        'gas_cost': 0,  # Will update after gas estimation
+                        'buy_impact': buy_quote['price_impact'],
+                        'sell_impact': sell_quote['price_impact']
+                    }))
+                    
+                    gas_cost, (success_prob, importance) = await asyncio.gather(gas_task, ml_task)
+                    net_profit = profit_percent * optimal_amount - Decimal(str(gas_cost))
+                    
+                    if net_profit > self.min_profit and success_prob > 0.8:
+                        opportunities.append(
+                            Opportunity(
+                                buy_dex=buy_dex,
+                                sell_dex=sell_dex,
+                                token_pair=f"{pair['token0']}/{pair['token1']}",
+                                profit_percent=float(profit_percent),
+                                buy_amount=float(optimal_amount),
+                                sell_amount=float(optimal_amount * (1 - self.max_slippage)),
+                                estimated_gas=float(gas_cost),
+                                net_profit=float(net_profit),
+                                priority=self._calculate_priority_score(
+                                    profit_percent=float(profit_percent),
+                                    net_profit=float(net_profit),
+                                    gas_cost=float(gas_cost),
+                                    success_prob=success_prob,
+                                    impact_score=1 - max(
+                                        buy_quote['price_impact'],
+                                        sell_quote['price_impact']
+                                    )
+                                ),
+                                route_type="direct",
+                                confidence_score=success_prob,
+                                market_conditions={
+                                    'liquidity': float(min(
+                                        buy_quote['liquidity_depth'],
+                                        sell_quote['liquidity_depth']
+                                    )),
+                                    'price_impact': max(
+                                        buy_quote['price_impact'],
+                                        sell_quote['price_impact']
+                                    ),
+                                    'max_trade_size': float(optimal_amount)
+                                }
+                            )
+                        )
+            
+            return opportunities
+            
+        except Exception as e:
+            logger.error(f"Error analyzing direct pair: {e}")
+            return []
+
+    async def _detect_triangular_arbitrage(self, pairs: List[Dict]) -> List[Opportunity]:
+        """Detect triangular arbitrage opportunities concurrently."""
+        try:
+            # Get all valid tokens from pairs
+            tokens = set()
+            config_tokens = self.config.get("tokens", {})
+            for pair in pairs:
+                token0 = pair.get("token0")
+                token1 = pair.get("token1")
+                if token0 and token1 and token0 in config_tokens and token1 in config_tokens:
+                    tokens.add(token0)
+                    tokens.add(token1)
+            
+            # Process paths in batches
+            opportunities = []
+            paths = []
+            for token_a in tokens:
+                for token_b in tokens:
+                    if token_a == token_b:
+                        continue
+                        
+                    for token_c in tokens:
+                        if token_c in (token_a, token_b):
+                            continue
+                            
+                        paths.append((token_a, token_b, token_c))
+            
+            # Add paths to batch
+            async with self._path_lock:
+                self._path_batch.extend(paths)
+                
+                # Process batch if full or timeout reached
+                current_time = time.time()
+                if (len(self._path_batch) >= PATH_BATCH_SIZE or 
+                    current_time - self._last_path_batch >= BATCH_TIMEOUT):
+                    await self._process_path_batch()
+            
+            for i in range(0, len(paths), self.path_batch_size):
+                batch = paths[i:i + self.path_batch_size]
+                
+                # Process batch in thread pool
+                loop = asyncio.get_event_loop()
+                batch_tasks = [
+                    loop.run_in_executor(
+                        self.executor,
+                        self._analyze_triangular_path,
+                        path[0], path[1], path[2]
+                    )
+                    for path in batch
+                ]
+                
+                # Wait for batch results with retries
+                for task in batch_tasks:
+                    for attempt in range(MAX_RETRIES):
+                        try:
+                            result = await task
+                            if isinstance(result, list):
+                                opportunities.extend(result)
+                            break
+                        except Exception as e:
+                            if attempt < MAX_RETRIES - 1:
+                                await asyncio.sleep(RETRY_DELAY)
+                                continue
+                            logger.error(f"Error in path analysis after {MAX_RETRIES} attempts: {e}")
+            
+            return opportunities
+            
+        except Exception as e:
+            logger.error(f"Error in triangular arbitrage detection: {e}")
+            return []
+
+    async def _process_path_batch(self) -> None:
+        """Process path batch."""
+        try:
+            async with self._path_lock:
+                if not self._path_batch:
+                    return
+                    
+                # Get batch
+                batch = self._path_batch[:PATH_BATCH_SIZE]
+                self._path_batch = self._path_batch[PATH_BATCH_SIZE:]
+                self._last_path_batch = time.time()
+            
+            # Process paths concurrently
+            tasks = []
+            for token_a, token_b, token_c in batch:
+                task = asyncio.create_task(self._analyze_triangular_path(
+                    token_a, token_b, token_c
+                ))
+                tasks.append(task)
+            
+            await asyncio.gather(*tasks)
+            
+        except Exception as e:
+            logger.error(f"Error processing path batch: {e}")
+
+    async def _analyze_triangular_path(
+        self,
+        token_a: str,
+        token_b: str,
+        token_c: str
+    ) -> List[Opportunity]:
+        """Analyze a single triangular path for arbitrage opportunities."""
+        opportunities = []
+        try:
+            # Safely get token addresses
+            tokens = self.config.get("tokens", {})
+            token_a_info = tokens.get(token_a, {})
+            token_b_info = tokens.get(token_b, {})
+            token_c_info = tokens.get(token_c, {})
+            
+            token_a_addr = token_a_info.get("address")
+            token_b_addr = token_b_info.get("address")
+            token_c_addr = token_c_info.get("address")
+            
+            if not all([token_a_addr, token_b_addr, token_c_addr]):
+                logger.error(f"Missing token addresses for path {token_a}-{token_b}-{token_c}")
+                return []
+
+            # Get best DEXes for each leg concurrently
+            dex_tasks = [
+                asyncio.create_task(self.dex_manager.get_best_dex(f"{token_a}/{token_b}")),
+                asyncio.create_task(self.dex_manager.get_best_dex(f"{token_b}/{token_c}")),
+                asyncio.create_task(self.dex_manager.get_best_dex(f"{token_c}/{token_a}"))
+            ]
+            
+            dex1, dex2, dex3 = await asyncio.gather(*dex_tasks)
+            
+            if not all([dex1, dex2, dex3]):
+                logger.debug(f"Could not find DEXes for path {token_a}-{token_b}-{token_c}")
+                return []
+            
+            # Get quotes concurrently
+            quote_tasks = [
+                asyncio.create_task(self._get_single_quote(
+                    dex1,
+                    self.dex_manager.get_dex(dex1),
+                    token_a_addr,
+                    token_b_addr,
+                    int(float(self.max_trade_size))
+                )),
+                asyncio.create_task(self._get_single_quote(
+                    dex2,
+                    self.dex_manager.get_dex(dex

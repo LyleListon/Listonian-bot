@@ -234,11 +234,11 @@ class AlertSystem:
     async def _check_price_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check price alert condition."""
         try:
-            market = await self.market_analyzer.get_market_condition(condition.symbol)
-            if not market:
+            market_data = await self.market_analyzer.get_market_condition(condition.symbol)
+            if not market_data:
                 return False, "", "info"
                 
-            price = market.price
+            price = Decimal(str(market_data.get("price", 0)))
             
             if condition.operator == "above" and price > condition.value:
                 return True, f"{condition.symbol} price above ${condition.value:,.2f}", "warning"
@@ -254,11 +254,11 @@ class AlertSystem:
     async def _check_volume_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check volume alert condition."""
         try:
-            market = await self.market_analyzer.get_market_condition(condition.symbol)
-            if not market:
+            market_data = await self.market_analyzer.get_market_condition(condition.symbol)
+            if not market_data:
                 return False, "", "info"
                 
-            volume = market.volume_24h
+            volume = Decimal(str(market_data.get("volume_24h", 0)))
             
             if condition.operator == "above" and volume > condition.value:
                 return True, f"{condition.symbol} volume above ${condition.value:,.0f}", "info"
@@ -274,10 +274,11 @@ class AlertSystem:
     async def _check_gas_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check gas alert condition."""
         try:
-            # Get gas metrics from gas optimizer
-            gas_price = await self.analytics.gas_optimizer.get_optimal_gas_price()
-            if not gas_price:
+            # Get gas metrics from analytics system
+            if not self.analytics.gas_optimizer:
                 return False, "", "info"
+                
+            gas_price = await self.analytics.gas_optimizer.get_optimal_gas_price()
                 
             gas_price_gwei = gas_price / 10**9  # Convert to GWEI
             
@@ -295,14 +296,14 @@ class AlertSystem:
     async def _check_trend_condition(self, condition: AlertCondition) -> tuple[bool, str, str]:
         """Check trend alert condition."""
         try:
-            market = await self.market_analyzer.get_market_condition(condition.symbol)
-            if not market:
+            market_data = await self.market_analyzer.get_market_condition(condition.symbol)
+            if not market_data:
                 return False, "", "info"
                 
             if condition.operator == "crosses":
                 # Check if trend direction changed
                 last_trend = self.alerts[-1].condition.value if self.alerts else None
-                current_trend = market.trend.direction
+                current_trend = market_data.get("trend", "sideways")
                 
                 if last_trend and current_trend != last_trend:
                     return True, f"{condition.symbol} trend changed to {current_trend}", "warning"

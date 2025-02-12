@@ -1,313 +1,139 @@
-"""PancakeSwap V3 DEX implementation."""
+"""PancakeSwap DEX implementation."""
 
-from typing import Dict, Any, Optional, List
-from web3.types import TxReceipt
+from typing import Dict, Any
+import logging
+import asyncio
+from decimal import Decimal
 
 from .base_dex_v3 import BaseDEXV3
 from ..web3.web3_manager import Web3Manager
-from .utils import (
-    validate_config,
-    estimate_gas_cost,
-    calculate_price_impact,
-    encode_path_for_v3,
-    get_common_base_tokens
-)
+from .utils import validate_config
 
-class PancakeSwapDEX(BaseDEXV3):
+logger = logging.getLogger(__name__)
+
+class Pancakeswap(BaseDEXV3):
     """Implementation of PancakeSwap V3 DEX."""
 
     def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
-        """Initialize PancakeSwap V3 interface."""
-        # PancakeSwap V3 uses 0.25% fee by default
-        config['fee'] = config.get('fee', 2500)
-        
+        """Initialize PancakeSwap interface."""
         # Validate config
         is_valid, error = validate_config(config, {
             'router': str,
             'factory': str,
+            'fee': int,
+            'tick_spacing': int,
             'quoter': str,
-            'fee': int
+            'pool_deployer': str
         })
         if not is_valid:
             raise ValueError(f"Invalid config: {error}")
             
         super().__init__(web3_manager, config)
         self.name = "PancakeSwap"
+        self.pool_deployer_address = config['pool_deployer']
+        self.initialized = False
 
-    async def get_pool_fee(self, token0: str, token1: str) -> Optional[int]:
-        """
-        Get the optimal fee tier based on market conditions.
-        
-        Args:
-            token0: First token address
-            token1: Second token address
-            
-        Returns:
-            Optional[int]: Fee in basis points (e.g., 2500 for 0.25%) or None if pool doesn't exist
-        """
+    async def initialize(self) -> bool:
+        """Initialize PancakeSwap interface."""
         try:
-            # Get token symbols
-            token0_symbol = self.TOKEN_SYMBOLS.get(token0)
-            token1_symbol = self.TOKEN_SYMBOLS.get(token1)
+            # Initialize base V3 DEX
+            if not await super().initialize():
+                return False
             
-            # If we don't have symbols, use default fee
-            if not token0_symbol or not token1_symbol:
-                return self.fee
-            
-            # Get market conditions from market-analysis server
-            market_conditions = await self.web3_manager.use_mcp_tool(
-                "market-analysis",
-                "assess_market_conditions",
-                {
-                    "token": token0_symbol.lower(),
-                    "metrics": ["volatility", "volume", "liquidity"]
-                }
+            # Initialize contracts
+            self.router = self.w3.eth.contract(
+                address=self.router_address,
+                abi=self.router_abi
+            )
+            self.factory = self.w3.eth.contract(
+                address=self.factory_address,
+                abi=self.factory_abi
             )
             
-            # Determine optimal fee tier based on market conditions
-            volatility = market_conditions['metrics']['volatility']
-            volume = market_conditions['metrics']['volume']
-            liquidity = market_conditions['metrics']['liquidity']
-            
-            # High volume, low volatility -> lowest fee
-            if volume > 1000000 and volatility < 0.1:
-                fee = 100  # 0.01%
-            # High volume, medium volatility -> low fee
-            elif volume > 500000 and volatility < 0.3:
-                fee = 500  # 0.05%
-            # Medium conditions -> medium fee
-            elif volume > 100000 and volatility < 0.5:
-                fee = 2500  # 0.25%
-            # High volatility or low volume -> high fee
-            else:
-                fee = 10000  # 1%
-                
-            # Verify pool exists with selected fee
-            pool = await self.factory.functions.getPool(
-                token0,
-                token1,
-                fee
-            ).call()
-            
-            if pool != "0x0000000000000000000000000000000000000000":
-                return fee
-                
-            # If pool doesn't exist with optimal fee, try other tiers
-            fee_tiers = [100, 500, 2500, 10000]
-            for alt_fee in fee_tiers:
-                if alt_fee != fee:
-                    pool = await self.factory.functions.getPool(
-                        token0,
-                        token1,
-                        alt_fee
-                    ).call()
-                    if pool != "0x0000000000000000000000000000000000000000":
-                        return alt_fee
-                        
-            return None
+            self.initialized = True
+            logger.info(f"PancakeSwap V3 interface initialized")
+            return True
             
         except Exception as e:
-            self._handle_error(e, "Pool fee lookup")
-            return None
+            logger.error(f"Failed to initialize PancakeSwap: {e}")
+            return False
 
-    async def get_best_pool(self, token0: str, token1: str) -> Optional[Dict[str, Any]]:
-        """
-        Find the pool with the best liquidity using market analysis.
-        
-        Args:
-            token0: First token address
-            token1: Second token address
-            
-        Returns:
-            Optional[Dict[str, Any]]: Pool details including:
-                - address: Pool contract address
-                - fee: Fee tier
-                - liquidity: Pool liquidity
-                - sqrt_price_x96: Current sqrt price
-        """
+    async def get_total_liquidity(self) -> Decimal:
+        """Get total liquidity across all pools."""
         try:
-            # Get token symbols
-            token0_symbol = self.TOKEN_SYMBOLS.get(token0)
-            token1_symbol = self.TOKEN_SYMBOLS.get(token1)
+            total_liquidity = Decimal(0)
             
-            # If we don't have symbols, use default fee
-            if not token0_symbol or not token1_symbol:
-                return None
-            
-            # Analyze opportunities using market-analysis server
-            analysis = await self.web3_manager.use_mcp_tool(
-                "market-analysis",
-                "analyze_opportunities",
-                {
-                    "token": token0_symbol.lower(),
-                    "days": 1,
-                    "min_profit_threshold": 0.1
-                }
+            # Get all pools
+            pool_count = await self._retry_async(
+                self.factory.functions.allPoolsLength().call
             )
             
-            # Get current market conditions
-            market_conditions = await self.web3_manager.use_mcp_tool(
-                "market-analysis",
-                "assess_market_conditions",
-                {
-                    "token": token0_symbol.lower(),
-                    "metrics": ["liquidity", "volume"]
-                }
-            )
+            for i in range(min(pool_count, 100)):  # Limit to 100 pools for performance
+                try:
+                    pool_address = await self._retry_async(
+                        lambda: self.factory.functions.allPools(i).call()
+                    )
+                    
+                    pool = await self.web3_manager.get_contract_async(
+                        address=pool_address,
+                        abi=self.pool_abi
+                    )
+                    
+                    # Get liquidity
+                    liquidity = await self._retry_async(
+                        pool.functions.liquidity().call
+                    )
+                    total_liquidity += Decimal(liquidity)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to get liquidity for pool {i}: {e}")
+                    continue
             
-            # Use the analysis to determine best fee tier
-            if market_conditions['metrics']['volume'] > 1000000:  # High volume
-                fee = 100  # 0.01% for high volume
-            elif market_conditions['metrics']['volume'] > 100000:  # Medium volume
-                fee = 500  # 0.05% for medium volume
-            else:
-                fee = 2500  # 0.25% for low volume
-                
+            return total_liquidity
+            
+        except Exception as e:
+            logger.error(f"Failed to get total liquidity: {e}")
+            return Decimal(0)
+
+    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+        """Get 24-hour trading volume for a token pair."""
+        try:
             # Get pool address
-            pool_address = await self.factory.functions.getPool(
-                token0,
-                token1,
-                fee
-            ).call()
+            pool_address = await self._retry_async(
+                lambda: self.factory.functions.getPool(
+                    token0,
+                    token1,
+                    self.config['fee']
+                ).call()
+            )
             
             if pool_address == "0x0000000000000000000000000000000000000000":
-                return None
-                
-            return {
-                'address': pool_address,
-                'fee': fee,
-                'liquidity': market_conditions['metrics']['liquidity'],
-                'sqrt_price_x96': analysis['current_price'] * (2 ** 96)  # Convert to sqrtPriceX96
-            }
+                return Decimal(0)
             
-        except Exception as e:
-            self._handle_error(e, "Best pool lookup")
-            return None
-
-    async def estimate_gas_cost(self, path: List[str]) -> int:
-        """
-        Estimate gas cost for a swap path.
-        
-        Args:
-            path: List of token addresses in the swap path
-            
-        Returns:
-            int: Estimated gas cost in wei
-        """
-        return estimate_gas_cost(path, 'v3')
-
-    def _encode_path(self, path: List[str]) -> bytes:
-        """
-        Encode path with fees for V3 swap.
-        
-        Args:
-            path: List of token addresses
-            
-        Returns:
-            bytes: Encoded path with fees
-        """
-        return encode_path_for_v3(path, self.fee)
-
-    async def get_common_pairs(self) -> List[str]:
-        """Get list of common base tokens for routing."""
-        return get_common_base_tokens()
-
-    # Token address to symbol mapping
-    TOKEN_SYMBOLS = {
-        # Common Base tokens
-        "0x4200000000000000000000000000000000000006": "WETH",  # WETH on Base
-        "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": "USDC",  # USDC on Base
-        "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb": "DAI",   # DAI on Base
-        "0x4A3A6Dd60A34bB2Aba60D73B4C88315E9CeB6A3D": "USDT",  # USDT on Base
-        # Add more token mappings as needed
-    }
-
-    async def get_quote_with_impact(
-        self,
-        amount_in: int,
-        path: List[str]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get quote including price impact and liquidity depth analysis using MCP servers.
-        Falls back to base V3 implementation if MCP servers fail.
-        
-        Args:
-            amount_in: Input amount in wei
-            path: List of token addresses in the swap path
-            
-        Returns:
-            Optional[Dict[str, Any]]: Quote details including:
-                - amount_in: Input amount
-                - amount_out: Expected output amount
-                - price_impact: Estimated price impact percentage
-                - liquidity_depth: Available liquidity
-                - fee_rate: DEX fee rate
-                - estimated_gas: Estimated gas cost
-                - min_out: Minimum output with slippage
-        """
-        try:
-            # Get token symbols from addresses
-            token_in_symbol = self.TOKEN_SYMBOLS.get(path[0])
-            token_out_symbol = self.TOKEN_SYMBOLS.get(path[1])
-            
-            # If we don't have symbols for the tokens, fall back to base implementation
-            if not token_in_symbol or not token_out_symbol:
-                return await super().get_quote_with_impact(amount_in, path)
-            
-            # Get current prices from crypto-price server
-            prices_response = await self.web3_manager.use_mcp_tool(
-                "crypto-price",
-                "get_prices",
-                {
-                    "coins": [token_in_symbol.lower(), token_out_symbol.lower()],
-                    "include_24h_change": True
-                }
+            # Get pool contract
+            pool = await self.web3_manager.get_contract_async(
+                address=pool_address,
+                abi=self.pool_abi
             )
             
-            # Get market conditions from market-analysis server
-            market_response = await self.web3_manager.use_mcp_tool(
-                "market-analysis",
-                "assess_market_conditions",
-                {
-                    "token": token_in_symbol.lower(),
-                    "metrics": ["volatility", "volume", "liquidity", "trend"]
-                }
+            # Get volume from events in last 24h
+            current_block = await self.web3_manager.w3.eth.block_number
+            from_block = current_block - 7200  # ~24h of blocks
+            
+            swap_events = await self._retry_async(
+                lambda: pool.events.Swap.get_logs(
+                    fromBlock=from_block
+                )
             )
             
-            # Validate MCP responses
-            if not prices_response or not market_response:
-                return await super().get_quote_with_impact(amount_in, path)
+            volume = Decimal(0)
+            for event in swap_events:
+                amount0 = abs(Decimal(event['args']['amount0']))
+                amount1 = abs(Decimal(event['args']['amount1']))
+                volume += max(amount0, amount1)
             
-            # Extract prices from response
-            token_in_price = prices_response.get(token_in_symbol.lower(), {}).get('price')
-            token_out_price = prices_response.get(token_out_symbol.lower(), {}).get('price')
-            
-            if not token_in_price or not token_out_price:
-                return await super().get_quote_with_impact(amount_in, path)
-            
-            # Calculate output amount based on price ratio
-            price_ratio = float(token_out_price) / float(token_in_price)
-            amount_out = int(amount_in * price_ratio)
-            
-            # Extract market metrics
-            metrics = market_response.get('metrics', {})
-            price_impact = float(metrics.get('volatility', 0)) / 100
-            liquidity = int(metrics.get('liquidity', 0))
-            
-            # Validate metrics
-            if price_impact <= 0 or liquidity <= 0:
-                return await super().get_quote_with_impact(amount_in, path)
-            
-            return {
-                'amount_in': amount_in,
-                'amount_out': amount_out,
-                'price_impact': price_impact,
-                'liquidity_depth': liquidity,
-                'fee_rate': self.fee / 1000000,  # Convert from basis points
-                'estimated_gas': estimate_gas_cost(path, 'v3'),
-                'min_out': int(amount_out * 0.995)  # 0.5% slippage default
-            }
+            return volume
             
         except Exception as e:
-            self.logger.warning(f"MCP quote failed, falling back to base implementation: {e}")
-            return await super().get_quote_with_impact(amount_in, path)
+            logger.error(f"Failed to get 24h volume: {e}")
+            return Decimal(0)

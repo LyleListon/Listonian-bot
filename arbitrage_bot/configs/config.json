@@ -1,6 +1,6 @@
 {
     "web3": {
-        "provider_url": "https://base-mainnet.infura.io/v3/803c326dab1a444dba3f41ae7a07ccce",
+        "provider_url": "http://127.0.0.1:8545",
         "chain_id": 8453,
         "gas_limit": 500000,
         "gas_price": "auto"
@@ -17,7 +17,7 @@
         "max_position_size": 1.0
     },
     "dashboard": {
-        "port": 5000,
+        "port": 5001,
         "host": "0.0.0.0",
         "debug": true
     },

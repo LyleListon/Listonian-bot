@@ -57,6 +57,7 @@ class ArbitrageBot:
             from arbitrage_bot.core.metrics.portfolio_tracker import create_portfolio_tracker
             from arbitrage_bot.core.dex.dex_manager import create_dex_manager
             from arbitrage_bot.core.gas.gas_optimizer import create_gas_optimizer
+            from arbitrage_bot.core.memory import get_memory_bank
             
             # Get config
             config = self.config_loader.get_config()
@@ -66,7 +67,7 @@ class ArbitrageBot:
             os.environ['CHAIN_ID'] = str(config['network']['chainId'])
             
             # Initialize Web3 manager first
-            self.web3_manager = await create_web3_manager()
+            self.web3_manager = await create_web3_manager(config)
             
             # Initialize market analyzer
             self.market_analyzer = await create_market_analyzer(
@@ -91,7 +92,8 @@ class ArbitrageBot:
             
             # Initialize DEX manager
             self.dex_manager = await create_dex_manager(
-                self.web3_manager
+                self.web3_manager,
+                config
             )
             
             # Initialize gas optimizer
@@ -99,19 +101,20 @@ class ArbitrageBot:
                 dex_manager=self.dex_manager,
                 web3_manager=self.web3_manager
             )
+            if not await self.gas_optimizer.initialize():
+                raise Exception("Failed to initialize gas optimizer")
             
             # Initialize analytics system
-            self.analytics_system = await create_analytics_system(
-                self.web3_manager,
-                None,  # Transaction monitor will be set after creation
-                self.market_analyzer,
-                self.portfolio_tracker,
-                self.gas_optimizer,
-                config
-            )
+            self.analytics_system = await create_analytics_system(config)
+            
+            # Set dex_manager in analytics system
+            await self.analytics_system.set_dex_manager(self.dex_manager)
             
             # Set analytics in ML system
             self.ml_system.analytics = self.analytics_system
+            
+            # Initialize memory bank
+            self.memory_bank = await get_memory_bank()
             
             # Initialize transaction monitor
             self.tx_monitor = await create_transaction_monitor(
@@ -120,9 +123,6 @@ class ArbitrageBot:
                 self.ml_system,
                 self.dex_manager
             )
-            
-            # Set transaction monitor in analytics system
-            self.analytics_system.tx_monitor = self.tx_monitor
             
             # Initialize alert system
             from arbitrage_bot.core.alerts.alert_system import create_alert_system
@@ -139,7 +139,11 @@ class ArbitrageBot:
                 dex_manager=self.dex_manager,
                 gas_optimizer=self.gas_optimizer,
                 tx_monitor=self.tx_monitor,
-                market_analyzer=self.market_analyzer  # Pass market analyzer
+                market_analyzer=self.market_analyzer,
+                analytics_system=self.analytics_system,  # Pass analytics system
+                ml_system=self.ml_system,  # Pass ML system
+                memory_bank=self.memory_bank,  # Pass memory bank
+                config=config
             )
             
             logger.info("ArbitrageBot initialized successfully")
@@ -202,29 +206,11 @@ class ArbitrageBot:
         
         while self.is_running:
             try:
-                # Detect opportunities
+                # Detect and execute opportunities
                 opportunities = await self.arbitrage_executor.detect_opportunities()
-                
                 if opportunities:
-                    logger.info(f"Found {len(opportunities)} opportunities")
-                    
                     for opportunity in opportunities:
-                        # Validate opportunity with market analyzer
-                        if not await self.market_analyzer.should_execute(
-                            opportunity['buy_path'][0],  # Input token
-                            opportunity['amount_in'],
-                            min_confidence=0.8
-                        )[0]:
-                            continue
-                        
-                        # Execute opportunity
-                        result = await self.arbitrage_executor.execute_opportunity(opportunity)
-                        success = result is not None and result.get('success', False)
-                        
-                        if success:
-                            logger.info("Trade executed successfully")
-                        else:
-                            logger.warning("Trade execution failed")
+                        await self.arbitrage_executor.execute_opportunity(opportunity)
                 
                 # Add delay between iterations
                 await asyncio.sleep(
@@ -246,6 +232,11 @@ class ArbitrageBot:
             
             # Start dashboard as a separate Python process
             dashboard_script = str(Path(__file__).parent / 'arbitrage_bot' / 'dashboard' / 'run.py')
+            
+            # Create and connect Web3 manager before starting dashboard
+            await self.web3_manager.connect()
+            
+            # Start dashboard process
             self.dashboard_process = subprocess.Popen([sys.executable, dashboard_script])
             
             logger.info("Dashboard started successfully")
@@ -257,8 +248,9 @@ class ArbitrageBot:
         """Perform cleanup operations"""
         try:
             # Save final performance metrics
-            summary = self.performance_tracker.get_performance_summary()
-            logger.info(f"Final performance summary: {summary}")
+            if self.performance_tracker:
+                summary = await self.performance_tracker.get_performance_summary()
+                logger.info(f"Final performance summary: {summary}")
             
             # Close database connections
             # Any other cleanup needed

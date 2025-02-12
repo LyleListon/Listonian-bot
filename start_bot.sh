@@ -34,13 +34,13 @@ fi
 export $(cat .env.production | grep -v '^#' | xargs)
 
 # Set dashboard ports
-export DASHBOARD_PORT=5000
+export DASHBOARD_PORT=5001
 export DASHBOARD_WEBSOCKET_PORT=8771
 
 # Configure port forwarding for Codespace
 if [ -n "$CODESPACE_NAME" ]; then
     echo "Running in Codespace environment"
-    echo "Dashboard will be available at: https://$CODESPACE_NAME-5000.app.github.dev"
+    echo "Dashboard will be available at: https://$CODESPACE_NAME-5001.app.github.dev"
     echo "WebSocket will be available at: wss://$CODESPACE_NAME-8771.app.github.dev"
 fi
 

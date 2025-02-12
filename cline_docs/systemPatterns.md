@@ -1,170 +1,192 @@
-# System Patterns
+System Patterns
 
-## Architecture Overview
+## Core Architecture
 
-### Component Structure
-1. **Blockchain Layer**
-   - Smart Contracts for trade execution
-   - DEX Registry for exchange management
-   - Price Feed Registry for market data
+### Web3 Layer
+1. **Web3 Manager Pattern**
+   ```
+   Web3Manager
+   ├── Connection Management
+   │   ├── Retry Middleware
+   │   ├── Timeout Configuration
+   │   └── Error Handling
+   ├── Contract Interaction
+   │   ├── Sync Methods
+   │   └── Async Methods
+   └── State Management
+       ├── Chain ID
+       └── Account Info
+   ```
 
-2. **Trading Layer**
-   - Arbitrage Detector for opportunity identification
-   - Trade Router for execution routing
-   - Risk Manager for trade validation
+2. **DEX Abstraction Layers**
+   ```
+   BaseDEX
+   └── BaseDEXV2
+       ├── BaseSwapDEX
+       ├── SwapBasedDEX
+       └── PancakeSwapDEX
+   ```
 
-3. **Analytics Layer**
-   - Predictive Models for market analysis
-   - Reinforcement Learning for strategy optimization
-   - Evolutionary Optimizer for parameter tuning
+### Output Management Pattern
+1. **Terminal Output Control**
+   ```
+   Output Manager
+   ├── Log Rotation
+   │   ├── Size-based rotation
+   │   └── Time-based rotation
+   ├── Output Filtering
+   │   ├── Debug level control
+   │   └── Category filtering
+   └── Context Management
+       ├── Buffer size monitoring
+       └── Cleanup triggers
+   ```
 
-4. **Monitoring Layer**
-   - Dashboard Interface for system control
-   - Performance Tracking for metrics
-   - System Health Monitoring for reliability
+2. **Context Window Protection**
+   - Monitor output volume
+   - Implement log rotation
+   - Use selective logging
+   - Clean old logs regularly
+   - Prevent context overflow
 
-## Design Patterns
+### Data Flow Patterns
+1. **Price Data Pipeline**
+   ```
+   Web3 RPC
+   ↓
+   DEX Contract
+   ↓
+   Reserve Data
+   ↓
+   Price Calculation
+   ↓
+   Market Analysis
+   ↓
+   WebSocket
+   ↓
+   Dashboard
+   ```
 
-### Core Patterns
-1. **Dependency Injection**
-   - Abstract interfaces for core components
-   - Dependency container implementation
-   - Loose coupling between modules
+2. **Error Handling Pattern**
+   ```
+   Try Operation
+   ↓
+   Catch Error
+   ↓
+   Log Error
+   ↓
+   Retry Logic
+   ↓
+   Fallback/Recovery
+   ```
 
-2. **Event-Driven Architecture**
-   - Event bus for component communication
-   - Asynchronous operation handling
-   - Event tracking and monitoring
+## Key Design Patterns
 
-3. **Repository Pattern**
-   - Data access abstraction
-   - Blockchain interaction management
-   - Caching strategies
+### 1. Retry Pattern
+- Exponential backoff (0.5s, 1s, 2s)
+- Maximum 3 retries
+- Status code based retry decisions
+- Error logging at each attempt
 
-4. **Factory Pattern**
-   - DEX Factory for exchange instantiation
-   - Configuration-driven initialization
-   - Dynamic protocol support (V2/V3)
+### 2. Token Handling Pattern
+```python
+# Token Order Resolution
+if token0_addr.lower() == token0.lower():
+    reserve0 = reserves[0]
+    reserve1 = reserves[1]
+else:
+    reserve0 = reserves[1]
+    reserve1 = reserves[0]
 
-5. **Configuration Pattern**
-   - Centralized configuration documentation
-   - Environment-based configuration
-   - Secure credential management
-   - Configuration validation
-   - Template-based setup
+# Decimal Adjustment
+adjusted_amount = Decimal(amount) / Decimal(10 ** decimals)
+```
 
-### Implementation Patterns
+### 3. Price Calculation Pattern
+```python
+# Base Price
+price = reserve_out / reserve_in
 
-1. **Smart Contract Integration**
-   - Web3 interaction layer
-   - Contract ABI management
-   - Transaction handling and validation
+# With Impact
+impact = (expected_out - actual_out) / expected_out
+adjusted_price = price * (1 - impact)
+```
 
-2. **Market Analysis**
-   - Price feed integration
-   - Opportunity detection algorithms
-   - Risk assessment calculations
+## Implementation Guidelines
 
-3. **System Monitoring**
-   - Real-time data collection
-   - Performance metric tracking
-   - Alert and notification system
+### 1. Web3 Interactions
+- Always use retry middleware
+- Handle timeouts gracefully
+- Log all RPC interactions
+- Verify chain ID matches
+- Check contract addresses
 
-4. **DEX Management**
-   - Factory pattern for DEX creation
-   - Manager pattern for lifecycle control
-   - Configuration-based enablement
-   - Protocol-specific implementations
-   - Error recovery and health monitoring
+### 2. DEX Integration
+- Verify token ordering
+- Handle decimals properly
+- Check reserves exist
+- Validate price calculations
+- Monitor price impact
 
-5. **Configuration Management**
-   - Secure configuration templates
-   - Environment variable handling
-   - Sensitive data protection
-   - Configuration validation
-   - Documentation-driven setup
+### 3. Error Recovery
+- Use exponential backoff
+- Log error details
+- Maintain state consistency
+- Provide fallback options
+- Monitor retry patterns
 
-## Error Handling
+### 4. Output Management
+- Implement log rotation
+- Use selective logging levels
+- Monitor context window size
+- Clean logs periodically
+- Filter debug output
 
-1. **Exception Management**
-   - Custom exception hierarchy
-   - Error context tracking
-   - Recovery mechanisms
+## Best Practices
 
-2. **Validation**
-   - Input validation decorators
-   - Data sanitization
-   - Business rule validation
-   - Configuration validation
+### 1. Token Operations
+- Always use checksummed addresses
+- Verify token existence
+- Check decimal places
+- Handle zero reserves
+- Validate pair contracts
 
-3. **DEX Error Handling**
-   - Initialization failure recovery
-   - Configuration validation
-   - Health check mechanisms
-   - Automatic retry and fallback
+### 2. Price Data
+- Sanity check values
+- Compare across DEXes
+- Monitor for outliers
+- Track historical data
+- Validate calculations
 
-## Performance Optimization
+### 3. RPC Requests
+- Use appropriate timeouts
+- Implement retries
+- Monitor rate limits
+- Log request patterns
+- Track success rates
 
-1. **Caching Strategy**
-   - In-memory caching
-   - Blockchain data caching
-   - Price feed optimization
+### 4. Terminal Output
+- Minimize debug output
+- Rotate logs regularly
+- Filter unnecessary info
+- Monitor output size
+- Clean old logs
 
-2. **Computational Efficiency**
-   - Parallel processing
-   - Resource pooling
-   - Query optimization
+## System Constraints
 
-3. **DEX Optimization**
-   - Selective DEX initialization
-   - Configuration-based enablement
-   - Resource cleanup on failure
+### 1. Technical Limits
+- RPC rate limits
+- Contract call gas costs
+- WebSocket connection limits
+- Memory usage bounds
+- CPU utilization caps
+- Context window size
 
-## Security Measures
+### 2. Business Rules
+- Minimum profit thresholds
+- Maximum price impact
+- Slippage tolerance
+- Gas price limits
+- Trade size bounds
 
-1. **Transaction Security**
-   - Signature validation
-   - Gas price management
-   - Slippage protection
-
-2. **System Security**
-   - Access control
-   - Rate limiting
-   - Data encryption
-   - Configuration protection
-
-3. **Configuration Security**
-   - Sensitive data handling
-   - Environment isolation
-   - Template-based setup
-   - Documentation security
-
-## Testing Strategy
-
-1. **Unit Testing**
-   - Component isolation
-   - Mock implementations
-   - Automated test suites
-   - Configuration validation
-
-2. **Integration Testing**
-   - Contract interaction tests
-   - System flow validation
-   - Performance benchmarking
-   - Configuration testing
-
-## Deployment Process
-
-1. **Continuous Integration**
-   - Automated builds
-   - Test execution
-   - Code quality checks
-   - Configuration validation
-
-2. **Deployment Pipeline**
-   - Environment configuration
-   - Version management
-   - Rollback procedures
-   - Configuration management
-
-Last Updated: 2024-01-24
+Last Updated: 2025-02-10

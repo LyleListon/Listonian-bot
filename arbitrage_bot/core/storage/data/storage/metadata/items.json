@@ -1,0 +1,10 @@
+{
+  "schema": {
+    "schema_version": "1.0.0",
+    "created_at": 1739260053.6396117,
+    "updated_at": 1739270854.4776351,
+    "checksum": "86a8015c6da197942077a018494939109157e1828423c08a0bab4027411908a9",
+    "category": "storage",
+    "backup_path": null
+  }
+}

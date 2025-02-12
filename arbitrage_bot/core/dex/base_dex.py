@@ -36,6 +36,8 @@ class BaseDEX(ABC):
         # Initialize contracts
         self.router = None
         self.factory = None
+        self.router_contract = None
+        self.factory_contract = None
         
         # Set up logging
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -196,6 +198,114 @@ class BaseDEX(ABC):
         raise type(error)(
             f"{context} failed: {error_msg}"
         ) from error
+
+    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+        """
+        Get 24-hour trading volume for a token pair.
+        
+        Args:
+            token0: First token address
+            token1: Second token address
+            
+        Returns:
+            Decimal: 24-hour trading volume in base currency
+        """
+        try:
+            # Get pair address
+            pair_address = await self.factory.functions.getPair(token0, token1).call()
+            if pair_address == "0x0000000000000000000000000000000000000000":
+                return Decimal(0)
+            
+            # Get pair contract
+            pair = await self.web3_manager.get_contract_async(
+                address=pair_address,
+                abi=self.pair_abi
+            )
+            
+            # Get current reserves
+            reserves = await pair.functions.getReserves().call()
+            
+            # Calculate volume based on reserve changes
+            # This is a simplified calculation - in production you'd want to
+            # track actual swaps over 24h period
+            volume = Decimal(reserves[0]) + Decimal(reserves[1])
+            return volume
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get 24h volume: {e}")
+            return Decimal(0)
+
+    async def get_total_liquidity(self) -> Decimal:
+        """
+        Get total liquidity across all pairs.
+        
+        Returns:
+            Decimal: Total liquidity in base currency
+        """
+        try:
+            # Get all pairs
+            pair_count = await self.factory.functions.allPairsLength().call()
+            total_liquidity = Decimal(0)
+            
+            # Sum liquidity across all pairs
+            for i in range(min(pair_count, 100)):  # Limit to 100 pairs for performance
+                try:
+                    pair_address = await self.factory.functions.allPairs(i).call()
+                    pair = await self.web3_manager.get_contract_async(
+                        address=pair_address,
+                        abi=self.pair_abi
+                    )
+                    
+                    reserves = await pair.functions.getReserves().call()
+                    pair_liquidity = Decimal(reserves[0]) + Decimal(reserves[1])
+                    total_liquidity += pair_liquidity
+                except Exception as e:
+                    self.logger.warning(f"Failed to get liquidity for pair {i}: {e}")
+                    continue
+            
+            return total_liquidity
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get total liquidity: {e}")
+            return Decimal(0)
+
+    async def _retry_async(self, func, *args, retries=3, delay=1):
+        """
+        Retry an async function with exponential backoff.
+        
+        Args:
+            func: Function to retry (can be sync or async)
+            *args: Arguments to pass to the function
+            retries: Number of retries
+            delay: Initial delay between retries in seconds
+            
+        Returns:
+            Any: Result of the function call
+            
+        Raises:
+            Exception: If all retries fail
+        """
+        import asyncio
+        last_error = None
+        
+        for i in range(retries):
+            try:
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(*args)
+                else:
+                    # If it's a contract function, call it
+                    if hasattr(func, 'call'):
+                        result = func.call()
+                    else:
+                        result = func(*args)
+                return result
+            except Exception as e:
+                last_error = e
+                if i < retries - 1:
+                    await asyncio.sleep(delay * (2 ** i))
+                continue
+                
+        raise last_error
 
     def _log_transaction(
         self,

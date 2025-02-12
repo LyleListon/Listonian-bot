@@ -1,347 +1,191 @@
-"""DEX manager for handling multiple DEX instances."""
+"""DEX management system for efficient protocol interactions."""
 
 import logging
-import asyncio
-from typing import Dict, Any, List, Optional, Set
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, List, cast
+from web3 import Web3
 
-from .dex_factory import DEXFactory, DEXType, DEXProtocol
-from .base_dex import BaseDEX
+from arbitrage_bot.dex.baseswap import Baseswap
+from arbitrage_bot.dex.swapbased import SwapBased
 from ..web3.web3_manager import Web3Manager
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class DEXStatus:
-    """Status information for a DEX."""
-    name: str
-    protocol: DEXProtocol
-    initialized: bool
-    last_success: Optional[datetime]
-    error_count: int
-    last_error: Optional[str]
-    disabled: bool
-
 class DEXManager:
-    """Manager for handling multiple DEX instances."""
+    """Manages DEX protocol interactions."""
 
-    @property
-    def web3(self):
-        """Get Web3 instance."""
-        return self.web3_manager.w3
-
-    def __init__(
-        self,
-        web3_manager: Web3Manager,
-        configs: Dict[str, Dict[str, Any]],
-        max_errors: int = 3,
-        recovery_delay: int = 300
-    ):
-        """
-        Initialize DEX manager.
-        
-        Args:
-            web3_manager: Web3Manager instance
-            configs: Dictionary mapping DEX names to configs
-            max_errors: Maximum errors before disabling DEX (default: 3)
-            recovery_delay: Seconds to wait before recovery attempt (default: 300)
-        """
+    def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
+        """Initialize DEX manager."""
         self.web3_manager = web3_manager
-        self.configs = configs
-        self.max_errors = max_errors
-        self.recovery_delay = recovery_delay
-        
-        # Initialize containers
-        self.dexes: Dict[str, BaseDEX] = {}
-        self.status: Dict[str, DEXStatus] = {}
+        self.w3 = web3_manager.w3
+        self.config = config
+        self.dexes: Dict[str, Any] = {}
         self.initialized = False
         
-        # Track active operations
-        self._active_recoveries: Set[str] = set()
+        # Performance tracking
+        self.performance_metrics = {
+            'success_rate': {},
+            'avg_response_time': {},
+            'error_rate': {}
+        }
 
     async def initialize(self) -> bool:
-        """
-        Initialize all configured DEXs.
-        
-        Returns:
-            bool: True if at least one DEX initialized successfully
-        """
+        """Initialize all configured DEXes."""
         try:
-            # Create DEX instances
-            for dex_name, config in self.configs.items():
-                try:
-                    # Skip disabled DEXes
-                    if not config.get('enabled', True):
-                        logger.info(f"Skipping disabled DEX {dex_name}")
+            if self.initialized:
+                return True
+
+            dex_classes = {
+                'baseswap': Baseswap,
+                'swapbased': SwapBased
+            }
+
+            for dex_name, dex_config in self.config.get('dexes', {}).items():
+                if dex_name in dex_classes:
+                    try:
+                        dex = dex_classes[dex_name](self.web3_manager, dex_config)
+                        if await dex.initialize():
+                            self.dexes[dex_name] = dex
+                            logger.info(f"Initialized {dex_name} interface")
+                            
+                            # Initialize performance tracking
+                            self.performance_metrics['success_rate'][dex_name] = 1.0
+                            self.performance_metrics['avg_response_time'][dex_name] = 0
+                            self.performance_metrics['error_rate'][dex_name] = 0
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to initialize {dex_name}: {e}")
                         continue
 
-                    # Create DEX instance
-                    dex_type = DEXType(dex_name.lower())
-                    protocol = DEXFactory.get_protocol(dex_type)
-                    
-                    # Initialize status tracking
-                    self.status[dex_name] = DEXStatus(
-                        name=dex_name,
-                        protocol=protocol,
-                        initialized=False,
-                        last_success=None,
-                        error_count=0,
-                        last_error=None,
-                        disabled=not config.get('enabled', True)
-                    )
-                    
-                    # Create and initialize DEX
-                    dex = DEXFactory.create_dex(dex_type, self.web3_manager, config)
-                    success = await dex.initialize()
-                    
-                    if success:
-                        self.dexes[dex_name] = dex
-                        self.status[dex_name].initialized = True
-                        self.status[dex_name].last_success = datetime.now()
-                        logger.info(f"Initialized {dex_name} successfully")
-                    else:
-                        self._handle_error(dex_name, "Initialization failed")
-                        
-                except Exception as e:
-                    self._handle_error(dex_name, str(e))
-                    
-            # Check if any DEXs initialized
-            self.initialized = len(self.dexes) > 0
-            if not self.initialized:
-                logger.error("No DEXs initialized successfully")
-            
-            return self.initialized
-            
+            if not self.dexes:
+                logger.error("No DEXes initialized successfully")
+                return False
+
+            self.initialized = True
+            return True
+
         except Exception as e:
             logger.error(f"Failed to initialize DEX manager: {e}")
             return False
 
-    def get_dex_by_address(self, address: str) -> Optional[BaseDEX]:
-        """Get DEX instance by router address."""
-        if not address:
+    def get_dex(self, dex_name: Optional[str]) -> Optional[Any]:
+        """Get DEX interface by name."""
+        if not dex_name:
             return None
-            
-        address = address.lower()
+        return self.dexes.get(dex_name)
+
+    def get_dex_by_address(self, address: str) -> Optional[Any]:
+        """Get DEX interface by router address."""
+        address = Web3.to_checksum_address(address)
         for dex in self.dexes.values():
-            # Check router address attribute
-            if hasattr(dex, 'router_address'):
-                if isinstance(dex.router_address, str) and dex.router_address.lower() == address:
-                    return dex
-            
-            # Check router contract attribute
-            if hasattr(dex, 'router'):
-                if hasattr(dex.router, 'address'):
-                    if isinstance(dex.router.address, str) and dex.router.address.lower() == address:
-                        return dex
-                    
-            # Check factory address
-            if hasattr(dex, 'factory_address'):
-                if isinstance(dex.factory_address, str) and dex.factory_address.lower() == address:
-                    return dex
-                    
-            # Check factory contract
-            if hasattr(dex, 'factory'):
-                if hasattr(dex.factory, 'address'):
-                    if isinstance(dex.factory.address, str) and dex.factory.address.lower() == address:
-                        return dex
-        
+            if dex.router_address.lower() == address.lower():
+                return dex
         return None
 
-    def get_dex(self, name: str) -> Optional[BaseDEX]:
-        """
-        Get DEX instance by name.
-        
-        Args:
-            name: DEX name
-            
-        Returns:
-            Optional[BaseDEX]: DEX instance if available and not disabled
-        """
-        if name not in self.dexes:
-            return None
-            
-        status = self.status[name]
-        if status.disabled:
-            return None
-            
-        return self.dexes[name]
+    async def get_all_pairs(self) -> List[Dict[str, Any]]:
+        """Get all trading pairs from all DEXes."""
+        pairs = []
+        for dex_name, dex in self.dexes.items():
+            try:
+                dex_pairs = await dex.get_all_pairs()
+                for pair in dex_pairs:
+                    pair['dex'] = dex_name
+                pairs.extend(dex_pairs)
+            except Exception as e:
+                logger.error(f"Error getting pairs from {dex_name}: {e}")
+        return pairs
 
-    def get_all_dexes(self) -> List[BaseDEX]:
-        """Get all available DEX instances."""
-        return [
-            dex for name, dex in self.dexes.items()
-            if not self.status[name].disabled
-        ]
-
-    def get_status(self, name: str) -> Optional[DEXStatus]:
-        """Get status for a DEX."""
-        return self.status.get(name)
-
-    def get_all_status(self) -> Dict[str, DEXStatus]:
-        """Get status for all DEXs."""
-        return self.status.copy()
-
-    async def recover_dex(self, name: str) -> bool:
-        """
-        Attempt to recover a failed DEX.
-        
-        Args:
-            name: DEX name
-            
-        Returns:
-            bool: True if recovery successful
-        """
-        if name not in self.configs:
-            return False
-            
-        if name in self._active_recoveries:
-            logger.info(f"Recovery already in progress for {name}")
-            return False
-            
+    async def update_performance_metrics(self, dex_name: str, metrics: Dict[str, Any]) -> None:
+        """Update performance metrics for a DEX."""
         try:
-            self._active_recoveries.add(name)
+            if dex_name in self.performance_metrics['success_rate']:
+                # Update success rate with exponential moving average
+                alpha = 0.1  # Weight for new data
+                old_rate = self.performance_metrics['success_rate'][dex_name]
+                new_rate = metrics.get('success', old_rate)
+                self.performance_metrics['success_rate'][dex_name] = (
+                    old_rate * (1 - alpha) + new_rate * alpha
+                )
+
+                # Update response time
+                old_time = self.performance_metrics['avg_response_time'][dex_name]
+                new_time = metrics.get('response_time', old_time)
+                self.performance_metrics['avg_response_time'][dex_name] = (
+                    old_time * (1 - alpha) + new_time * alpha
+                )
+
+                # Update error rate
+                old_errors = self.performance_metrics['error_rate'][dex_name]
+                new_errors = metrics.get('error_rate', old_errors)
+                self.performance_metrics['error_rate'][dex_name] = (
+                    old_errors * (1 - alpha) + new_errors * alpha
+                )
+
+        except Exception as e:
+            logger.error(f"Error updating performance metrics for {dex_name}: {e}")
+
+    def get_performance_metrics(self) -> Dict[str, Dict[str, float]]:
+        """Get current performance metrics for all DEXes."""
+        return self.performance_metrics.copy()
+
+    async def cleanup(self) -> None:
+        """Cleanup DEX connections."""
+        try:
+            for dex in self.dexes.values():
+                try:
+                    if hasattr(dex, 'cleanup'):
+                        await dex.cleanup()
+                except Exception as e:
+                    logger.error(f"Error cleaning up DEX: {e}")
             
-            status = self.status[name]
-            if not status.disabled:
-                return True
-                
-            # Check recovery delay
-            if status.last_error:
-                elapsed = datetime.now() - status.last_error
-                if elapsed.total_seconds() < self.recovery_delay:
-                    return False
-            
-            # Attempt recovery
-            dex_type = DEXType(name.lower())
-            dex = DEXFactory.create_dex(
-                dex_type,
-                self.web3_manager,
-                self.configs[name]
-            )
-            
-            success = await dex.initialize()
-            if success:
-                self.dexes[name] = dex
-                status.initialized = True
-                status.disabled = False
-                status.error_count = 0
-                status.last_success = datetime.now()
-                status.last_error = None
-                logger.info(f"Successfully recovered {name}")
-                return True
-                
-            return False
+            self.dexes.clear()
+            self.initialized = False
+            logger.info("DEX manager cleanup complete")
             
         except Exception as e:
-            logger.error(f"Failed to recover {name}: {e}")
-            return False
+            logger.error(f"Error during DEX manager cleanup: {e}")
+
+    def get_best_dex(self, token_pair: str) -> str:
+        """Get best performing DEX for a token pair."""
+        try:
+            best_score = -1
+            best_dex = next(iter(self.dexes.keys()))  # Default to first DEX
             
-        finally:
-            self._active_recoveries.remove(name)
-
-    async def recover_all(self) -> Dict[str, bool]:
-        """
-        Attempt to recover all failed DEXs.
-        
-        Returns:
-            Dict[str, bool]: Mapping of DEX names to recovery success
-        """
-        results = {}
-        for name in self.configs:
-            if self.status[name].disabled:
-                results[name] = await self.recover_dex(name)
-        return results
-
-    def _handle_error(self, name: str, error: str) -> None:
-        """Handle DEX error."""
-        status = self.status[name]
-        status.error_count += 1
-        status.last_error = datetime.now()
-        
-        if status.error_count >= self.max_errors:
-            status.disabled = True
-            logger.warning(
-                f"Disabled {name} after {status.error_count} errors. "
-                f"Last error: {error}"
-            )
-        else:
-            logger.error(
-                f"Error in {name} ({status.error_count}/{self.max_errors}): {error}"
-            )
-
-    async def monitor_health(
-        self,
-        interval: int = 60,
-        auto_recover: bool = True
-    ) -> None:
-        """
-        Monitor DEX health and attempt recovery.
-        
-        Args:
-            interval: Check interval in seconds
-            auto_recover: Whether to automatically attempt recovery
-        """
-        while True:
-            try:
-                for name, dex in self.dexes.items():
-                    status = self.status[name]
-                    if status.disabled:
-                        continue
-                        
-                    try:
-                        # Basic health check
-                        factory = await dex.router.functions.factory().call()
-                        if not factory:
-                            raise ValueError("Invalid factory")
-                            
-                        status.last_success = datetime.now()
-                        
-                    except Exception as e:
-                        self._handle_error(name, str(e))
-                        
-                if auto_recover:
-                    await self.recover_all()
-                    
-            except Exception as e:
-                logger.error(f"Error in health monitor: {e}")
+            for dex_name in self.dexes:
+                # Calculate performance score
+                success_rate = self.performance_metrics['success_rate'].get(dex_name, 0)
+                response_time = self.performance_metrics['avg_response_time'].get(dex_name, float('inf'))
+                error_rate = self.performance_metrics['error_rate'].get(dex_name, 1)
                 
-            await asyncio.sleep(interval)
+                # Normalize response time (0-1 where 1 is best)
+                norm_time = 1 / (1 + response_time/1000)  # Convert ms to normalized score
+                
+                # Calculate weighted score
+                score = (
+                    success_rate * 0.5 +      # 50% weight on success
+                    norm_time * 0.3 +         # 30% weight on speed
+                    (1 - error_rate) * 0.2    # 20% weight on reliability
+                )
+                
+                if score > best_score:
+                    best_score = score
+                    best_dex = dex_name
+            
+            return best_dex
+            
+        except Exception as e:
+            logger.error(f"Error finding best DEX: {e}")
+            return next(iter(self.dexes.keys()))  # Return first DEX as fallback
 
-
-async def create_dex_manager(
-    web3_manager: Optional[Web3Manager] = None,
-    configs: Optional[Dict[str, Dict[str, Any]]] = None,
-    max_errors: int = 3,
-    recovery_delay: int = 300
-) -> DEXManager:
-    """
-    Create DEX manager instance.
-
+async def create_dex_manager(web3_manager: Web3Manager, config: Dict[str, Any]) -> DEXManager:
+    """Create and initialize a new DEXManager instance.
+    
     Args:
-        web3_manager: Optional Web3Manager instance
-        configs: Optional DEX configurations
-        max_errors: Maximum errors before disabling DEX
-        recovery_delay: Seconds to wait before recovery attempt
-
+        web3_manager: Initialized Web3Manager instance
+        config: Configuration dictionary with DEX settings
+        
     Returns:
-        DEXManager: DEX manager instance
+        Initialized DEXManager instance
     """
-    if not web3_manager:
-        from ..web3.web3_manager import create_web3_manager
-        web3_manager = await create_web3_manager()
-
-    if not configs:
-        # Load default configs
-        from ...utils.config_loader import load_config
-        configs = load_config().get('dexes', {})
-
-    manager = DEXManager(
-        web3_manager=web3_manager,
-        configs=configs,
-        max_errors=max_errors,
-        recovery_delay=recovery_delay
-    )
-
-    await manager.initialize()
-    return manager
+    dex_manager = DEXManager(web3_manager, config)
+    await dex_manager.initialize()
+    return dex_manager

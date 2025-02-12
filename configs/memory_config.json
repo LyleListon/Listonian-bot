@@ -1,0 +1,35 @@
+{
+    "categories": {
+        "market_data": {
+            "ttl": 3600,
+            "max_size": 1000
+        },
+        "transactions": {
+            "ttl": 86400,
+            "max_size": 1000
+        },
+        "analytics": {
+            "ttl": 86400,
+            "max_size": 1000
+        },
+        "docs": {
+            "ttl": null,
+            "max_size": 100
+        },
+        "temp": {
+            "ttl": 300,
+            "max_size": 100
+        },
+        "storage": {
+            "ttl": null,
+            "max_size": 1000
+        },
+        "cache": {
+            "ttl": 60,
+            "max_size": 1000
+        }
+    },
+    "cleanup_interval": 60,
+    "max_age": 86400,
+    "max_opportunities": 1000
+}

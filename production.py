@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from web3 import Web3
 
-from arbitrage_bot.utils.config_loader import load_config
+from arbitrage_bot.utils.config_loader import create_config_loader
 from arbitrage_bot.core.web3.web3_manager import Web3Manager
 from arbitrage_bot.core.process.manager import ProcessManager
 from arbitrage_bot.core.analysis.market_analyzer import MarketAnalyzer
@@ -59,7 +59,8 @@ class ArbitrageBot:
         try:
             # Initialize DEX manager
             self.dex_manager = DEXManager(self.w3, self.config)
-            self.dexes = await self.dex_manager.initialize_all()
+            if not await self.dex_manager.initialize_all():
+                raise Exception("Failed to initialize DEX manager")
             
             # Initialize components
             self.performance_optimizer = PerformanceOptimizer(self.config)
@@ -69,13 +70,22 @@ class ArbitrageBot:
             os.environ['PRIVATE_KEY'] = self.config['wallet']['private_key']
             os.environ['BASE_RPC_URL'] = self.config['network']['rpc_url']
             os.environ['CHAIN_ID'] = str(self.config['network']['chainId'])
-            web3_manager = Web3Manager(provider_url=self.config['network']['rpc_url'])
+            web3_manager = Web3Manager(config=self.config)
             await web3_manager.connect()
             
-            self.market_analyzer = MarketAnalyzer(
+            # Create market analyzer
+            from arbitrage_bot.core.analysis.market_analyzer import create_market_analyzer
+            self.market_analyzer = await create_market_analyzer(
                 web3_manager=web3_manager,
                 config=self.config
             )
+            
+            # Create analytics and ML systems
+            from arbitrage_bot.core.analytics.analytics_system import create_analytics_system
+            from arbitrage_bot.core.ml.ml_system import create_ml_system
+            
+            analytics_system = await create_analytics_system(self.config)
+            ml_system = await create_ml_system(analytics=analytics_system, market_analyzer=self.market_analyzer, config=self.config)
             
             # Create arbitrage executor
             self.arbitrage_executor = await create_arbitrage_executor(
@@ -84,7 +94,9 @@ class ArbitrageBot:
                 min_profit_usd=self.config.get("arbitrage", {}).get("min_profit_usd", 0.05),
                 max_price_impact=self.config.get("arbitrage", {}).get("max_price_impact", 0.01),
                 slippage_tolerance=self.config.get("arbitrage", {}).get("slippage_tolerance", 0.001),
-                market_analyzer=self.market_analyzer
+                market_analyzer=self.market_analyzer,
+                analytics_system=analytics_system,
+                ml_system=ml_system
             )
             
             # Set task priorities
@@ -220,13 +232,40 @@ class ArbitrageBot:
 def handle_signal(signum, frame):
     """Handle shutdown signals."""
     logger.info(f"Received signal {signum}")
-    asyncio.get_event_loop().stop()
+    loop = asyncio.get_event_loop()
+    
+    try:
+        # Get all tasks
+        tasks = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task()]
+        
+        if tasks:
+            logger.info(f"Cancelling {len(tasks)} outstanding tasks")
+            # Cancel all tasks
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            
+            # Schedule task cleanup
+            cleanup_task = asyncio.create_task(cleanup_tasks(tasks))
+            loop.run_until_complete(cleanup_task)
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+    
+    # Stop the loop
+    loop.stop()
+
+async def cleanup_tasks(tasks):
+    """Clean up tasks properly."""
+    await asyncio.gather(*tasks, return_exceptions=True)
+    logger.info("All tasks cleaned up")
+    return True
     
 async def main():
     """Main entry point."""
     try:
         # Load configuration
-        config = load_config()
+        config_loader = create_config_loader()
+        config = config_loader.get_config()
         
         # Get instance ID from environment
         instance_id = os.environ.get("INSTANCE_ID", "main")
@@ -234,9 +273,15 @@ async def main():
         # Create and start bot
         bot = ArbitrageBot(config, instance_id)
         
-        # Set up signal handlers
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
+        # Set up signal handlers for graceful shutdown
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop = asyncio.get_event_loop()
+                loop.add_signal_handler(sig, lambda s=sig: handle_signal(s, None))
+                logger.info(f"Registered signal handler for {sig}")
+            except NotImplementedError:
+                # Windows doesn't support add_signal_handler
+                signal.signal(sig, handle_signal)
         
         # Start bot
         await bot.start()

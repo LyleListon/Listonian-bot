@@ -1,257 +1,136 @@
-"""SwapBased V2 DEX implementation."""
+"""SwapBased DEX implementation."""
 
-from typing import Dict, Any, Optional, List
-from web3.types import TxReceipt
+from typing import Dict, Any
+import logging
+import asyncio
+from decimal import Decimal
 
-from .base_dex_v2 import BaseDEXV2
+from .base_dex_v3 import BaseDEXV3
 from ..web3.web3_manager import Web3Manager
-from .utils import (
-    validate_config,
-    estimate_gas_cost,
-    calculate_price_impact,
-    get_common_base_tokens,
-    COMMON_TOKENS
-)
+from .utils import validate_config
 
-class SwapBasedDEX(BaseDEXV2):
-    """Implementation of SwapBased V2 DEX."""
+logger = logging.getLogger(__name__)
+
+class SwapBased(BaseDEXV3):
+    """Implementation of SwapBased V3 DEX."""
 
     def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
-        """Initialize SwapBased V2 interface."""
-        # SwapBased uses 0.3% fee by default
-        config['fee'] = config.get('fee', 3000)
-        
+        """Initialize SwapBased interface."""
         # Validate config
         is_valid, error = validate_config(config, {
             'router': str,
             'factory': str,
-            'fee': int
+            'fee': int,
+            'tick_spacing': int
         })
         if not is_valid:
             raise ValueError(f"Invalid config: {error}")
             
         super().__init__(web3_manager, config)
         self.name = "SwapBased"
+        self.initialized = False
 
-    async def get_reserves(self, token0: str, token1: str) -> Optional[Dict[str, int]]:
-        """
-        Get reserves for a token pair.
-        
-        Args:
-            token0: First token address
-            token1: Second token address
-            
-        Returns:
-            Optional[Dict[str, int]]: Reserve details including:
-                - reserve0: Reserve of first token
-                - reserve1: Reserve of second token
-                - timestamp: Last update timestamp
-        """
+    async def initialize(self) -> bool:
+        """Initialize SwapBased interface."""
         try:
-            # Get pair address
-            pair_address = await self.factory.functions.getPair(token0, token1).call()
-            
-            if pair_address == "0x0000000000000000000000000000000000000000":
-                return None
-                
-            # Get pair contract
-            pair = self.w3.eth.contract(
-                address=pair_address,
-                abi=self.pair_abi
-            )
-            
-            # Get reserves
-            reserves = await pair.functions.getReserves().call()
-            
-            return {
-                'reserve0': reserves[0],
-                'reserve1': reserves[1],
-                'timestamp': reserves[2]
-            }
-            
-        except Exception as e:
-            self._handle_error(e, "Reserve lookup")
-            return None
-
-    async def get_best_path(
-        self,
-        token_in: str,
-        token_out: str,
-        amount_in: int,
-        max_hops: int = 2  # SwapBased works better with fewer hops
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Find the best trading path between tokens.
-        
-        Args:
-            token_in: Input token address
-            token_out: Output token address
-            amount_in: Input amount in wei
-            max_hops: Maximum number of hops (default: 2)
-            
-        Returns:
-            Optional[Dict[str, Any]]: Path details including:
-                - path: List of token addresses
-                - amounts: Expected amounts at each hop
-                - fees: Cumulative fees
-                - gas_estimate: Estimated gas cost
-        """
-        try:
-            best_path = None
-            max_output = 0
-            
-            # Direct path
-            direct_amounts = await self.get_amounts_out(
-                amount_in,
-                [token_in, token_out]
-            )
-            if direct_amounts and direct_amounts[-1] > max_output:
-                max_output = direct_amounts[-1]
-                best_path = {
-                    'path': [token_in, token_out],
-                    'amounts': direct_amounts,
-                    'fees': [self.fee],
-                    'gas_estimate': estimate_gas_cost([token_in, token_out], 'v2')
-                }
-            
-            # Only try multi-hop if max_hops > 1
-            if max_hops > 1:
-                # SwapBased prefers WETH and USDC for routing
-                common_tokens = [
-                    COMMON_TOKENS['WETH'],
-                    COMMON_TOKENS['USDC']
-                ]
-                
-                # Try paths through each common token
-                for mid_token in common_tokens:
-                    path = [token_in, mid_token, token_out]
-                    amounts = await self.get_amounts_out(amount_in, path)
-                    
-                    if amounts and amounts[-1] > max_output:
-                        max_output = amounts[-1]
-                        best_path = {
-                            'path': path,
-                            'amounts': amounts,
-                            'fees': [self.fee] * 2,  # Fee for each hop
-                            'gas_estimate': estimate_gas_cost(path, 'v2')
-                        }
-            
-            return best_path
-            
-        except Exception as e:
-            self._handle_error(e, "Path finding")
-            return None
-
-    async def get_common_pairs(self) -> List[str]:
-        """Get list of common base tokens for routing."""
-        # SwapBased prefers a smaller set of routing tokens
-        return [
-            COMMON_TOKENS['WETH'],
-            COMMON_TOKENS['USDC']
-        ]
-
-    async def get_quote_with_impact(
-        self,
-        amount_in: int,
-        path: List[str]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get quote including price impact and liquidity depth analysis.
-        
-        Args:
-            amount_in: Input amount in wei
-            path: List of token addresses in the swap path
-            
-        Returns:
-            Optional[Dict[str, Any]]: Quote details including:
-                - amount_in: Input amount
-                - amount_out: Expected output amount
-                - price_impact: Estimated price impact percentage
-                - liquidity_depth: Available liquidity
-                - fee_rate: DEX fee rate
-                - estimated_gas: Estimated gas cost
-                - min_out: Minimum output with slippage
-        """
-        try:
-            # Get reserves
-            reserves = await self.get_reserves(path[0], path[1])
-            if not reserves:
-                return None
-                
-            # Get amounts out
-            amounts = await self.get_amounts_out(amount_in, path)
-            if not amounts or len(amounts) < 2:
-                return None
-                
-            amount_out = amounts[1]
-            
-            # Calculate price impact using shared utility
-            price_impact = calculate_price_impact(
-                amount_in=amount_in,
-                amount_out=amount_out,
-                reserve_in=reserves['reserve0'],
-                reserve_out=reserves['reserve1']
-            )
-            
-            return {
-                'amount_in': amount_in,
-                'amount_out': amount_out,
-                'price_impact': price_impact,
-                'liquidity_depth': min(reserves['reserve0'], reserves['reserve1']),
-                'fee_rate': self.fee / 1000000,  # Convert from basis points
-                'estimated_gas': estimate_gas_cost(path, 'v2'),
-                'min_out': int(amount_out * 0.995)  # 0.5% slippage default
-            }
-            
-        except Exception as e:
-            self._handle_error(e, "V2 quote calculation")
-            return None
-
-    async def estimate_gas_cost(self, path: List[str]) -> int:
-        """
-        Estimate gas cost for a swap path.
-        
-        Args:
-            path: List of token addresses in the swap path
-            
-        Returns:
-            int: Estimated gas cost in wei
-        """
-        # SwapBased tends to use slightly less gas than other V2 DEXs
-        base_cost = 90000
-        hop_cost = 45000
-        total_cost = base_cost + (hop_cost * (len(path) - 1))
-        return int(total_cost * 1.1)
-
-    async def check_liquidity_depth(
-        self,
-        token0: str,
-        token1: str,
-        min_liquidity: int = 1000000  # Minimum $1M liquidity
-    ) -> bool:
-        """
-        Check if a pair has sufficient liquidity.
-        
-        Args:
-            token0: First token address
-            token1: Second token address
-            min_liquidity: Minimum required liquidity in USD
-            
-        Returns:
-            bool: True if liquidity is sufficient
-        """
-        try:
-            reserves = await self.get_reserves(token0, token1)
-            if not reserves:
+            # Initialize base V3 DEX
+            if not await super().initialize():
                 return False
-                
-            # This is a simplified check - in production you'd want to:
-            # 1. Get token prices in USD
-            # 2. Calculate actual liquidity value
-            # 3. Consider liquidity distribution
-            total_liquidity = reserves['reserve0'] + reserves['reserve1']
-            return total_liquidity >= min_liquidity
+            
+            # Initialize contracts
+            self.router = self.w3.eth.contract(
+                address=self.router_address,
+                abi=self.router_abi
+            )
+            self.factory = self.w3.eth.contract(
+                address=self.factory_address,
+                abi=self.factory_abi
+            )
+            
+            self.initialized = True
+            logger.info(f"SwapBased V3 interface initialized")
+            return True
             
         except Exception as e:
-            self._handle_error(e, "Liquidity check")
+            logger.error(f"Failed to initialize SwapBased: {e}")
             return False
+
+    async def get_total_liquidity(self) -> Decimal:
+        """Get total liquidity across all pools."""
+        try:
+            total_liquidity = Decimal(0)
+            
+            # Get all pools
+            pool_count = await self._retry_async(
+                self.factory.functions.allPoolsLength().call
+            )
+            
+            for i in range(min(pool_count, 100)):  # Limit to 100 pools for performance
+                try:
+                    pool_address = await self._retry_async(
+                        lambda: self.factory.functions.allPools(i).call()
+                    )
+                    
+                    pool = await self.web3_manager.get_contract_async(
+                        address=pool_address,
+                        abi=self.pool_abi
+                    )
+                    
+                    # Get liquidity
+                    liquidity = await self._retry_async(
+                        pool.functions.liquidity().call
+                    )
+                    total_liquidity += Decimal(liquidity)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to get liquidity for pool {i}: {e}")
+                    continue
+            
+            return total_liquidity
+            
+        except Exception as e:
+            logger.error(f"Failed to get total liquidity: {e}")
+            return Decimal(0)
+
+    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+        """Get 24-hour trading volume for a token pair."""
+        try:
+            # Get pool address
+            pool_address = await self._retry_async(
+                lambda: self.factory.functions.getPool(
+                    token0,
+                    token1,
+                    self.config['fee']
+                ).call()
+            )
+            
+            if pool_address == "0x0000000000000000000000000000000000000000":
+                return Decimal(0)
+            
+            # Get pool contract
+            pool = await self.web3_manager.get_contract_async(
+                address=pool_address,
+                abi=self.pool_abi
+            )
+            
+            # Get volume from events in last 24h
+            current_block = await self.web3_manager.w3.eth.block_number
+            from_block = current_block - 7200  # ~24h of blocks
+            
+            swap_events = await self._retry_async(
+                lambda: pool.events.Swap.get_logs(
+                    fromBlock=from_block
+                )
+            )
+            
+            volume = Decimal(0)
+            for event in swap_events:
+                amount0 = abs(Decimal(event['args']['amount0']))
+                amount1 = abs(Decimal(event['args']['amount1']))
+                volume += max(amount0, amount1)
+            
+            return volume
+            
+        except Exception as e:
+            logger.error(f"Failed to get 24h volume: {e}")
+            return Decimal(0)

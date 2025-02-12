@@ -76,32 +76,39 @@ class DEXManager:
             }
 
             try:
-                # Create instance based on type
+                # Create and initialize instance based on type
                 if dex_type == DEXType.AERODROME_V2:
                     dex = AerodromeV2(self.web3, dex_config)
+                    await dex.initialize()
                     logger.info(f"Created Aerodrome V2 instance")
                 elif dex_type == DEXType.AERODROME_V3:
                     dex = AerodromeV3(self.web3, dex_config)
+                    await dex.initialize()
                     logger.info(f"Created Aerodrome V3 instance")
                 elif dex_type == DEXType.UNISWAP_V3:
                     from ..dex.uniswap_v3 import UniswapV3
                     dex = UniswapV3(self.web3, dex_config)
+                    await dex.initialize()
                     logger.info(f"Created Uniswap V3 instance")
                 elif dex_type == DEXType.BASESWAP:
                     from ..dex.baseswap import Baseswap
                     dex = Baseswap(self.web3, dex_config)
+                    await dex.initialize()
                     logger.info(f"Created Baseswap instance")
                 elif dex_type == DEXType.PANCAKESWAP:
                     from ..dex.pancakeswap import Pancakeswap
                     dex = Pancakeswap(self.web3, dex_config)
+                    await dex.initialize()
                     logger.info(f"Created Pancakeswap instance")
                 elif dex_type == DEXType.SWAPBASED:
                     from ..dex.swapbased import SwapBased
                     dex = SwapBased(self.web3, dex_config)
+                    await dex.initialize()
                     logger.info(f"Created SwapBased instance")
                 elif dex_type == DEXType.ROCKETSWAP:
                     from ..dex.rocketswap import RocketSwap
                     dex = RocketSwap(self.web3, dex_config)
+                    await dex.initialize()
                     logger.info(f"Created RocketSwap instance")
                 else:
                     logger.warning(f"DEX type not implemented: {dex_type}")
@@ -132,7 +139,10 @@ class DEXManager:
     async def initialize(self) -> bool:
         """Initialize DEX manager."""
         try:
-            await self.initialize_all()
+            dexes = await self.initialize_all()
+            if not dexes:
+                logger.error("No DEXes were initialized")
+                return False
             return True
         except Exception as e:
             logger.error(f"Failed to initialize DEX manager: {e}")
@@ -145,15 +155,22 @@ class DEXManager:
             self.dexes.clear()
             
             # Initialize each configured DEX
+            initialized_count = 0
             for dex_name, dex_config in self.config.get("dexes", {}).items():
                 if not dex_config.get("enabled", True):
                     logger.info(f"Skipping disabled DEX: {dex_name}")
                     continue
                     
                 dex = await self.initialize_dex(dex_name)
-                if not dex:
+                if dex:
+                    initialized_count += 1
+                else:
                     logger.warning(f"Failed to initialize DEX: {dex_name}")
-                    
+            
+            if initialized_count == 0:
+                logger.error("No DEXes were initialized successfully")
+                return {}
+                
             return self.dexes
             
         except Exception as e:
