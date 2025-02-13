@@ -109,21 +109,7 @@ class MarketAnalyzer:
             if datetime.now() - timestamp < self._cache_duration:
                 return price
 
-        # Return mock price for testing - in production this would fetch from API
-        token_to_symbol = {
-            "ethereum": "WETH",
-            "usd-coin": "USDC",
-            "dai": "DAI"
-        }
-        mock_prices = {
-            "WETH": 2000.0,  # WETH price
-            "USDC": 1.0,    # USDC price
-            "DAI": 1.01     # DAI price slightly higher for testing
-        }
-        # Convert token ID to symbol and get price
-        symbol = token_to_symbol.get(token, token)
-        price = mock_prices.get(symbol, 1000.0)
-        self._price_cache[token] = (datetime.now(), price)
+        price = await self._fetch_real_price(token)
         return price
 
     async def get_prices(self, tokens: List[str]) -> Dict[str, float]:
@@ -155,19 +141,7 @@ class MarketAnalyzer:
 
         except Exception as e:
             logger.warning(f"Error fetching prices: {e}")
-        # Return mock data for development with different prices
-        token_to_symbol = {
-            "ethereum": "WETH",
-            "usd-coin": "USDC",
-            "dai": "DAI"
-        }
-        mock_prices = {
-            "WETH": 2000.0,  # WETH price
-            "USDC": 1.0,    # USDC price
-            "DAI": 1.01     # DAI price slightly higher for testing
-        }
-        # Convert token IDs to symbols and get prices
-        return {token: mock_prices.get(token_to_symbol.get(token, token), 1000.0) for token in tokens}
+            return {}
 
     async def analyze_market_conditions(self, token: str) -> Dict[str, Any]:
         """
@@ -180,15 +154,6 @@ class MarketAnalyzer:
             Dict[str, Any]: Market conditions
         """
         try:
-            # Map token to symbol for MCP tool
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            symbol = token_to_symbol.get(token, token)
-            
-            # Get market analysis from MCP
             response = await self.web3_manager.use_mcp_tool(
                 "market-analysis",
                 "assess_market_conditions",
@@ -204,18 +169,7 @@ class MarketAnalyzer:
         except Exception as e:
             logger.warning(f"Failed to analyze market conditions: {e}")
 
-        # Return mock data for development
-        return {
-            "trend": "sideways",
-            "trend_strength": 0.0,
-            "trend_duration": 0.0,
-            "volatility": 0.1,
-            "volume_24h": 1000000,
-            "liquidity": 1000000,
-            "volatility_24h": 0.1,
-            "price_impact": 0.001,
-            "confidence": 0.5
-        }
+        return None
 
     async def get_mcp_prices(self, tokens: List[str]) -> Dict[str, float]:
         """
@@ -243,18 +197,7 @@ class MarketAnalyzer:
         except Exception as e:
             logger.warning(f"Failed to get prices from MCP: {e}")
 
-        # Return mock data for development with different prices
-        token_to_symbol = {
-            "ethereum": "WETH",
-            "usd-coin": "USDC",
-            "dai": "DAI"
-        }
-        mock_prices = {
-            "WETH": 2000.0,  # WETH price
-            "USDC": 1.0,    # USDC price
-            "DAI": 1.01     # DAI price slightly higher for testing
-        }
-        return {token: mock_prices.get(token_to_symbol.get(token, token), 1000.0) for token in tokens}
+        return {}
 
     async def get_opportunities(self) -> List[Dict[str, Any]]:
         """Get current arbitrage opportunities."""
@@ -262,16 +205,7 @@ class MarketAnalyzer:
             opportunities = []
             
             # Get current prices and market conditions
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            mock_prices = {
-                "WETH": 2000.0,  # WETH price
-                "USDC": 1.0,    # USDC price
-                "DAI": 1.01     # DAI price slightly higher for testing
-            }
+            tokens = self.config.get("tokens", {})
             
             # Update market conditions directly with mock prices
             for token_id, symbol in token_to_symbol.items():
@@ -369,8 +303,8 @@ class MarketAnalyzer:
                         amount_out = swapbased_eth_to_token * Decimal('1.005')
                         profit = profit_swapbased
                         
-                    gas_cost = 0.01  # Estimated gas cost in ETH
-                    gas_cost_usd = gas_cost * float(base_price)
+                    gas_cost = await self.web3_manager.estimate_gas_cost()
+                    gas_cost_usd = float(gas_cost * Decimal(str(base_price)))
                     net_profit = profit - gas_cost_usd
                     
                     # Get token addresses from config using token IDs
@@ -427,12 +361,12 @@ class MarketAnalyzer:
             metrics = []
             for symbol, condition in self.market_conditions.items():
                 metrics.append({
-                    'total_trades': 0,  # Placeholder for now
-                    'trades_24h': 0,    # Placeholder for now
-                    'success_rate': 0.0, # Placeholder for now
-                    'total_profit_usd': 0.0,  # Placeholder for now
-                    'portfolio_change_24h': 0.0,  # Placeholder for now
-                    'active_opportunities': 0,  # Placeholder for now
+                    'total_trades': await self._get_total_trades(symbol),
+                    'trades_24h': await self._get_24h_trades(symbol),
+                    'success_rate': await self._get_success_rate(symbol),
+                    'total_profit_usd': await self._get_total_profit(symbol),
+                    'portfolio_change_24h': await self._get_24h_change(symbol),
+                    'active_opportunities': await self._get_active_opportunities(symbol),
                     'price': float(condition.price),
                     'volume_24h': float(condition.volume_24h),
                     'liquidity': float(condition.liquidity),
@@ -485,65 +419,10 @@ class MarketAnalyzer:
         try:
             # Get token configurations
             tokens = self.config.get("tokens", {})
-            
-            # Use mock prices for development
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            mock_prices = {
-                "WETH": 2000.0,  # WETH price
-                "USDC": 1.0,    # USDC price
-                "DAI": 1.01     # DAI price slightly higher for testing
-            }
-            
-            # Process each token
-            for token_id, symbol in token_to_symbol.items():
-                price = mock_prices.get(symbol, 1000.0)
-                try:
-                    price_decimal = Decimal(str(price))
-                    
-                    # Get market analysis
-                    market_data = await self.analyze_market_conditions(symbol)
-                    if not market_data:
-                        logger.warning(f"No market data for {token_id}")
-                        continue
-                        
-                    # Create trend object
-                    trend = MarketTrend(
-                        direction=market_data.get("trend", "sideways"),
-                        strength=float(market_data.get("trend_strength", 0.0)),
-                        duration=float(market_data.get("trend_duration", 0.0)),
-                        volatility=float(market_data.get("volatility", 0.0)),
-                        confidence=float(market_data.get("confidence", 0.0))
-                    )
-                    
-                    # Create market condition
-                    condition = MarketCondition(
-                        price=price_decimal,
-                        trend=trend,
-                        volume_24h=Decimal(str(market_data.get("volume_24h", 0))),
-                        liquidity=Decimal(str(market_data.get("liquidity", 0))),
-                        volatility_24h=float(market_data.get("volatility_24h", 0)),
-                        price_impact=float(market_data.get("price_impact", 0)),
-                        last_updated=float(datetime.now().timestamp())
-                    )
-                    
-                    # Store market condition
-                    self.market_conditions[symbol] = condition
-                    
-                    logger.info(
-                        f"Updated market condition for {token_id}:\n"
-                        f"  Price: ${price_decimal:,.2f}\n"
-                        f"  Trend: {trend.direction} ({trend.strength:.1%})\n"
-                        f"  Volume: ${condition.volume_24h:,.0f}\n"
-                        f"  Liquidity: ${condition.liquidity:,.0f}"
-                    )
-                    
-                except Exception as e:
-                    logger.error(f"Error updating market condition for {token_id}: {e}")
-                    continue
+
+            # Process each token from config
+            for token_id, token_data in tokens.items():
+                await self._update_token_condition(token_id, token_data)
                     
         except Exception as e:
             logger.error(f"Failed to update market conditions: {e}")
@@ -580,39 +459,160 @@ async def create_market_analyzer(
             return analyzer
         except Exception as e:
             logger.warning(f"Initial market data collection failed: {e}")
-            # Initialize with default values
-            token_to_symbol = {
-                "ethereum": "WETH",
-                "usd-coin": "USDC",
-                "dai": "DAI"
-            }
-            mock_prices = {
-                "WETH": 2000.0,  # WETH price
-                "USDC": 1.0,    # USDC price
-                "DAI": 1.01     # DAI price slightly higher for testing
-            }
-            
-            analyzer.market_conditions = {}
-            for token_id, symbol in token_to_symbol.items():
-                price = mock_prices.get(symbol, 1000.0)
-                analyzer.market_conditions[symbol] = MarketCondition(
-                    price=Decimal(str(price)),
-                    trend=MarketTrend(
-                        direction="sideways",
-                        strength=0.0,
-                        duration=0.0,
-                        volatility=0.1,
-                        confidence=0.5
-                    ),
-                    volume_24h=Decimal("1000000"),
-                    liquidity=Decimal("1000000"),
-                    volatility_24h=0.1,
-                    price_impact=0.001,
-                    last_updated=float(datetime.now().timestamp())
-                )
-            logger.info("Market analyzer initialized with default values")
-            return analyzer
+            raise
         
     except Exception as e:
         logger.error(f"Failed to create market analyzer: {e}")
         raise
+
+    async def _fetch_real_price(self, token: str) -> float:
+        """Fetch real price data from DEX."""
+        try:
+            # Get token address from config
+            token_data = self.config['tokens'].get(token)
+            if not token_data:
+                raise ValueError(f"Token {token} not found in config")
+
+            # Get price from BaseSwap as primary source
+            baseswap = await self._get_dex_instance('baseswap')
+            if not baseswap:
+                raise ValueError("Failed to get BaseSwap instance")
+
+            price = await baseswap.get_token_price(token_data['address'])
+            if not self.validate_price(price):
+                raise ValueError(f"Invalid price received for {token}: {price}")
+
+            # Cache the price
+            self._price_cache[token] = (datetime.now(), price)
+            return price
+
+        except Exception as e:
+            logger.error(f"Error fetching real price for {token}: {e}")
+            raise
+
+    async def _get_total_trades(self, symbol: str) -> int:
+        """Get total number of trades for a token."""
+        try:
+            token_data = self.config['tokens'].get(symbol)
+            if not token_data:
+                return 0
+
+            return await self.web3_manager.get_total_trades(token_data['address'])
+        except Exception as e:
+            logger.error(f"Error getting total trades for {symbol}: {e}")
+            return 0
+
+    async def _get_24h_trades(self, symbol: str) -> int:
+        """Get number of trades in last 24 hours."""
+        try:
+            token_data = self.config['tokens'].get(symbol)
+            if not token_data:
+                return 0
+
+            return await self.web3_manager.get_24h_trades(token_data['address'])
+        except Exception as e:
+            logger.error(f"Error getting 24h trades for {symbol}: {e}")
+            return 0
+
+    async def _get_success_rate(self, symbol: str) -> float:
+        """Calculate trade success rate."""
+        try:
+            total = await self._get_total_trades(symbol)
+            if total == 0:
+                return 0.0
+
+            successful = await self.web3_manager.get_successful_trades(symbol)
+            return float(successful) / float(total)
+        except Exception as e:
+            logger.error(f"Error calculating success rate for {symbol}: {e}")
+            return 0.0
+
+    async def _get_total_profit(self, symbol: str) -> float:
+        """Get total profit for a token."""
+        try:
+            token_data = self.config['tokens'].get(symbol)
+            if not token_data:
+                return 0.0
+
+            return await self.web3_manager.get_total_profit(token_data['address'])
+        except Exception as e:
+            logger.error(f"Error getting total profit for {symbol}: {e}")
+            return 0.0
+
+    async def _get_24h_change(self, symbol: str) -> float:
+        """Calculate 24h portfolio change."""
+        try:
+            token_data = self.config['tokens'].get(symbol)
+            if not token_data:
+                return 0.0
+
+            return await self.web3_manager.get_24h_portfolio_change(token_data['address'])
+        except Exception as e:
+            logger.error(f"Error getting 24h change for {symbol}: {e}")
+            return 0.0
+
+    async def _get_active_opportunities(self, symbol: str) -> int:
+        """Get number of active opportunities."""
+        try:
+            token_data = self.config['tokens'].get(symbol)
+            if not token_data:
+                return 0
+
+            opportunities = await self.get_opportunities()
+            return len([
+                opp for opp in opportunities
+                if token_data['address'] in opp['token_path']
+                and opp['status'] == 'Ready'
+                and float(opp['profit_usd']) > 0
+            ])
+        except Exception as e:
+            logger.error(f"Error getting active opportunities for {symbol}: {e}")
+            return 0
+
+    async def _update_token_condition(self, token_id: str, token_data: Dict[str, Any]) -> None:
+        """Update market condition for a single token."""
+        try:
+            # Get real price data
+            price = await self._fetch_real_price(token_id)
+            price_decimal = Decimal(str(price))
+
+            # Get market analysis from real data
+            market_data = await self.analyze_market_conditions(token_id)
+            if not market_data:
+                logger.warning(f"No market data for {token_id}")
+                return
+
+            # Create trend object from real data
+            trend = MarketTrend(
+                direction=market_data.get("trend", "sideways"),
+                strength=float(market_data.get("trend_strength", 0.0)),
+                duration=float(market_data.get("trend_duration", 0.0)),
+                volatility=float(market_data.get("volatility", 0.0)),
+                confidence=float(market_data.get("confidence", 0.0))
+            )
+
+            # Create market condition from real data
+            condition = MarketCondition(
+                price=price_decimal,
+                trend=trend,
+                volume_24h=Decimal(str(market_data.get("volume_24h", 0))),
+                liquidity=Decimal(str(market_data.get("liquidity", 0))),
+                volatility_24h=float(market_data.get("volatility_24h", 0)),
+                price_impact=float(market_data.get("price_impact", 0)),
+                last_updated=float(datetime.now().timestamp())
+            )
+
+            # Store market condition
+            self.market_conditions[token_id] = condition
+
+            logger.info(
+                f"Updated market condition for {token_id}:\n"
+                f"  Price: ${price_decimal:,.2f}\n"
+                f"  Trend: {trend.direction} ({trend.strength:.1%})\n"
+                f"  Volume: ${condition.volume_24h:,.0f}\n"
+                f"  Liquidity: ${condition.liquidity:,.0f}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error updating market condition for {token_id}: {e}")
+            raise
