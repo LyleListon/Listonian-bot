@@ -357,8 +357,8 @@ class Baseswap(BaseDEXV2):
                 lambda: self.w3.eth.get_logs({
                     'address': pair_address,
                     'topics': [event_topic],
-                    'fromBlock': from_block,
-                    'toBlock': current_block
+                    'from_block': from_block,
+                    'to_block': current_block
                 }),
                 retries=3
             )
@@ -484,8 +484,8 @@ class Baseswap(BaseDEXV2):
                     lambda: self.w3.eth.get_logs({
                         'address': pair_contract.address,
                         'topics': [event_topic],
-                        'fromBlock': max(0, block_number - 7200),
-                        'toBlock': block_number
+                        'from_block': max(0, block_number - 7200),
+                        'to_block': block_number
                     }),
                     retries=3
                 )

@@ -114,13 +114,17 @@ class Web3Manager:
             # Get absolute path from project root
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
             
-            # Try different ABI file patterns
+            # Try different ABI file patterns, prioritizing V3 files
             possible_paths = [
-                os.path.join(project_root, 'abi', f'{name}.json'),
-                os.path.join(project_root, 'abi', f'{name}_v3.json'),
+                os.path.join(project_root, 'abi', f'{name}.json'),  # Exact match first
+                os.path.join(project_root, 'abi', f'{name.replace("_router", "_v3_router")}.json'),  # Convert to V3 pattern
+                os.path.join(project_root, 'abi', f'{name.replace("_factory", "_v3_factory")}.json'),
+                os.path.join(project_root, 'abi', f'{name.replace("_pool", "_v3_pool")}.json'),
+                os.path.join(project_root, 'abi', f'{name.replace("_quoter", "_v3_quoter")}.json'),
+                os.path.join(project_root, 'abi', f'{name}_v3.json'),  # Legacy patterns
                 os.path.join(project_root, 'abi', f'{name}_v2.json'),
-                os.path.join(project_root, 'abi', f'{name.replace("_v3", "")}.json'),  # Try without _v3 suffix
-                os.path.join(project_root, 'abi', f'{name.replace("_v3_", "_")}.json')  # Try without v3 in middle
+                os.path.join(project_root, 'abi', f'{name.replace("_v3", "")}.json'),
+                os.path.join(project_root, 'abi', f'{name.replace("_v3_", "_")}.json')
             ]
             
             logger.debug(f"Looking for ABI file {name} in paths: {possible_paths}")
@@ -167,6 +171,15 @@ class Web3Manager:
     def get_block(self, block_identifier: BlockIdentifier = 'latest') -> BlockData:
         """Get block information."""
         return self._w3.eth.get_block(block_identifier)
+
+    async def get_block_async(self, block_identifier: BlockIdentifier = 'latest') -> BlockData:
+        """Get block information asynchronously."""
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, lambda: self._w3.eth.get_block(block_identifier))
+        except Exception as e:
+            logger.error(f"Failed to get block: {e}")
+            raise
 
     def get_transaction_count(self, address: str) -> Nonce:
         """Get transaction count for address."""
@@ -215,6 +228,32 @@ class Web3Manager:
             logger.error(f"Transaction failed: {e}")
             raise
 
+    async def send_transaction_async(self, transaction: TxParams) -> TxReceipt:
+        """Send a transaction asynchronously."""
+        try:
+            # Add necessary transaction fields
+            if 'chainId' not in transaction:
+                transaction['chainId'] = self.get_chain_id()
+            if 'nonce' not in transaction:
+                transaction['nonce'] = await self.get_transaction_count_async(self.address)
+            if 'gasPrice' not in transaction and 'maxFeePerGas' not in transaction:
+                transaction['gasPrice'] = await self.get_gas_price_async()
+
+            # Sign transaction
+            loop = asyncio.get_event_loop()
+            signed_txn = await loop.run_in_executor(
+                None,
+                lambda: self._w3.eth.account.sign_transaction(transaction, self.account.key)
+            )
+            
+            # Send transaction and wait for receipt
+            tx_hash = await loop.run_in_executor(None, lambda: self._w3.eth.send_raw_transaction(signed_txn.rawTransaction))
+            tx_receipt = await loop.run_in_executor(None, lambda: self._w3.eth.wait_for_transaction_receipt(tx_hash))
+            return tx_receipt
+        except Exception as e:
+            logger.error(f"Transaction failed: {e}")
+            raise
+
     def get_contract(self, address: str, abi: list) -> Contract:
         """Get contract instance."""
         checksum_address = self._w3.to_checksum_address(address)
@@ -236,6 +275,24 @@ class Web3Manager:
     def estimate_gas(self, transaction: TxParams) -> int:
         """Estimate gas for transaction."""
         return self._w3.eth.estimate_gas(transaction)
+        
+    async def get_transaction_count_async(self, address: str) -> Nonce:
+        """Get transaction count for address asynchronously."""
+        loop = asyncio.get_event_loop()
+        checksum_address = self._w3.to_checksum_address(address)
+        return await loop.run_in_executor(
+            None,
+            lambda: self._w3.eth.get_transaction_count(checksum_address)
+        )
+
+    async def get_gas_price_async(self) -> Wei:
+        """Get current gas price asynchronously."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self._w3.eth.gas_price
+        )
+
 
 async def create_web3_manager(config: Dict[str, Any]) -> Web3Manager:
     """Create a new Web3Manager instance.

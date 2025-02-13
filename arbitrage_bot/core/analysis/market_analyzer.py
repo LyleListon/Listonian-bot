@@ -99,6 +99,76 @@ class MarketAnalyzer:
         
         logger.info("Market analyzer initialized")
 
+    async def get_opportunities(self) -> List[Dict[str, Any]]:
+        """Get current arbitrage opportunities."""
+        try:
+            opportunities = []
+            
+            # Get all token pairs
+            tokens = list(self.config['tokens'].keys())
+            dexes = list(self.config['dexes'].keys())
+            
+            # Check each token pair across DEXes
+            for token1 in tokens:
+                for token2 in tokens:
+                    if token1 == token2:
+                        continue
+                        
+                    # Get prices across DEXes
+                    prices = {}
+                    for dex_name in dexes:
+                        price = await self._get_price(token1, token2, dex_name)
+                        if price:
+                            prices[dex_name] = price
+                    
+                    if len(prices) < 2:
+                        continue
+                    
+                    # Find price differences
+                    for dex1 in prices:
+                        for dex2 in prices:
+                            if dex1 == dex2:
+                                continue
+                                
+                            price1 = prices[dex1]
+                            price2 = prices[dex2]
+                            
+                            # Calculate profit percentage
+                            profit_pct = abs(price1 - price2) / min(price1, price2)
+                            
+                            # Skip if profit too small
+                            if profit_pct < 0.01:  # 1% minimum profit
+                                continue
+                            
+                            # Get market conditions
+                            condition1 = await self.get_market_condition(token1)
+                            condition2 = await self.get_market_condition(token2)
+                            
+                            if not condition1 or not condition2:
+                                continue
+                            
+                            # Create opportunity
+                            opportunity = {
+                                'token_path': [token1, token2],
+                                'dex_from': dex1,
+                                'dex_to': dex2,
+                                'price_from': price1,
+                                'price_to': price2,
+                                'profit_pct': float(profit_pct),
+                                'amount_in': float(condition1['liquidity']),
+                                'amount_out': float(condition1['liquidity'] * price2),
+                                'profit_usd': float(condition1['liquidity'] * price2 * profit_pct),
+                                'confidence': min(condition1['confidence'], condition2['confidence'])
+                            }
+                            
+                            opportunities.append(opportunity)
+            
+            return sorted(opportunities, key=lambda x: x['profit_usd'], reverse=True)
+            
+        except Exception as e:
+            logger.error(f"Error getting opportunities: {e}")
+            return []
+
     async def initialize(self) -> bool:
         """Initialize market analyzer."""
         try:
