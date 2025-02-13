@@ -4,8 +4,8 @@ import logging
 from typing import Dict, Any, Optional, List, cast
 from web3 import Web3
 
-from arbitrage_bot.dex.baseswap import Baseswap
-from arbitrage_bot.dex.swapbased import SwapBased
+from arbitrage_bot.core.dex.baseswap import Baseswap
+from arbitrage_bot.core.dex.swapbased import SwapBased
 from ..web3.web3_manager import Web3Manager
 
 logger = logging.getLogger(__name__)

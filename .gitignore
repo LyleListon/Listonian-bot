@@ -90,3 +90,4 @@ docs/failed_attempts/
 # Deployment
 deployments - Copy/
 /Roo-Cline
+data/memory/**/status.json

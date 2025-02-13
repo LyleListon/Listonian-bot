@@ -10,6 +10,17 @@
             "enabled": true,
             "min_liquidity_usd": 10000
         },
+        "baseswap_v3": {
+            "name": "BaseSwap",
+            "version": "v3",
+            "factory": "0x38015D05f4fEC8AFe15D7cc0386a126574e8077B",
+            "router": "0x1B8eea9315bE495187D873DA7773a874545D9D48",
+            "quoter": "0x0Bb5e784Ff4D110d24FcBb32Bc321b1389528C71",
+            "fee": 500,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "tick_spacing": 10
+        },
         "pancakeswap": {
             "name": "PancakeSwap",
             "version": "v3",
@@ -25,8 +36,9 @@
         "swapbased": {
             "name": "SwapBased",
             "version": "v3",
-            "factory": "0xb5620F90e803C7F957A9EF351B8DB3C746021BEa",
+            "factory": "0xb5620F90e803C7F957a9EF351B8DB3C746021BEa",
             "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
+            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
             "fee": 500,
             "enabled": true,
             "min_liquidity_usd": 10000,
@@ -49,5 +61,12 @@
             "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
             "decimals": 6
         }
+    },
+    "flash_loan": {
+        "enabled": true,
+        "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+        "flash_loan_contract": "0x1234567890123456789012345678901234567890",
+        "min_profit_threshold": 50,
+        "max_loan_amount_usd": 100000
     }
 }

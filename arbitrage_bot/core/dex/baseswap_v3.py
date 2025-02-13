@@ -1,4 +1,4 @@
-"""SwapBased DEX implementation."""
+"""Baseswap V3 DEX implementation."""
 
 from typing import Dict, Any, List, Optional
 import logging
@@ -11,11 +11,11 @@ from .utils import validate_config
 
 logger = logging.getLogger(__name__)
 
-class SwapBased(BaseDEXV3):
-    """Implementation of SwapBased V3 DEX."""
+class BaseswapV3(BaseDEXV3):
+    """Implementation of Baseswap V3 DEX."""
 
     def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
-        """Initialize SwapBased interface."""
+        """Initialize Baseswap V3 interface."""
         # Validate config
         is_valid, error = validate_config(config, {
             'router': str,
@@ -28,11 +28,11 @@ class SwapBased(BaseDEXV3):
             raise ValueError(f"Invalid config: {error}")
             
         super().__init__(web3_manager, config)
-        self.name = "SwapBased"
+        self.name = "BaseswapV3"
         self.initialized = False
 
     async def initialize(self) -> bool:
-        """Initialize SwapBased interface."""
+        """Initialize Baseswap V3 interface."""
         try:
             # Initialize base V3 DEX
             if not await super().initialize():
@@ -46,11 +46,11 @@ class SwapBased(BaseDEXV3):
                 )
             
             self.initialized = True
-            logger.info(f"SwapBased V3 interface initialized")
+            logger.info(f"Baseswap V3 interface initialized")
             return True
             
         except Exception as e:
-            self._handle_error(e, "SwapBased initialization")
+            self._handle_error(e, "Baseswap V3 initialization")
             return False
 
     async def get_quote_with_impact(
@@ -58,10 +58,10 @@ class SwapBased(BaseDEXV3):
         amount_in: int,
         path: List[str]
     ) -> Optional[Dict[str, Any]]:
-        """SwapBased-specific quote implementation."""
+        """Baseswap V3-specific quote implementation."""
         try:
-            # Use base implementation as SwapBased follows standard V3 quoting
+            # Use base implementation as Baseswap follows standard V3 quoting
             return await super().get_quote_with_impact(amount_in, path)
         except Exception as e:
-            self._handle_error(e, "SwapBased quote calculation")
+            self._handle_error(e, "Baseswap V3 quote calculation")
             return None

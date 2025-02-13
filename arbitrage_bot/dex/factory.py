@@ -7,7 +7,10 @@ from web3 import Web3
 from .base_dex import BaseDEX
 from .aerodrome_v2 import AerodromeV2
 from .aerodrome_v3 import AerodromeV3
-from .swapbased import SwapBased
+from arbitrage_bot.core.dex.swapbased import SwapBased
+from arbitrage_bot.core.dex.pancakeswap import PancakeSwap
+from arbitrage_bot.core.dex.baseswap import Baseswap
+from arbitrage_bot.core.dex.baseswap_v3 import BaseswapV3
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +73,17 @@ async def create_dex(
             logger.info("Created Aerodrome V3 DEX instance")
         elif name == "swapbased":
             dex = SwapBased(web3, config)
-            logger.info("Created SwapBased DEX instance")
+            logger.info("Created SwapBased V3 DEX instance")
+        elif name == "pancakeswap":
+            dex = PancakeSwap(web3, config)
+            logger.info("Created PancakeSwap V3 DEX instance")
+        elif name == "baseswap":
+            if config.get('version') == 'v3':
+                dex = BaseswapV3(web3, config)
+                logger.info("Created Baseswap V3 DEX instance")
+            else:
+                dex = Baseswap(web3, config)
+                logger.info("Created Baseswap V2 DEX instance")
             
         # Register if created
         if dex:

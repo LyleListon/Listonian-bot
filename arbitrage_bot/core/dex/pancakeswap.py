@@ -1,6 +1,6 @@
 """PancakeSwap DEX implementation."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 import logging
 import asyncio
 from decimal import Decimal
@@ -11,7 +11,7 @@ from .utils import validate_config
 
 logger = logging.getLogger(__name__)
 
-class Pancakeswap(BaseDEXV3):
+class PancakeSwap(BaseDEXV3):
     """Implementation of PancakeSwap V3 DEX."""
 
     def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
@@ -21,16 +21,13 @@ class Pancakeswap(BaseDEXV3):
             'router': str,
             'factory': str,
             'fee': int,
-            'tick_spacing': int,
-            'quoter': str,
-            'pool_deployer': str
+            'tick_spacing': int
         })
         if not is_valid:
             raise ValueError(f"Invalid config: {error}")
             
         super().__init__(web3_manager, config)
         self.name = "PancakeSwap"
-        self.pool_deployer_address = config['pool_deployer']
         self.initialized = False
 
     async def initialize(self) -> bool:
@@ -63,17 +60,16 @@ class Pancakeswap(BaseDEXV3):
         try:
             total_liquidity = Decimal(0)
             
-            # Get all pools
-            pool_count = await self._retry_async(
-                self.factory.functions.allPoolsLength().call
+            # Get pools from PoolCreated events
+            pool_created_filter = self.factory.events.PoolCreated.create_filter(fromBlock=0)
+            events = await self._retry_async(
+                lambda: pool_created_filter.get_all_entries()
             )
             
-            for i in range(min(pool_count, 100)):  # Limit to 100 pools for performance
+            # Limit to most recent 100 pools for performance
+            for event in events[-100:]:
                 try:
-                    pool_address = await self._retry_async(
-                        lambda: self.factory.functions.allPools(i).call()
-                    )
-                    
+                    pool_address = event['args']['pool']
                     pool = await self.web3_manager.get_contract_async(
                         address=pool_address,
                         abi=self.pool_abi
@@ -81,12 +77,12 @@ class Pancakeswap(BaseDEXV3):
                     
                     # Get liquidity
                     liquidity = await self._retry_async(
-                        pool.functions.liquidity().call
+                        lambda: pool.functions.liquidity().call()
                     )
                     total_liquidity += Decimal(liquidity)
                     
                 except Exception as e:
-                    logger.warning(f"Failed to get liquidity for pool {i}: {e}")
+                    logger.warning(f"Failed to get liquidity for pool {pool_address}: {e}")
                     continue
             
             return total_liquidity
@@ -98,7 +94,7 @@ class Pancakeswap(BaseDEXV3):
     async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
         """Get 24-hour trading volume for a token pair."""
         try:
-            # Get pool address
+            # Get pool address using V3 factory method
             pool_address = await self._retry_async(
                 lambda: self.factory.functions.getPool(
                     token0,
@@ -116,14 +112,13 @@ class Pancakeswap(BaseDEXV3):
                 abi=self.pool_abi
             )
             
-            # Get volume from events in last 24h
+            # Get volume from Swap events in last 24h
             current_block = await self.web3_manager.w3.eth.block_number
             from_block = current_block - 7200  # ~24h of blocks
             
+            swap_filter = pool.events.Swap.create_filter(fromBlock=from_block)
             swap_events = await self._retry_async(
-                lambda: pool.events.Swap.get_logs(
-                    fromBlock=from_block
-                )
+                lambda: swap_filter.get_all_entries()
             )
             
             volume = Decimal(0)
@@ -137,3 +132,65 @@ class Pancakeswap(BaseDEXV3):
         except Exception as e:
             logger.error(f"Failed to get 24h volume: {e}")
             return Decimal(0)
+
+    async def get_quote_with_impact(
+        self,
+        amount_in: int,
+        path: List[str]
+    ) -> Optional[Dict[str, Any]]:
+        """Get quote including price impact and liquidity depth analysis."""
+        try:
+            if len(path) != 2:
+                raise ValueError("V3 quotes only support direct pairs")
+
+            # Get pool address
+            pool_address = await self._retry_async(
+                lambda: self.factory.functions.getPool(
+                    path[0],
+                    path[1],
+                    self.config['fee']
+                ).call()
+            )
+
+            if pool_address == "0x0000000000000000000000000000000000000000":
+                return None
+
+            # Get pool contract
+            pool = await self.web3_manager.get_contract_async(
+                address=pool_address,
+                abi=self.pool_abi
+            )
+
+            # Get pool state
+            slot0 = await self._retry_async(
+                lambda: pool.functions.slot0().call()
+            )
+            liquidity = await self._retry_async(
+                lambda: pool.functions.liquidity().call()
+            )
+
+            # Calculate amounts
+            sqrt_price_x96 = slot0[0]
+            amount_out = amount_in * sqrt_price_x96 / (2 ** 96)
+
+            # Calculate price impact
+            price_impact = self._calculate_price_impact(
+                amount_in=amount_in,
+                amount_out=int(amount_out),
+                sqrt_price_x96=sqrt_price_x96,
+                liquidity=liquidity
+            )
+
+            return {
+                'amount_in': amount_in,
+                'amount_out': int(amount_out),
+                'price_impact': price_impact,
+                'liquidity_depth': liquidity,
+                'fee_rate': self.config['fee'] / 1000000,
+                'estimated_gas': 200000,  # V3 swaps use more gas
+                'min_out': int(amount_out * 0.995)  # 0.5% slippage
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get V3 quote: {e}")
+            return None
