@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 from ..execution.arbitrage_executor import ArbitrageExecutor, create_arbitrage_executor
 from ..web3.web3_manager import Web3Manager
-from ..dex.dex_manager import DEXManager
+from ..dex import DexManager
 from ..gas.gas_optimizer import GasOptimizer
 
 @pytest.fixture

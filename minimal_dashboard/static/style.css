@@ -1,0 +1,42 @@
+/* Dashboard styles */
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: #f5f5f5;
+}
+
+h1 {
+    color: #333;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.data-section {
+    margin: 20px;
+    padding: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: box-shadow 0.3s ease;
+}
+
+.data-section.updated {
+    box-shadow: 0 0 15px rgba(52, 152, 219, 0.5);
+}
+
+.data-section h2 {
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 5px;
+    margin-bottom: 15px;
+}
+
+.error {
+    color: #e74c3c;
+    padding: 10px;
+    border-radius: 4px;
+    background-color: #fdf7f7;
+    border: 1px solid #f5c6cb;
+    margin: 10px 0;
+}

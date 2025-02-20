@@ -1,256 +1,158 @@
 {% extends "base.html" %}
 
-{% block title %}Distribution Monitor{% endblock %}
-
 {% block content %}
-<div class="container">
-    <h1>Distribution Monitor</h1>
-    
-    <div class="row mt-4">
-        <!-- DEX Exposure Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>DEX Exposure</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="dexExposureChart"></canvas>
-                    <div class="mt-3">
-                        <p>Total Exposure: <span id="totalExposure">-</span></p>
-                        <p>Max Per DEX: <span id="maxPerDex">-</span></p>
-                        <p>Rebalance Status: <span id="rebalanceStatus">-</span></p>
-                    </div>
-                </div>
+<div class="card">
+    <div class="card-header">
+        <h3>Distribution Management</h3>
+    </div>
+    <div class="card-body">
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h4>Active Pairs</h4>
+                <div class="metric-value" id="active-pairs">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Total Liquidity</h4>
+                <div class="metric-value" id="total-liquidity">$0.00</div>
+            </div>
+            <div class="metric-card">
+                <h4>Rebalance Status</h4>
+                <div class="metric-value" id="rebalance-status">Stable</div>
             </div>
         </div>
         
-        <!-- Pair Exposure Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Pair Exposure</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="pairExposureChart"></canvas>
-                    <div class="mt-3">
-                        <p>Total Pairs: <span id="totalPairs">-</span></p>
-                        <p>Max Per Pair: <span id="maxPerPair">-</span></p>
-                    </div>
-                </div>
+        <div class="card">
+            <div class="card-header">
+                <h4>Pair Distribution</h4>
             </div>
-        </div>
-    </div>
-    
-    <div class="row mt-4">
-        <!-- DEX Scores Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>DEX Performance Scores</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table" id="dexScoresTable">
-                            <thead>
-                                <tr>
-                                    <th>DEX</th>
-                                    <th>Gas</th>
-                                    <th>Liquidity</th>
-                                    <th>Volume</th>
-                                    <th>Success</th>
-                                    <th>Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Pair</th>
+                            <th>DEX</th>
+                            <th>Liquidity</th>
+                            <th>24h Volume</th>
+                            <th>Allocation</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="distribution-list">
+                        <!-- Distribution items will be inserted here -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Rebalancing Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Rebalancing Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table" id="rebalancingTable">
-                            <thead>
-                                <tr>
-                                    <th>From DEX</th>
-                                    <th>To DEX</th>
-                                    <th>Pair</th>
-                                    <th>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+        <div class="charts-container">
+            <div class="chart-card">
+                <h4>Liquidity Distribution</h4>
+                <div id="liquidity-distribution-chart"></div>
+            </div>
+            <div class="chart-card">
+                <h4>Volume Distribution</h4>
+                <div id="volume-distribution-chart"></div>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
-{% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% block extra_js %}
 <script>
-let dexExposureChart;
-let pairExposureChart;
+    socket.on('distribution_update', (data) => {
+        if (!data) return;
+        
+        // Update metrics
+        document.getElementById('active-pairs').textContent = data.active_pairs;
+        document.getElementById('total-liquidity').textContent = `$${formatNumber(data.total_liquidity)}`;
+        document.getElementById('rebalance-status').textContent = data.rebalance_status;
+        
+        // Update distribution list
+        const distributionList = document.getElementById('distribution-list');
+        if (!distributionList || !data.pairs) return;
+        
+        distributionList.innerHTML = data.pairs.map(pair => `
+            <tr>
+                <td>${pair.token0}/${pair.token1}</td>
+                <td>${pair.dex}</td>
+                <td>$${formatNumber(pair.liquidity)}</td>
+                <td>$${formatNumber(pair.volume_24h)}</td>
+                <td>${(pair.allocation * 100).toFixed(1)}%</td>
+                <td>
+                    <span class="badge ${pair.status === 'active' ? 'badge-success' : 'badge-secondary'}">
+                        ${pair.status}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
 
-function initCharts() {
-    // DEX Exposure Chart
-    const dexCtx = document.getElementById('dexExposureChart').getContext('2d');
-    dexExposureChart = new Chart(dexCtx, {
-        type: 'bar',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Current Exposure',
-                data: [],
-                backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Exposure Amount'
-                    }
-                }
-            }
+        // Update charts
+        if (data.liquidity_distribution) {
+            updateLiquidityChart(data.liquidity_distribution);
+        }
+        if (data.volume_distribution) {
+            updateVolumeChart(data.volume_distribution);
         }
     });
 
-    // Pair Exposure Chart
-    const pairCtx = document.getElementById('pairExposureChart').getContext('2d');
-    pairExposureChart = new Chart(pairCtx, {
-        type: 'pie',
-        data: {
-            labels: [],
-            datasets: [{
-                data: [],
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.5)',
-                    'rgba(54, 162, 235, 0.5)',
-                    'rgba(255, 206, 86, 0.5)',
-                    'rgba(75, 192, 192, 0.5)',
-                    'rgba(153, 102, 255, 0.5)',
-                    'rgba(255, 159, 64, 0.5)',
-                    'rgba(199, 199, 199, 0.5)'
-                ],
-                borderColor: [
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 206, 86, 1)',
-                    'rgba(75, 192, 192, 1)',
-                    'rgba(153, 102, 255, 1)',
-                    'rgba(255, 159, 64, 1)',
-                    'rgba(199, 199, 199, 1)'
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'right'
-                }
+    function updateLiquidityChart(data) {
+        const trace = {
+            labels: Object.keys(data),
+            values: Object.values(data),
+            type: 'pie',
+            marker: {
+                colors: ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800']
             }
-        }
-    });
-}
-
-function updateDistributionStats(stats) {
-    // Update DEX exposure chart
-    const dexes = Object.keys(stats.dex_exposure);
-    const exposures = Object.values(stats.dex_exposure).map(v => parseFloat(v));
-    
-    dexExposureChart.data.labels = dexes;
-    dexExposureChart.data.datasets[0].data = exposures;
-    dexExposureChart.update();
-
-    // Update pair exposure chart
-    const pairs = Object.keys(stats.pair_exposure);
-    const pairExposures = Object.values(stats.pair_exposure).map(v => parseFloat(v));
-    
-    pairExposureChart.data.labels = pairs;
-    pairExposureChart.data.datasets[0].data = pairExposures;
-    pairExposureChart.update();
-
-    // Update text displays
-    const totalExposure = exposures.reduce((a, b) => a + b, 0);
-    document.getElementById('totalExposure').textContent = 
-        `${totalExposure.toFixed(2)} USD`;
-    document.getElementById('totalPairs').textContent = pairs.length;
-    document.getElementById('rebalanceStatus').textContent = 
-        stats.needs_rebalancing ? 'Rebalancing Needed' : 'Balanced';
-    document.getElementById('rebalanceStatus').className = 
-        stats.needs_rebalancing ? 'text-warning' : 'text-success';
-}
-
-function updateDexScores(scores) {
-    const tbody = document.querySelector('#dexScoresTable tbody');
-    tbody.innerHTML = '';
-    
-    for (const [dex, score] of Object.entries(scores)) {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${dex}</td>
-            <td>${(score.gas_score * 100).toFixed(1)}%</td>
-            <td>${(score.liquidity_score * 100).toFixed(1)}%</td>
-            <td>${(score.volume_score * 100).toFixed(1)}%</td>
-            <td>${(score.success_score * 100).toFixed(1)}%</td>
-            <td>${(score.total_score * 100).toFixed(1)}%</td>
-        `;
-        tbody.appendChild(row);
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: true,
+            legend: {
+                font: { color: '#e0e0e0' }
+            },
+            margin: { t: 20, l: 20, r: 20, b: 20 }
+        };
+        
+        Plotly.newPlot('liquidity-distribution-chart', [trace], layout);
     }
-}
 
-function updateRebalancingActions(actions) {
-    const tbody = document.querySelector('#rebalancingTable tbody');
-    tbody.innerHTML = '';
-    
-    for (const action of actions) {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${action.from_dex}</td>
-            <td>${action.to_dex}</td>
-            <td>${action.pair}</td>
-            <td>${parseFloat(action.amount).toFixed(4)}</td>
-        `;
-        tbody.appendChild(row);
+    function updateVolumeChart(data) {
+        const trace = {
+            labels: Object.keys(data),
+            values: Object.values(data),
+            type: 'pie',
+            marker: {
+                colors: ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800']
+            }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: true,
+            legend: {
+                font: { color: '#e0e0e0' }
+            },
+            margin: { t: 20, l: 20, r: 20, b: 20 }
+        };
+        
+        Plotly.newPlot('volume-distribution-chart', [trace], layout);
     }
-}
 
-document.addEventListener('DOMContentLoaded', () => {
-    initCharts();
-    
-    // Connect to WebSocket for real-time updates
-    const ws = new WebSocket(`ws://${window.location.host}/ws/distribution`);
-    
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'distribution_stats') {
-            updateDistributionStats(data.stats);
-        } else if (data.type === 'dex_scores') {
-            updateDexScores(data.scores);
-        } else if (data.type === 'rebalancing_actions') {
-            updateRebalancingActions(data.actions);
+    function formatNumber(num) {
+        if (num >= 1e9) {
+            return `${(num / 1e9).toFixed(2)}B`;
+        } else if (num >= 1e6) {
+            return `${(num / 1e6).toFixed(2)}M`;
+        } else if (num >= 1e3) {
+            return `${(num / 1e3).toFixed(2)}K`;
         }
-    };
-});
+        return num.toFixed(2);
+    }
 </script>
 {% endblock %}

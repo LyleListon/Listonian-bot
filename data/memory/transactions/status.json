@@ -1,12 +1,13 @@
 {
   "data": {
     "status": {
-      "last_update": 1739332389.762378,
-      "total_trades": 0,
-      "successful_trades": 0,
-      "total_profit": 0.0,
-      "average_gas": 0
+      "last_update": 1739721188.768288,
+      "total_trades": 15,
+      "successful_trades": 12,
+      "failed_trades": 3,
+      "total_volume": 5000.0
     }
   },
-  "timestamp": 1739332389.762384
+  "timestamp": 1739721188.7682884,
+  "ttl": null
 }

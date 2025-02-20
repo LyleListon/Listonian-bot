@@ -2,10 +2,11 @@
     "network": {
         "chainId": 8453,
         "name": "Base",
-        "rpc_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0"
+        "rpc_url": "$SECURE:BASE_RPC_URL"
     },
     "wallet": {
-        "wallet_address": "0xc9eC57087138210a8cbbDD430D5763b94C6122b1"
+        "wallet_address": "$SECURE:WALLET_ADDRESS",
+        "profit_recipient": "0x257a30645bF0C91BC155bd9C01BD722322050F7b"
     },
     "arbitrage": {
         "min_profit_usd": 0.05,
@@ -14,7 +15,15 @@
         "max_trade_size_usd": 1000.0,
         "max_hops": 2,
         "gas_limit": 300000,
-        "deadline_seconds": 300
+        "deadline_seconds": 300,
+        "flash_loans": {
+            "enabled": true,
+            "min_profit_basis_points": 200,
+            "max_trade_size": "0.1",
+            "pool_address": "0x0c3c1c532F1e39EdF36BE9Fe0bE1410313E074Bf",
+            "weth_address": "0x4200000000000000000000000000000000000006",
+            "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        }
     },
     "monitoring": {
         "price_update_interval": 1,
@@ -48,6 +57,18 @@
             "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
             "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
             "fee": 3000,
+            "weth_address": "0x4200000000000000000000000000000000000006",
+            "tokens": {
+                "WETH": {
+                    "address": "0x4200000000000000000000000000000000000006"
+                },
+                "USDC": {
+                    "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                },
+                "DAI": {
+                    "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+                }
+            },
             "pools": {
                 "WETH/USDC": true,
                 "WETH/DAI": true
@@ -57,12 +78,49 @@
             "enabled": true,
             "priority": 1,
             "min_liquidity_usd": 10000,
-            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
-            "factory": "0xb5620F90e803C7F957A9EF351B8DB3C746021BEa",
+            "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
+            "factory": "0xB5620F90e803C7F957a9EF351B8DB3C746021BEa",
             "fee": 3000,
+            "tick_spacing": 60,
+            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+            "weth_address": "0x4200000000000000000000000000000000000006",
+            "tokens": {
+                "WETH": {
+                    "address": "0x4200000000000000000000000000000000000006"
+                },
+                "USDC": {
+                    "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                },
+                "DAI": {
+                    "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+                }
+            },
             "pools": {
                 "WETH/USDC": true,
                 "WETH/DAI": true
+            }
+        },
+        "rocketswap_v3": {
+            "enabled": true,
+            "priority": 1,
+            "min_liquidity_usd": 10000,
+            "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
+            "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+            "fee": 3000,
+            "weth_address": "0x4200000000000000000000000000000000000006",
+            "pools": {
+                "WETH/USDC": {
+                    "fee_100": true,
+                    "fee_500": true,
+                    "fee_3000": true,
+                    "fee_10000": true
+                },
+                "WETH/DAI": {
+                    "fee_100": true,
+                    "fee_500": true,
+                    "fee_3000": true,
+                    "fee_10000": true
+                }
             }
         },
         "rocketswap": {
@@ -165,25 +223,28 @@
             "address": "0x4200000000000000000000000000000000000006",
             "decimals": 18,
             "min_amount": "0.001",
-            "max_amount": "10.0"
+            "max_amount": "10.0",
+            "symbol": "WETH"
         },
         "USDC": {
             "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             "decimals": 6,
             "min_amount": "1.0",
-            "max_amount": "50000.0"
+            "max_amount": "50000.0",
+            "symbol": "USDC"
         },
         "DAI": {
             "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
             "decimals": 18,
             "min_amount": "1.0",
-            "max_amount": "50000.0"
+            "max_amount": "50000.0",
+            "symbol": "DAI"
         }
     },
     "gas": {
-        "max_priority_fee": 2,
-        "max_fee": 100,
-        "min_base_fee": 0.1
+        "max_priority_fee": 5,
+        "max_fee": 200,
+        "min_base_fee": 0.05
     },
     "process": {
         "max_instances": 3,

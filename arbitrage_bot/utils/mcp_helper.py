@@ -4,7 +4,9 @@ import logging
 import json
 from typing import Dict, Any, Optional
 from pathlib import Path
+import subprocess
 from ..utils.config_loader import load_config
+from .mcp_client import MCPClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ class MockClient:
         self.version = version
         self.connected = True
 
-    async def call_tool(
+    def call_tool(
         self, tool_name: str, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Mock tool calls with predefined responses."""
@@ -32,7 +34,7 @@ class MockClient:
             }
         return {"data": {}}
 
-    async def access_resource(self, uri: str) -> Dict[str, Any]:
+    def access_resource(self, uri: str) -> Dict[str, Any]:
         """Mock resource access."""
         return {"data": {}}
 
@@ -57,12 +59,34 @@ def get_mcp_client(server_name: str) -> Any:
         return _mcp_clients[server_name]
 
     try:
-        # Load MCP configuration
+        # Try loading from Claude.app MCP settings first
+        mcp_settings_path = Path(r"c:\Users\listonianapp\AppData\Roaming\Code\User\globalStorage\rooveterinaryinc.roo-cline\settings\cline_mcp_settings.json")
+        if mcp_settings_path.exists():
+            try:
+                with open(mcp_settings_path, 'r') as f:
+                    mcp_settings = json.load(f)
+                if "mcpServers" in mcp_settings and server_name in mcp_settings["mcpServers"]:
+                    server_config = mcp_settings["mcpServers"][server_name]
+                    # Create MCP client using server config
+                    # Start the MCP server process
+                    process = subprocess.Popen(
+                        [server_config['command']] + server_config['args'],
+                        env=server_config.get('env', {}),
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        text=True
+                    )
+                    client = MCPClient(process)
+                    _mcp_clients[server_name] = client
+                    logger.info(f"Created MCP client for {server_name} from Claude.app settings")
+                    return client
+            except Exception as e:
+                logger.error(f"Failed to load Claude.app MCP settings: {e}")
+
+        # Fallback to config.json
         config = load_config()
         if "mcp" not in config or server_name not in config["mcp"]:
             raise ValueError(f"No configuration found for MCP server: {server_name}")
-
-        server_config = config["mcp"][server_name]
 
         # Create client based on server type
         if server_name == "crypto-price":
@@ -131,7 +155,7 @@ def close_mcp_clients():
     _mcp_clients = {}
 
 
-async def call_mcp_tool(
+def call_mcp_tool(
     server_name: str, tool_name: str, arguments: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
@@ -147,14 +171,14 @@ async def call_mcp_tool(
     """
     try:
         client = get_mcp_client(server_name)
-        response = await client.call_tool(tool_name, arguments)
+        response = client.call_tool(tool_name, arguments)
         return response
     except Exception as e:
         logger.error(f"Failed to call MCP tool {tool_name} on {server_name}: {e}")
         raise
 
 
-async def access_mcp_resource(server_name: str, uri: str) -> Dict[str, Any]:
+def access_mcp_resource(server_name: str, uri: str) -> Dict[str, Any]:
     """
     Access MCP resource.
 
@@ -167,7 +191,7 @@ async def access_mcp_resource(server_name: str, uri: str) -> Dict[str, Any]:
     """
     try:
         client = get_mcp_client(server_name)
-        response = await client.access_resource(uri)
+        response = client.access_resource(uri)
         return response
     except Exception as e:
         logger.error(f"Failed to access MCP resource {uri} on {server_name}: {e}")

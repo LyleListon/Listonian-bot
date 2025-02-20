@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List, Any, Optional, Tuple
 from decimal import Decimal
 
-from ...utils.mcp_client import use_market_analysis
+from ...utils.mcp_helper import call_mcp_tool
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,8 @@ class TriangularArbitrage:
                 
                 if profit_percent > self.min_profit:
                     # Validate with market analysis
-                    analysis = await use_market_analysis(
+                    analysis = await call_mcp_tool(
+                        "market-analysis",
                         "analyze_opportunities",
                         {
                             "token": route[0]["token0"],
@@ -191,7 +192,8 @@ class TriangularArbitrage:
         try:
             # Check liquidity on each hop
             for hop in opportunity["route"]:
-                liquidity_check = await use_market_analysis(
+                liquidity_check = await call_mcp_tool(
+                    "market-analysis",
                     "assess_market_conditions",
                     {
                         "token": hop["token0"],

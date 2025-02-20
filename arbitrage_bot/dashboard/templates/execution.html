@@ -1,286 +1,183 @@
 {% extends "base.html" %}
 
-{% block title %}Execution Monitor{% endblock %}
-
 {% block content %}
-<div class="container">
-    <h1>Execution Monitor</h1>
-    
-    <div class="row mt-4">
-        <!-- Active Executions Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Active Executions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table" id="activeExecutionsTable">
-                            <thead>
-                                <tr>
-                                    <th>Trade ID</th>
-                                    <th>DEX</th>
-                                    <th>Pair</th>
-                                    <th>Amount</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+<div class="card">
+    <div class="card-header">
+        <h3>Execution Management</h3>
+    </div>
+    <div class="card-body">
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h4>Success Rate</h4>
+                <div class="metric-value" id="execution-success-rate">0%</div>
+            </div>
+            <div class="metric-card">
+                <h4>Average Gas Used</h4>
+                <div class="metric-value" id="avg-gas-used">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Pending Transactions</h4>
+                <div class="metric-value" id="pending-txs">0</div>
             </div>
         </div>
         
-        <!-- Gas Metrics Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Gas Metrics</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="gasMetricsChart"></canvas>
-                    <div class="mt-3">
-                        <p>Average Gas Used: <span id="avgGasUsed">-</span></p>
-                        <p>Average Gas Price: <span id="avgGasPrice">-</span> GWEI</p>
-                        <p>Total Gas Cost: <span id="totalGasCost">-</span> ETH</p>
-                    </div>
-                </div>
+        <div class="card">
+            <div class="card-header">
+                <h4>Recent Executions</h4>
             </div>
-        </div>
-    </div>
-    
-    <div class="row mt-4">
-        <!-- Transaction History Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Recent Transactions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table" id="transactionTable">
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>Hash</th>
-                                    <th>Status</th>
-                                    <th>Gas Used</th>
-                                    <th>Gas Price</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Transaction Hash</th>
+                            <th>Route</th>
+                            <th>Gas Used</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="execution-list">
+                        <!-- Execution items will be inserted here -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Performance Stats Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Performance Statistics</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="performanceChart"></canvas>
-                    <div class="mt-3">
-                        <p>Success Rate: <span id="successRate">-</span>%</p>
-                        <p>Average Confirmation Time: <span id="avgConfirmTime">-</span>s</p>
-                        <p>Failed Transactions: <span id="failedTxs">-</span></p>
-                    </div>
-                </div>
+        <div class="charts-container">
+            <div class="chart-card">
+                <h4>Gas Usage History</h4>
+                <div id="gas-usage-chart"></div>
+            </div>
+            <div class="chart-card">
+                <h4>Execution Time Distribution</h4>
+                <div id="execution-time-chart"></div>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
-{% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% block extra_js %}
 <script>
-let gasMetricsChart;
-let performanceChart;
+    socket.on('execution_update', (data) => {
+        if (!data) return;
+        
+        // Update metrics
+        document.getElementById('execution-success-rate').textContent = `${(data.success_rate * 100).toFixed(1)}%`;
+        document.getElementById('avg-gas-used').textContent = formatNumber(data.avg_gas_used);
+        document.getElementById('pending-txs').textContent = data.pending_transactions;
+        
+        // Update execution list
+        const executionList = document.getElementById('execution-list');
+        if (!executionList || !data.recent_executions) return;
+        
+        executionList.innerHTML = data.recent_executions.map(execution => `
+            <tr>
+                <td>${new Date(execution.timestamp).toLocaleTimeString()}</td>
+                <td>
+                    <a href="https://basescan.org/tx/${execution.tx_hash}" target="_blank">
+                        ${execution.tx_hash.substring(0, 8)}...
+                    </a>
+                </td>
+                <td>${execution.route.join(' → ')}</td>
+                <td>${formatNumber(execution.gas_used)}</td>
+                <td>
+                    <span class="badge ${execution.status === 'success' ? 'badge-success' : 'badge-secondary'}">
+                        ${execution.status}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="retryExecution('${execution.tx_hash}')">
+                        Retry
+                    </button>
+                </td>
+            </tr>
+        `).join('');
 
-function initCharts() {
-    // Gas Metrics Chart
-    const gasCtx = document.getElementById('gasMetricsChart').getContext('2d');
-    gasMetricsChart = new Chart(gasCtx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Gas Price (GWEI)',
-                data: [],
-                borderColor: 'rgba(54, 162, 235, 1)',
-                tension: 0.1
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Gas Price (GWEI)'
-                    }
-                }
-            }
+        // Update charts
+        if (data.gas_usage_history) {
+            updateGasUsageChart(data.gas_usage_history);
+        }
+        if (data.execution_time_distribution) {
+            updateExecutionTimeChart(data.execution_time_distribution);
         }
     });
 
-    // Performance Chart
-    const perfCtx = document.getElementById('performanceChart').getContext('2d');
-    performanceChart = new Chart(perfCtx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Successful', 'Failed', 'Pending'],
-            datasets: [{
-                data: [0, 0, 0],
-                backgroundColor: [
-                    'rgba(75, 192, 192, 0.5)',
-                    'rgba(255, 99, 132, 0.5)',
-                    'rgba(255, 206, 86, 0.5)'
-                ],
-                borderColor: [
-                    'rgba(75, 192, 192, 1)',
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(255, 206, 86, 1)'
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'right'
-                }
+    function retryExecution(txHash) {
+        socket.emit('retry_execution', { tx_hash: txHash });
+    }
+
+    function updateGasUsageChart(data) {
+        const trace = {
+            x: data.timestamps.map(ts => new Date(ts)),
+            y: data.gas_used,
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#4CAF50' }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: false,
+            margin: { t: 20, l: 50, r: 20, b: 30 },
+            xaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                tickformat: '%H:%M:%S'
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Gas Used'
             }
+        };
+        
+        Plotly.newPlot('gas-usage-chart', [trace], layout);
+    }
+
+    function updateExecutionTimeChart(data) {
+        const trace = {
+            x: data.time_ranges,
+            y: data.counts,
+            type: 'bar',
+            marker: {
+                color: '#4CAF50'
+            }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: false,
+            margin: { t: 20, l: 50, r: 20, b: 30 },
+            xaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Execution Time (ms)'
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Number of Executions'
+            }
+        };
+        
+        Plotly.newPlot('execution-time-chart', [trace], layout);
+    }
+
+    function formatNumber(num) {
+        if (num >= 1e9) {
+            return `${(num / 1e9).toFixed(2)}B`;
+        } else if (num >= 1e6) {
+            return `${(num / 1e6).toFixed(2)}M`;
+        } else if (num >= 1e3) {
+            return `${(num / 1e3).toFixed(2)}K`;
         }
-    });
-}
-
-function updateActiveExecutions(executions) {
-    const tbody = document.querySelector('#activeExecutionsTable tbody');
-    tbody.innerHTML = '';
-    
-    for (const [tradeId, status] of Object.entries(executions)) {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${tradeId}</td>
-            <td>${status.dex}</td>
-            <td>${status.pair}</td>
-            <td>${parseFloat(status.amount).toFixed(4)}</td>
-            <td>
-                <span class="badge ${getBadgeClass(status.status)}">
-                    ${status.status}
-                </span>
-            </td>
-        `;
-        tbody.appendChild(row);
+        return num.toFixed(0);
     }
-}
-
-function updateTransactionHistory(transactions) {
-    const tbody = document.querySelector('#transactionTable tbody');
-    tbody.innerHTML = '';
-    
-    for (const tx of transactions) {
-        const row = document.createElement('tr');
-        const time = new Date(tx.timestamp * 1000);
-        row.innerHTML = `
-            <td>${time.toLocaleString()}</td>
-            <td>${shortenHash(tx.hash)}</td>
-            <td>
-                <span class="badge ${getBadgeClass(tx.status)}">
-                    ${tx.status}
-                </span>
-            </td>
-            <td>${tx.gas_used || '-'}</td>
-            <td>${tx.gas_price ? (tx.gas_price / 1e9).toFixed(1) : '-'} GWEI</td>
-        `;
-        tbody.appendChild(row);
-    }
-}
-
-function updateGasMetrics(metrics) {
-    // Update chart
-    const timestamps = metrics.map(m => new Date(m.timestamp * 1000).toLocaleTimeString());
-    const gasPrices = metrics.map(m => m.gas_price / 1e9);
-    
-    gasMetricsChart.data.labels = timestamps;
-    gasMetricsChart.data.datasets[0].data = gasPrices;
-    gasMetricsChart.update();
-
-    // Update text displays
-    document.getElementById('avgGasUsed').textContent = 
-        metrics.avgGasUsed.toLocaleString();
-    document.getElementById('avgGasPrice').textContent = 
-        (metrics.avgGasPrice / 1e9).toFixed(1);
-    document.getElementById('totalGasCost').textContent = 
-        (metrics.totalGasCost / 1e18).toFixed(6);
-}
-
-function updatePerformanceStats(stats) {
-    // Update chart
-    performanceChart.data.datasets[0].data = [
-        stats.successful_executions,
-        stats.failed_executions,
-        stats.total_executions - stats.successful_executions - stats.failed_executions
-    ];
-    performanceChart.update();
-
-    // Update text displays
-    const successRate = (stats.successful_executions / stats.total_executions * 100) || 0;
-    document.getElementById('successRate').textContent = successRate.toFixed(1);
-    document.getElementById('avgConfirmTime').textContent = 
-        stats.average_confirmation_time.toFixed(1);
-    document.getElementById('failedTxs').textContent = stats.failed_executions;
-}
-
-function getBadgeClass(status) {
-    switch (status) {
-        case 'confirmed':
-            return 'bg-success';
-        case 'failed':
-            return 'bg-danger';
-        case 'pending':
-            return 'bg-warning';
-        case 'submitted':
-            return 'bg-info';
-        default:
-            return 'bg-secondary';
-    }
-}
-
-function shortenHash(hash) {
-    if (!hash) return '-';
-    return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    initCharts();
-    
-    // Connect to WebSocket for real-time updates
-    const ws = new WebSocket(`ws://${window.location.host}/ws/execution`);
-    
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'active_executions') {
-            updateActiveExecutions(data.executions);
-        } else if (data.type === 'transaction_history') {
-            updateTransactionHistory(data.transactions);
-        } else if (data.type === 'gas_metrics') {
-            updateGasMetrics(data.metrics);
-        } else if (data.type === 'performance_stats') {
-            updatePerformanceStats(data.stats);
-        }
-    };
-});
 </script>
 {% endblock %}

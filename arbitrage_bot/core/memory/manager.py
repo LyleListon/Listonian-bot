@@ -1,7 +1,8 @@
 """Memory bank manager for the arbitrage bot."""
 
 import logging
-import asyncio
+import time
+import eventlet
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from . import MemoryBank
@@ -30,14 +31,14 @@ class MemoryBankManager:
         self._initialized = True
         logger.info("Memory bank manager initialized")
 
-    async def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
+    def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """Initialize the memory bank with configuration."""
         try:
             if not self._initialized:
                 logger.warning("Memory bank manager not initialized")
                 return False
             
-            return await self.memory_bank.initialize(config)
+            return self.memory_bank.initialize(config)
         except Exception as e:
             logger.error(f"Failed to initialize memory bank: {e}")
             return False
@@ -197,14 +198,14 @@ class MemoryBankManager:
             logger.error(f"Failed to get memory stats: {e}")
             return {}
     
-    async def store_opportunities(self, opportunities: List[Opportunity]) -> None:
+    def store_opportunities(self, opportunities: List[Opportunity]) -> None:
         """Store arbitrage opportunities."""
         try:
-            await self.memory_bank.store_opportunities(opportunities)
+            self.memory_bank.store_opportunities(opportunities)
         except Exception as e:
             logger.error(f"Failed to store opportunities: {e}")
 
-    async def get_trade_history(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_trade_history(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get trade execution history with optional age filter."""
         try:
             if not self._initialized:
@@ -228,7 +229,7 @@ class MemoryBankManager:
             logger.error(f"Failed to get trade history: {e}")
             return []
 
-    async def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get recent arbitrage opportunities with optional age filter."""
         try:
             if not self._initialized:
@@ -252,7 +253,7 @@ class MemoryBankManager:
             logger.error(f"Failed to get recent opportunities: {e}")
             return []
 
-    async def store_trade_result(
+    def store_trade_result(
         self,
         opportunity: Dict[str, Any],
         success: bool,
@@ -263,7 +264,7 @@ class MemoryBankManager:
     ) -> None:
         """Store trade execution result."""
         try:
-            await self.memory_bank.store_trade_result(
+            self.memory_bank.store_trade_result(
                 opportunity=opportunity,
                 success=success,
                 net_profit=net_profit,
@@ -281,18 +282,18 @@ class MemoryBankManager:
         except Exception as e:
             logger.error(f"Failed to stop memory bank: {e}")
 
-    async def cleanup(self) -> None:
+    def cleanup(self) -> None:
         """Cleanup memory bank resources."""
         try:
-            await self.memory_bank.cleanup()
+            self.memory_bank.cleanup()
         except Exception as e:
             logger.error(f"Failed to cleanup memory bank: {e}")
 
-async def get_memory_bank(config: Optional[Dict[str, Any]] = None) -> MemoryBankManager:
+def get_memory_bank(config: Optional[Dict[str, Any]] = None) -> MemoryBankManager:
     """Get the singleton memory bank manager instance."""
     manager = MemoryBankManager()
     if not manager.memory_bank.initialized:
-        success = await manager.initialize(config or {})
+        success = manager.initialize(config or {})
         if not success:
             logger.error("Failed to initialize memory bank")
             raise RuntimeError("Memory bank initialization failed")

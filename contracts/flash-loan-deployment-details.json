@@ -1,0 +1,17 @@
+{
+  "contract": "FlashLoanArbitrage",
+  "address": "0x7D6424E8cF138Eb7745EA3FAeedCf67F9B024dd3",
+  "network": "base",
+  "parameters": {
+    "poolAddressProvider": "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D",
+    "weth": "0x4200000000000000000000000000000000000006",
+    "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "profitRecipient": "0x257a30645bF0C91BC155bd9C01BD722322050F7b"
+  },
+  "transactions": {
+    "deployment": "0x3dc371d253b2e32c058f94382b72e167f3a90d15e49277cd56116560edf93e4b",
+    "setTokens": "0x675b33e2f08c61a31312e128efa732eba9e93edfe586f6325339ef9e528347d3",
+    "setProfitRecipient": "0x78b5d3af0861d0104a36b8b99f3f56c7908d5c9b5fe5dfef55614cff4c6b11f3"
+  },
+  "timestamp": "2025-02-19T19:04:00.412Z"
+}

@@ -1,45 +1,25 @@
 {
     "dexes": {
-        "uniswap_v2": {
-            "name": "Uniswap V2",
-            "version": "v2",
-            "factory": "0x8909Dc15e40173FF4699343b6eB8132C65E18eC6",
-            "router": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-            "fee": 3000
-        },
-        "uniswap_v3": {
-            "name": "Uniswap V3",
-            "version": "v3",
-            "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
-            "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
-            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
-            "fee": 3000
-        },
         "baseswap": {
             "name": "BaseSwap",
             "version": "v2",
             "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
             "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
             "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
-            "fee": 3000
-        },
-        "pancakeswap": {
-            "name": "PancakeSwap",
-            "version": "v3",
-            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
-            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
-            "pool_deployer": "0x41ff9AA7e16B8B1a8a8dc4f0eFacd93D02d071c9",
-            "fee": 2500,
-            "tick_spacing": 60
+            "fee": 3000,
+            "enabled": true,
+            "weth_address": "0x4200000000000000000000000000000000000006"
         },
         "swapbased": {
             "name": "SwapBased",
             "version": "v3",
-            "factory": "0xb5620F90e803C7F957A9EF351B8DB3C746021BEa",
+            "factory": "0xb5620F90e803C7F957a9EF351B8DB3C746021BEa",
             "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
-            "fee": 500,
-            "tick_spacing": 10
+            "quoter": "0x0BE808376Ecb75a5CF9bB6D237d16cd37893d904",
+            "fee": 3000,
+            "tick_spacing": 60,
+            "enabled": true,
+            "weth_address": "0x4200000000000000000000000000000000000006"
         }
     },
     "tokens": {
@@ -60,7 +40,7 @@
         },
         "DAI": {
             "name": "Dai Stablecoin",
-            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "address": "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
             "decimals": 18,
             "pools": {
                 "WETH/DAI": {

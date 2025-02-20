@@ -1,13 +1,15 @@
 // WebSocket client for dashboard
-const socket = io();
+const socket = io({
+    path: '/socket.io/'
+});
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 const reconnectDelay = 5000;
 
 // DOM elements
 const connectionStatus = document.getElementById('connection-status');
-const statusDot = connectionStatus.querySelector('.status-dot');
-const statusText = connectionStatus.querySelector('.status-text');
+const statusDot = connectionStatus ? connectionStatus.querySelector('.status-dot') : null;
+const statusText = connectionStatus ? connectionStatus.querySelector('.status-text') : null;
 
 // Charts
 let priceChart = null;
@@ -88,29 +90,34 @@ socket.on('market_update', (data) => {
 });
 
 function updateConnectionStatus(message, connected) {
-    statusDot.style.backgroundColor = connected ? '#4CAF50' : '#f44336';
-    statusText.textContent = message;
+    if (statusDot && statusText) {
+        statusDot.style.backgroundColor = connected ? '#4CAF50' : '#f44336';
+        statusText.textContent = message;
+    }
 }
 
 function updateOpportunities(opportunities) {
     const opportunitiesList = document.getElementById('opportunities-list');
     if (!opportunitiesList) return;
 
-    opportunitiesList.innerHTML = '';
-    opportunities.forEach(opp => {
-        const oppCard = document.createElement('div');
-        oppCard.className = `opportunity-card ${opp.profit_percentage >= 0.5 ? 'executable' : ''}`;
-        oppCard.innerHTML = `
-            <h3>${opp.token_in}/${opp.token_out}</h3>
-            <div class="opportunity-details">
-                <div>Buy DEX: ${opp.buy_dex}</div>
-                <div>Sell DEX: ${opp.sell_dex}</div>
-                <div>Profit: ${opp.profit_percentage.toFixed(2)}%</div>
-                <div>Gas Price: ${data.gas.optimal_price} GWEI</div>
-            </div>
-        `;
-        opportunitiesList.appendChild(oppCard);
-    });
+    if (!opportunities || !opportunities.length) {
+        opportunitiesList.innerHTML = '<tr><td colspan="5" class="text-center">No active opportunities</td></tr>';
+        return;
+    }
+
+    opportunitiesList.innerHTML = opportunities.map(opp => `
+        <tr>
+            <td>${opp.route.join(' → ')}</td>
+            <td>$${opp.profit.toFixed(2)}</td>
+            <td>$${opp.gas_cost.toFixed(2)}</td>
+            <td>$${(opp.profit - opp.gas_cost).toFixed(2)}</td>
+            <td>
+                <span class="badge ${opp.status === 'active' ? 'badge-success' : 'badge-secondary'}">
+                    ${opp.status}
+                </span>
+            </td>
+        </tr>
+    `).join('');
 
     // Update opportunity count
     const countElement = document.getElementById('active-opportunities');

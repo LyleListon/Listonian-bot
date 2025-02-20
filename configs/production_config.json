@@ -4,13 +4,22 @@
     "chainId": 8453
   },
   "wallet": {
-    "wallet_address": "0x0000000000000000000000000000000000000000",
-    "private_key": "0000000000000000000000000000000000000000000000000000000000000000"
+    "wallet_address": "$SECURE:WALLET_ADDRESS",
+    "private_key": "$SECURE:PRIVATE_KEY"
+  },
+  "contracts": {
+    "mev_protected_arbitrage": "0x54602854d50B7193DadcF579afa0a90BbeF7c91a",
+    "tokens": {
+      "weth": "0x4200000000000000000000000000000000000006",
+      "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    }
   },
   "arbitrage": {
     "min_profit_usd": 0.05,
     "max_price_impact": 0.01,
-    "slippage_tolerance": 0.001
+    "slippage_tolerance": 0.001,
+    "max_gas_price_gwei": 50,
+    "min_profit_basis_points": 50
   },
   "optimization": {
     "task_priorities": {

@@ -65,58 +65,58 @@
                 "aerodrome_Volatile": "0xcDAC0d6c6C59727a65F871236188350531885C43",
                 "aerodrome_Stable": "0x3548029694fbB241D45FB24Ba0cd9c9d4E745f16"
             },
-            "max_trade_size": 0.05,
+            "max_trade_size": 0.1,
             "historical_profit": 0,
             "historical_success_rate": 0.8
         }
     ],
     "trading": {
-        "min_profit_usd": 0.10,
-        "max_trade_size_usd": "0.005",
-        "slippage_tolerance": 0.005,
+        "min_profit_usd": 0.05,
+        "max_trade_size_usd": "0.1",
+        "slippage_tolerance": 0.01,
         "use_live_price_feed": true,
         "balance_targets": {
             "usdc_target_percent": 80,
-            "min_eth_for_gas_usd": "0.0050",
+            "min_eth_for_gas_usd": "0.02",
             "rebalance_threshold_percent": 5,
             "rebalance_check_interval": 60
         },
         "safety": {
             "min_balance_usd": 20.0,
-            "max_price_impact": 0.01,
+            "max_price_impact": 0.02,
             "balance_check_interval": 15,
             "price_check_interval": 0.1,
             "validation_thresholds": {
                 "min_liquidity_ratio": 0.05,
-                "max_volume_share": 0.01,
+                "max_volume_share": 0.02,
                 "min_confidence": 0.9
             },
             "protection_limits": {
-                "max_slippage_percent": 0.5,
-                "max_gas_multiplier": 1.2,
-                "min_profit_after_fees": 0.5
+                "max_slippage_percent": 1.0,
+                "max_gas_multiplier": 2.0,
+                "min_profit_after_fees": 0.25
             },
             "recovery_options": {
-                "retry_attempts": 2,
-                "delay_seconds": 5,
+                "retry_attempts": 5,
+                "delay_seconds": 10,
                 "fallback_dexes": ["aerodrome"]
             }
         },
-        "transaction_timeout": 180,
+        "transaction_timeout": 300,
         "confirmation_blocks": 2,
-        "max_retries": 2,
-        "retry_delay_seconds": 5,
+        "max_retries": 5,
+        "retry_delay_seconds": 10,
         "gas": {
-            "max_base_fee_gwei": 30.0,
-            "max_priority_fee_gwei": 1.0,
-            "min_profit_multiplier": 2.0,
+            "max_base_fee_gwei": 100.0,
+            "max_priority_fee_gwei": 5.0,
+            "min_profit_multiplier": 1.2,
             "cache_duration_seconds": 15,
             "history_window_seconds": 300
         },
         "liquidity": {
             "min_pool_depth_usd": 100000.0,
             "min_volume_24h_usd": 50000.0,
-            "max_utilization_rate": 0.01,
+            "max_utilization_rate": 0.02,
             "min_confidence": 0.9,
             "cache_duration_seconds": 60
         }

@@ -1,192 +1,162 @@
-System Patterns
+# System Patterns
 
-## Core Architecture
+## Architecture Overview
 
-### Web3 Layer
-1. **Web3 Manager Pattern**
-   ```
-   Web3Manager
-   ├── Connection Management
-   │   ├── Retry Middleware
-   │   ├── Timeout Configuration
-   │   └── Error Handling
-   ├── Contract Interaction
-   │   ├── Sync Methods
-   │   └── Async Methods
-   └── State Management
-       ├── Chain ID
-       └── Account Info
-   ```
+### Core Components
+1. **Smart Contracts**
+   - MultiPathArbitrage contract
+   - Flash loan integration
+   - Multi-token trade support
+   - Cross-DEX interaction
+   - V2/V3 protocol compatibility
 
-2. **DEX Abstraction Layers**
-   ```
-   BaseDEX
-   └── BaseDEXV2
-       ├── BaseSwapDEX
-       ├── SwapBasedDEX
-       └── PancakeSwapDEX
-   ```
+2. **Arbitrage Bot Core**
+   - DEX management system
+   - Multi-path opportunity detection
+   - Transaction monitoring
+   - Balance management
+   - Alert system
 
-### Output Management Pattern
-1. **Terminal Output Control**
-   ```
-   Output Manager
-   ├── Log Rotation
-   │   ├── Size-based rotation
-   │   └── Time-based rotation
-   ├── Output Filtering
-   │   ├── Debug level control
-   │   └── Category filtering
-   └── Context Management
-       ├── Buffer size monitoring
-       └── Cleanup triggers
-   ```
+3. **Dashboard & Monitoring**
+   - System status visualization
+   - Performance metrics
+   - Multi-RPC health monitoring
+   - Trade path analysis
 
-2. **Context Window Protection**
-   - Monitor output volume
-   - Implement log rotation
-   - Use selective logging
-   - Clean old logs regularly
-   - Prevent context overflow
+## Key Technical Patterns
 
-### Data Flow Patterns
-1. **Price Data Pipeline**
-   ```
-   Web3 RPC
-   ↓
-   DEX Contract
-   ↓
-   Reserve Data
-   ↓
-   Price Calculation
-   ↓
-   Market Analysis
-   ↓
-   WebSocket
-   ↓
-   Dashboard
-   ```
+### 1. Modular Design
+- Separation of concerns between core components
+- Pluggable DEX integrations
+- Extensible monitoring system
+- Configurable execution strategies
+- Multi-token path support
 
-2. **Error Handling Pattern**
-   ```
-   Try Operation
-   ↓
-   Catch Error
-   ↓
-   Log Error
-   ↓
-   Retry Logic
-   ↓
-   Fallback/Recovery
-   ```
+### 2. Trading Patterns
+- **Direct Arbitrage**
+  * Simple token swap between two DEXs
+  * Lowest complexity and gas cost
+  * Fastest execution time
+  * Baseline profitability check
 
-## Key Design Patterns
+- **Triangular Arbitrage**
+  * Three-token circular trades
+  * Higher complexity, higher potential profit
+  * Cross-DEX price inefficiency exploitation
+  * Advanced liquidity management
 
-### 1. Retry Pattern
-- Exponential backoff (0.5s, 1s, 2s)
-- Maximum 3 retries
-- Status code based retry decisions
-- Error logging at each attempt
+- **Multi-Hop Trading**
+  * Multiple DEX interactions
+  * Complex path optimization
+  * Dynamic fee calculation
+  * Slippage management across hops
 
-### 2. Token Handling Pattern
-```python
-# Token Order Resolution
-if token0_addr.lower() == token0.lower():
-    reserve0 = reserves[0]
-    reserve1 = reserves[1]
-else:
-    reserve0 = reserves[1]
-    reserve1 = reserves[0]
+### 3. Event-Driven Architecture
+- Real-time price monitoring
+- Asynchronous transaction processing
+- Event-based alerting system
+- Reactive opportunity detection
+- Multi-token price tracking
 
-# Decimal Adjustment
-adjusted_amount = Decimal(amount) / Decimal(10 ** decimals)
-```
+### 4. Risk Management Patterns
+- Circuit breakers for emergency stops
+- Transaction validation layers
+- Balance checks and limits
+- Price feed verification
+- Gas price management
+- Path validation checks
 
-### 3. Price Calculation Pattern
-```python
-# Base Price
-price = reserve_out / reserve_in
+### 5. Data Management
+- In-memory state management
+- Persistent storage for analytics
+- Caching strategies for DEX data
+- Efficient path finding algorithms
+- Multi-token price tracking
 
-# With Impact
-impact = (expected_out - actual_out) / expected_out
-adjusted_price = price * (1 - impact)
-```
+### 6. Integration Patterns
+- Standardized DEX interfaces
+- Blockchain interaction protocols
+- Price feed integration
+- Flash loan provider integration
+- Cross-DEX communication
+
+### 7. Monitoring & Observability
+- Performance metrics collection
+- Error tracking and logging
+- Health check systems
+- Analytics data aggregation
+- Path execution monitoring
+
+## Technical Decisions
+
+1. **Smart Contract Architecture**
+   - Modular contract system for upgradability
+   - Flash loan integration for capital efficiency
+   - Multi-DEX interaction capability
+   - Gas optimization patterns
+   - Multi-token trade support
+
+2. **Bot Architecture**
+   - Python-based core system
+   - Asynchronous execution model
+   - Modular DEX integration system
+   - Real-time monitoring and alerting
+   - Path finding optimization
+
+3. **Dashboard Implementation**
+   - Web-based interface
+   - Real-time data updates
+   - Configuration management
+   - Performance visualization
+   - Trade path analysis
+
+4. **Security Measures**
+   - Secure key management
+   - Transaction signing protocols
+   - Rate limiting
+   - Error handling and recovery
+   - Multi-RPC fallback
+
+5. **Trading Strategy**
+   - Multi-token path support
+   - Dynamic fee calculation
+   - Slippage optimization
+   - Gas cost consideration
+   - Profit threshold validation
+
+6. **Network Interaction**
+   - Multiple RPC providers
+   - Fallback mechanisms
+   - Connection health monitoring
+   - Transaction retry logic
+   - Gas price optimization
 
 ## Implementation Guidelines
 
-### 1. Web3 Interactions
-- Always use retry middleware
-- Handle timeouts gracefully
-- Log all RPC interactions
-- Verify chain ID matches
-- Check contract addresses
+1. **Contract Development**
+   - Follow Solidity best practices
+   - Optimize gas usage
+   - Implement comprehensive tests
+   - Add detailed documentation
+   - Support contract upgrades
 
-### 2. DEX Integration
-- Verify token ordering
-- Handle decimals properly
-- Check reserves exist
-- Validate price calculations
-- Monitor price impact
+2. **Bot Development**
+   - Use async/await patterns
+   - Implement error handling
+   - Add logging and monitoring
+   - Support configuration changes
+   - Enable path customization
 
-### 3. Error Recovery
-- Use exponential backoff
-- Log error details
-- Maintain state consistency
-- Provide fallback options
-- Monitor retry patterns
+3. **Testing Strategy**
+   - Unit tests for components
+   - Integration tests for paths
+   - Gas optimization tests
+   - Security vulnerability tests
+   - Performance benchmarks
 
-### 4. Output Management
-- Implement log rotation
-- Use selective logging levels
-- Monitor context window size
-- Clean logs periodically
-- Filter debug output
-
-## Best Practices
-
-### 1. Token Operations
-- Always use checksummed addresses
-- Verify token existence
-- Check decimal places
-- Handle zero reserves
-- Validate pair contracts
-
-### 2. Price Data
-- Sanity check values
-- Compare across DEXes
-- Monitor for outliers
-- Track historical data
-- Validate calculations
-
-### 3. RPC Requests
-- Use appropriate timeouts
-- Implement retries
-- Monitor rate limits
-- Log request patterns
-- Track success rates
-
-### 4. Terminal Output
-- Minimize debug output
-- Rotate logs regularly
-- Filter unnecessary info
-- Monitor output size
-- Clean old logs
-
-## System Constraints
-
-### 1. Technical Limits
-- RPC rate limits
-- Contract call gas costs
-- WebSocket connection limits
-- Memory usage bounds
-- CPU utilization caps
-- Context window size
-
-### 2. Business Rules
-- Minimum profit thresholds
-- Maximum price impact
-- Slippage tolerance
-- Gas price limits
-- Trade size bounds
-
-Last Updated: 2025-02-10
+4. **Deployment Process**
+   - Environment validation
+   - Contract verification
+   - Configuration checks
+   - Security audits
+   - Performance testing

@@ -1,233 +1,161 @@
-Transaction Signing Report
+# Transaction Signing Investigation Report
 
 ## Overview
-This report details our transaction signing implementation, focusing on security, reliability, and gas optimization.
+This report documents our investigation into transaction signing issues and various approaches attempted.
 
-## Transaction Flow
+## Current Issue
+The transaction signing process is failing with the error:
+```
+Error: 'SignedTransaction' object has no attribute 'rawTransaction'
+```
 
-### 1. Transaction Building
+## Approaches Attempted
+
+### 1. EIP-1559 Transaction Format
 ```python
-# Build transaction with MEV protection
-tx_params = {
-    "to": contract.address,
-    "data": fn_instance._encode_transaction_data(),
-    "chainId": chain_id,
-    "nonce": nonce,
-    "gasPrice": gas_price,
-    "gas": gas_limit
+transaction = {
+    'nonce': nonce,
+    'maxFeePerGas': max_fee,
+    'maxPriorityFeePerGas': max_priority_fee,
+    'gas': 21000,
+    'to': account_address,
+    'value': 0,
+    'data': b'',
+    'chainId': chain_id,
+    'type': 2  # EIP-1559
 }
 ```
+Result: SignedTransaction object missing rawTransaction attribute
 
-### 2. Gas Estimation
+### 2. Legacy Transaction Format
 ```python
-async def estimate_gas(self, transaction: Dict[str, Any]) -> int:
-    base_estimate = await self._web3.eth.estimate_gas(transaction)
-    
-    # Dynamic buffer based on network conditions
-    pending_txs = len(await self._web3.eth.get_block('pending'))
-    buffer_multiplier = 1.2 if pending_txs > 20 else 1.1
-    
-    return int(base_estimate * buffer_multiplier)
+transaction = {
+    'nonce': nonce,
+    'gasPrice': gas_price,
+    'gas': 21000,
+    'to': account_address,
+    'value': 0,
+    'data': b'',
+    'chainId': chain_id
+}
+```
+Result: Same rawTransaction attribute error
+
+### 3. AttributeDict Approach
+```python
+transaction = AttributeDict({
+    'nonce': nonce,
+    'gasPrice': gas_price,
+    'gas': 21000,
+    'to': account_address,
+    'value': 0,
+    'data': HexBytes('0x'),
+    'chainId': chain_id
+})
+```
+Result: Same rawTransaction attribute error
+
+### 4. Direct eth_account Usage
+```python
+# Create serializable transaction
+serializable_tx = serializable_unsigned_transaction_from_dict(transaction)
+# Sign transaction hash
+signature = sign_transaction_hash(account._key_obj, tx_hash)
+# Encode transaction
+raw_tx = encode_transaction(serializable_tx, signature.vrs)
+```
+Result: 'tuple' object has no attribute 'vrs'
+
+## Working Components
+
+### 1. Wallet Access ✅
+```python
+account = Account.from_key(private_key)
+account_address = Web3.to_checksum_address(account.address)
+balance = w3.eth.get_balance(account_address)
 ```
 
-## Security Measures
-
-### 1. Private Key Handling
+### 2. Gas Calculation ✅
 ```python
-# Environment-based key management
-private_key = os.getenv("PRIVATE_KEY")
-if not private_key:
-    raise ValueError("No private key configured")
-
-# Validate key format
-if len(clean_key) != 64 or not all(c in '0123456789abcdefABCDEF' for c in clean_key):
-    raise ValueError("Invalid private key format")
+gas_price = w3.eth.gas_price
+gas_price_with_buffer = int(gas_price * 1.05)
+gas_estimate = w3.eth.estimate_gas(transaction)
 ```
 
-### 2. Transaction Validation
+### 3. Parameter Validation ✅
 ```python
-async def validate_transaction(self, tx: Dict[str, Any]) -> bool:
-    # Verify chain ID
-    if tx.get('chainId') != self.chain_id:
-        raise ValueError("Invalid chain ID")
-        
-    # Check gas price bounds
-    if tx.get('gasPrice', 0) > self.max_gas_price:
-        raise ValueError("Gas price too high")
-        
-    # Verify nonce
-    expected_nonce = await self.w3.eth.get_transaction_count(
-        self.wallet_address
-    )
-    if tx.get('nonce') != expected_nonce:
-        raise ValueError("Invalid nonce")
+if tx_cost > balance_wei:
+    raise Exception(f"Insufficient funds. Need {w3.from_wei(tx_cost, 'ether')} ETH")
 ```
 
-## MEV Protection
+## Next Steps to Try
 
-### 1. Dynamic Gas Pricing
+### 1. Test on Base Testnet
 ```python
-async def get_optimal_gas_price(self) -> int:
-    base_gas = await self._web3.eth.gas_price
-    pending_txs = len(await self._web3.eth.get_block('pending'))
-    
-    # Adjust based on network congestion
-    if pending_txs > 20:  # High congestion
-        multiplier = 1.1 + (pending_txs / 1000)  # Max 10% increase
-    else:
-        multiplier = 1.02  # 2% increase
-        
-    return int(base_gas * multiplier)
+# Use Goerli Base testnet
+chain_id = 84531
+rpc_url = "https://goerli.base.org"
 ```
 
-### 2. Nonce Management
-```python
-async def get_next_nonce(self) -> int:
-    base_nonce = await self._web3.eth.get_transaction_count(
-        self.wallet_address
-    )
-    pending_txs = len(await self._web3.eth.get_block('pending'))
-    
-    # Add offset in high congestion
-    if pending_txs > 10:
-        nonce_offset = min(3, pending_txs // 10)
-        return base_nonce + nonce_offset
-    
-    return base_nonce
+### 2. Try Different Web3.py Version
+```bash
+# Try older version
+pip install web3==5.31.3
 ```
 
-## Gas Optimization
-
-### 1. Dynamic Gas Limits
+### 3. Manual Transaction Encoding
 ```python
-async def calculate_gas_limit(self, base_limit: int) -> int:
-    # Get network conditions
-    block = await self._web3.eth.get_block('latest')
-    gas_used_ratio = block.gasUsed / block.gasLimit
-    
-    # Adjust based on network usage
-    if gas_used_ratio > 0.8:  # High usage
-        return int(base_limit * 1.2)  # 20% buffer
-    return int(base_limit * 1.1)  # 10% buffer
+# Try manual RLP encoding
+import rlp
+encoded_tx = rlp.encode([nonce, gas_price, gas, to, value, data, v, r, s])
 ```
 
-### 2. Gas Price Strategy
+### 4. Alternative Signing Method
 ```python
-async def get_gas_price_strategy(self) -> Dict[str, int]:
-    base_fee = await self._web3.eth.gas_price
-    
-    return {
-        'maxFeePerGas': int(base_fee * 1.5),
-        'maxPriorityFeePerGas': int(base_fee * 0.1),
-        'baseFee': base_fee
-    }
+# Try eth-keys directly
+from eth_keys import keys
+private_key_obj = keys.PrivateKey(private_key_bytes)
+signature = private_key_obj.sign_msg(tx_hash)
 ```
 
-## Transaction Monitoring
+## Required Information for Next Assistant
 
-### 1. Receipt Tracking
-```python
-async def wait_for_transaction(
-    self,
-    tx_hash: str,
-    timeout: int = 180
-) -> Optional[TxReceipt]:
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            receipt = await self._web3.eth.get_transaction_receipt(tx_hash)
-            if receipt:
-                return receipt
-        except Exception as e:
-            logger.warning(f"Error getting receipt: {e}")
-        await asyncio.sleep(1)
-    return None
-```
+### 1. Environment Setup
+- Base mainnet (Chain ID: 8453)
+- Web3.py latest version
+- eth_account package
+- Secure environment for credentials
 
-### 2. Status Checking
-```python
-async def check_transaction_status(
-    self,
-    tx_hash: str
-) -> Dict[str, Any]:
-    receipt = await self._web3.eth.get_transaction_receipt(tx_hash)
-    
-    return {
-        'status': receipt.status,
-        'block_number': receipt.blockNumber,
-        'gas_used': receipt.gasUsed,
-        'effective_gas_price': receipt.effectiveGasPrice,
-        'total_cost': receipt.gasUsed * receipt.effectiveGasPrice
-    }
-```
+### 2. Test Transaction Details
+- Basic ETH transfer (0 value)
+- Gas limit: 21000
+- Gas price: Current + 5% buffer
+- To: Same as from address
+- Nonce: Current account nonce
 
-## Error Handling
+### 3. Debugging Requirements
+- Log all transaction parameters
+- Verify signature components
+- Check transaction encoding
+- Test on testnet first
+- Add comprehensive error handling
 
-### 1. Transaction Failures
-```python
-async def handle_failed_transaction(
-    self,
-    tx_hash: str
-) -> Dict[str, Any]:
-    # Get transaction details
-    tx = await self._web3.eth.get_transaction(tx_hash)
-    receipt = await self._web3.eth.get_transaction_receipt(tx_hash)
-    
-    # Get failure reason
-    error_data = await self._web3.eth.call(
-        {
-            'to': tx['to'],
-            'from': tx['from'],
-            'data': tx['input']
-        },
-        receipt.blockNumber - 1
-    )
-    
-    return {
-        'error': error_data,
-        'gas_used': receipt.gasUsed,
-        'block_number': receipt.blockNumber
-    }
-```
+### 4. Success Criteria
+- Transaction successfully signed
+- Raw transaction available
+- Transaction accepted by network
+- Receipt received with success status
 
-### 2. Recovery Strategies
-```python
-async def recover_from_failure(
-    self,
-    failed_tx: Dict[str, Any]
-) -> Optional[str]:
-    # Increment gas price
-    new_gas_price = int(failed_tx['gasPrice'] * 1.2)
-    
-    # Rebuild transaction
-    new_tx = {
-        **failed_tx,
-        'gasPrice': new_gas_price,
-        'nonce': await self.get_next_nonce()
-    }
-    
-    # Attempt resend
-    signed_tx = self._web3.eth.account.sign_transaction(
-        new_tx,
-        private_key=self.private_key
-    )
-    return await self._web3.eth.send_raw_transaction(
-        signed_tx.rawTransaction
-    )
-```
+## Current Hypothesis
+1. The SignedTransaction object implementation might have changed in recent Web3.py versions
+2. The transaction format might need adjustment for Base network
+3. The signing process might need manual handling
+4. Testing on testnet first would help isolate network vs signing issues
 
-## Performance Metrics
-
-### 1. Transaction Success Rate
-- Overall Success Rate: 99.2%
-- Average Confirmation Time: 15.3s
-- Gas Estimation Accuracy: 94.7%
-- MEV Protection Success: 98.5%
-
-### 2. Gas Usage Statistics
-- Average Gas Used: 150,000
-- Gas Price Accuracy: 96.3%
-- Overpayment Rate: 2.1%
-- Failed Transaction Rate: 0.8%
-
-Last Updated: 2025-02-10
+## Recommended Approach
+1. Start with testnet testing
+2. Try older Web3.py version
+3. Implement manual transaction encoding
+4. Add comprehensive logging
+5. Build proper error handling
+6. Create debugging tools

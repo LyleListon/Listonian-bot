@@ -1,7 +1,7 @@
 """Trade Executor Module"""
 
 import logging
-import asyncio
+import eventlet
 import time
 import json
 import os
@@ -94,7 +94,7 @@ class TradeExecutor:
             logger.error(f"Error loading ABI from {filename}: {e}")
             return None
 
-    async def execute_arbitrage_trade(
+    def execute_arbitrage_trade(
         self, opportunity: Dict[str, Any], wallet_address: str, private_key: str
     ) -> Dict[str, Any]:
         """Execute arbitrage trade"""
@@ -102,16 +102,16 @@ class TradeExecutor:
             logger.info(f"Executing arbitrage trade: {opportunity}")
 
             # Get router contracts
-            base_router = await self.get_router_contract(opportunity["base_dex"])
-            quote_router = await self.get_router_contract(opportunity["quote_dex"])
+            base_router = self.get_router_contract(opportunity["base_dex"])
+            quote_router = self.get_router_contract(opportunity["quote_dex"])
 
             if not base_router or not quote_router:
                 return {"success": False, "error": "Failed to get router contracts"}
 
             # Get token contracts
             tokens = opportunity["pair_name"].split("/")
-            token0_contract = await self.get_token_contract(tokens[0])
-            token1_contract = await self.get_token_contract(tokens[1])
+            token0_contract = self.get_token_contract(tokens[0])
+            token1_contract = self.get_token_contract(tokens[1])
 
             if not token0_contract or not token1_contract:
                 return {"success": False, "error": "Failed to get token contracts"}
@@ -120,7 +120,7 @@ class TradeExecutor:
             amount_in = Web3.to_wei(Decimal(opportunity["trade_amount"]), "ether")
 
             # Execute trade
-            result = await self.execute_direct_trade(
+            result = self.execute_direct_trade(
                 opportunity,
                 base_router,
                 quote_router,
@@ -136,7 +136,7 @@ class TradeExecutor:
             logger.error(f"Error executing arbitrage trade: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_router_contract(self, dex_name: str) -> Optional[Contract]:
+    def get_router_contract(self, dex_name: str) -> Optional[Contract]:
         """Get router contract for DEX"""
         try:
             if dex_name in self.router_contracts:
@@ -171,7 +171,7 @@ class TradeExecutor:
 
             # Test router connection
             try:
-                factory = await router.functions.factory().call()
+                factory = router.functions.factory().call()
                 logger.info(f"Router factory address: {factory}")
             except Exception as e:
                 logger.error(f"Failed to get factory from router: {e}")
@@ -182,7 +182,7 @@ class TradeExecutor:
             logger.error(f"Error getting router contract: {e}")
             return None
 
-    async def get_token_contract(self, token_symbol: str) -> Optional[Contract]:
+    def get_token_contract(self, token_symbol: str) -> Optional[Contract]:
         """Get token contract"""
         try:
             if token_symbol in self.token_contracts:
@@ -210,7 +210,7 @@ class TradeExecutor:
             logger.error(f"Error getting token contract: {e}")
             return None
 
-    async def execute_direct_trade(
+    def execute_direct_trade(
         self,
         opportunity: Dict[str, Any],
         base_router: Contract,
@@ -226,7 +226,7 @@ class TradeExecutor:
             deadline = int(time.time()) + 300  # 5 minutes
 
             # Get nonce and gas price
-            nonce = await self.web3_utils.w3.eth.get_transaction_count(wallet_address)
+            nonce = self.web3_utils.w3.eth.get_transaction_count(wallet_address)
             gas_price = self.web3_utils.w3.eth.gas_price
 
             # Ensure minimum gas price
@@ -236,7 +236,7 @@ class TradeExecutor:
             )  # Use at least 5x current gas price
 
             # Get WETH address from router
-            weth_address = await base_router.functions.WETH().call()
+            weth_address = base_router.functions.WETH().call()
             logger.info(f"WETH address: {weth_address}")
             logger.info(f"USDC address: {token1_contract.address}")
 
@@ -260,7 +260,7 @@ class TradeExecutor:
 
                 # Get quote
                 try:
-                    amount_out = await base_router.functions.exactInputSingle(
+                    amount_out = base_router.functions.exactInputSingle(
                         params
                     ).call()
                     amount_out_min = int(amount_out * 0.995)  # 0.5% slippage
@@ -281,7 +281,7 @@ class TradeExecutor:
                 }
 
                 # Build swap transaction
-                swap_tx = await base_router.functions.exactInputSingle(
+                swap_tx = base_router.functions.exactInputSingle(
                     params
                 ).build_transaction(tx_params)
 
@@ -291,7 +291,7 @@ class TradeExecutor:
 
                 # Get quote
                 try:
-                    amounts = await base_router.functions.getAmountsOut(
+                    amounts = base_router.functions.getAmountsOut(
                         amount_in, path
                     ).call()
                     amount_out = amounts[1]
@@ -312,7 +312,7 @@ class TradeExecutor:
                 }
 
                 # Build swap transaction
-                swap_tx = await base_router.functions.swapExactETHForTokens(
+                swap_tx = base_router.functions.swapExactETHForTokens(
                     amount_out_min,  # amountOutMin
                     path,  # path
                     wallet_address,  # to
@@ -323,12 +323,12 @@ class TradeExecutor:
             logger.info(f"Transaction parameters: {tx_params}")
 
             # Send transaction
-            tx_hash = await self.web3_utils.eth_call(swap_tx)
+            tx_hash = self.web3_utils.eth_call(swap_tx)
             if not tx_hash:
                 return {"success": False, "error": "Failed to send swap transaction"}
 
             # Wait for confirmation
-            receipt = await self.web3_utils.w3.eth.wait_for_transaction_receipt(tx_hash)
+            receipt = self.web3_utils.w3.eth.wait_for_transaction_receipt(tx_hash)
             if not receipt["status"]:
                 return {"success": False, "error": "Swap transaction failed"}
 

@@ -1,0 +1,22 @@
+{
+  "contract": "MEVProtectedArbitrage",
+  "address": "0x54602854d50B7193DadcF579afa0a90BbeF7c91a",
+  "deploymentTx": "0x1756c2d6a206d1df29bdccca6e1892b2b9863e986f9d5629a77e0505289d7f1c",
+  "deploymentBlock": 26547486,
+  "parameters": {
+    "poolAddressProvider": "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D",
+    "flashbotsRelay": "0x0000000000000000000000000000000000000000",
+    "maxGasPrice": "50.0",
+    "minProfitBasisPoints": 50,
+    "maxTradeSize": "1.0",
+    "weth": "0x4200000000000000000000000000000000000006",
+    "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  },
+  "costs": {
+    "deploymentGasUsed": "1610524",
+    "tokenSettingGasUsed": "68491",
+    "effectiveGasPrice": "0.002272448",
+    "totalCost": "0.00000381547427872"
+  },
+  "timestamp": "2025-02-18T13:12:08.587Z"
+}

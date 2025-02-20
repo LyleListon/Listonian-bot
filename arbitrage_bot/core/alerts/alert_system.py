@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from ..analytics.analytics_system import AnalyticsSystem
 from ..monitoring.transaction_monitor import TransactionMonitor
-from ..analysis.market_analyzer import MarketAnalyzer
+from ..market_analyzer import MarketAnalyzer
 
 logger = logging.getLogger(__name__)
 

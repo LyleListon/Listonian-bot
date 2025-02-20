@@ -3,6 +3,8 @@
 from typing import Dict, Any, List, Optional
 from web3.types import TxReceipt
 from decimal import Decimal
+import eventlet
+from web3 import Web3
 
 from .base_dex import BaseDEX
 from ..web3.web3_manager import Web3Manager
@@ -17,8 +19,16 @@ class BaseDEXV3(BaseDEX):
         self.fee = config.get('fee', 3000)  # 0.3% default fee
         self.pool_abi = None
         self.quoter_abi = None
+        
+        # Checksum addresses
+        if self.router_address:
+            self.router_address = Web3.to_checksum_address(self.router_address)
+        if self.factory_address:
+            self.factory_address = Web3.to_checksum_address(self.factory_address)
+        if self.quoter_address:
+            self.quoter_address = Web3.to_checksum_address(self.quoter_address)
 
-    async def initialize(self) -> bool:
+    def initialize(self) -> bool:
         """Initialize the V3 DEX interface."""
         try:
             # Load contract ABIs
@@ -28,37 +38,37 @@ class BaseDEXV3(BaseDEX):
             if self.quoter_address:
                 self.quoter_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_quoter")
             
-            # Initialize contracts
-            self.router = self.w3.eth.contract(
+            # Initialize contracts with checksummed addresses
+            self.router = self.web3_manager.get_contract(
                 address=self.router_address,
                 abi=self.router_abi
             )
-            self.factory = self.w3.eth.contract(
+            self.factory = self.web3_manager.get_contract(
                 address=self.factory_address,
                 abi=self.factory_abi
             )
             if self.quoter_address:
-                self.quoter = self.w3.eth.contract(
+                self.quoter = self.web3_manager.get_contract(
                     address=self.quoter_address,
                     abi=self.quoter_abi
                 )
             
             # Test connection by checking if contracts are deployed
-            code = await self._retry_async(
-                lambda: self.w3.eth.get_code(self.router_address)
+            code = self._retry_sync(
+                lambda: self.web3_manager.w3.eth.get_code(self.router_address)
             )
             if len(code) <= 2:  # Empty or just '0x'
                 raise ValueError(f"No contract deployed at router address {self.router_address}")
                 
-            code = await self._retry_async(
-                lambda: self.w3.eth.get_code(self.factory_address)
+            code = self._retry_sync(
+                lambda: self.web3_manager.w3.eth.get_code(self.factory_address)
             )
             if len(code) <= 2:
                 raise ValueError(f"No contract deployed at factory address {self.factory_address}")
                 
             if self.quoter_address:
-                code = await self._retry_async(
-                    lambda: self.w3.eth.get_code(self.quoter_address)
+                code = self._retry_sync(
+                    lambda: self.web3_manager.w3.eth.get_code(self.quoter_address)
                 )
                 if len(code) <= 2:
                     raise ValueError(f"No contract deployed at quoter address {self.quoter_address}")
@@ -71,96 +81,120 @@ class BaseDEXV3(BaseDEX):
             self._handle_error(e, "V3 DEX initialization")
             return False
 
-    async def get_total_liquidity(self) -> Decimal:
-        """Get total liquidity across all pairs."""
+    def swap_exact_tokens_for_tokens(
+        self,
+        amount_in: int,
+        amount_out_min: int,
+        path: List[str],
+        to: str,  # This parameter is ignored - we always use web3_manager's wallet
+        deadline: int
+    ) -> TxReceipt:
+        """Execute a V3 swap using exactInput."""
         try:
-            total_liquidity = Decimal(0)
+            # Use provided recipient address
+            recipient = to
+            self.logger.info(f"Using provided recipient address: {recipient}")
             
-            # Get pools from PoolCreated events
-            pool_created_filter = self.factory.events.PoolCreated.create_filter(fromBlock=0)
-            events = await self._retry_async(
-                lambda: pool_created_filter.get_all_entries()
+            # Validate inputs
+            self._validate_path(path)
+            self._validate_amounts(amount_in, amount_out_min)
+            
+            # Get initial balances
+            token_in_contract = self.web3_manager.get_token_contract(path[0])
+            token_out_contract = self.web3_manager.get_token_contract(path[-1])
+            
+            balance_in_before = token_in_contract.functions.balanceOf(self.web3_manager.wallet_address).call()
+            balance_out_before = token_out_contract.functions.balanceOf(recipient).call()
+            
+            # Check and approve token spending
+            if not self.check_and_approve_token(path[0], amount_in):
+                self.logger.error(
+                    f"Failed to approve token {path[0]} for spending"
+                )
+                return None
+            
+            # Prepare swap parameters
+            # Get quote to find best fee tier
+            quote = self.get_quote_with_impact(amount_in, path)
+            if not quote:
+                self.logger.error("Failed to get quote for swap")
+                return None
+                
+            # Use fee from successful quote
+            params = self._prepare_exact_input_params(
+                amount_in,
+                amount_out_min,
+                path,
+                recipient,  # Use our wallet address
+                deadline
+            )
+            params['path'] = self._encode_path(path, int(quote['fee_rate'] * 1000000))  # Convert fee back to basis points
+            
+            # Build function parameters
+            function_params = (
+                params['path'],
+                params['recipient'],
+                params['deadline'],
+                params['amountIn'],
+                params['amountOutMinimum']
             )
             
-            # Limit to most recent 100 pools for performance
-            for event in events[-100:]:
-                try:
-                    pool_address = event['args']['pool']
-                    pool = await self.web3_manager.get_contract_async(
-                        address=pool_address,
-                        abi=self.pool_abi
-                    )
-                    
-                    # Get liquidity
-                    liquidity = await self._retry_async(
-                        lambda: pool.functions.liquidity().call()
-                    )
-                    total_liquidity += Decimal(liquidity)
-                    
-                except Exception as e:
-                    self.logger.warning(f"Failed to get liquidity for pool {pool_address}: {e}")
-                    continue
+            # Execute swap with proper transaction parameters
+            receipt = self.web3_manager.build_and_send_transaction(
+                contract=self.router,
+                method_name='exactInput',
+                *function_params,
+                value=0,  # No ETH value for token swaps
+                gas=int(quote['estimated_gas'] * 1.1),  # Use quote's gas estimate with 10% buffer
+                maxFeePerGas=None,  # Let web3_manager handle EIP-1559 params
+                maxPriorityFeePerGas=None  # Let web3_manager handle EIP-1559 params
+            )
             
-            return total_liquidity
+            if receipt and receipt['status'] == 1:
+                # Get balances after trade
+                balance_in_after = token_in_contract.functions.balanceOf(self.web3_manager.wallet_address).call()
+                balance_out_after = token_out_contract.functions.balanceOf(recipient).call()
+                
+                # Verify balance changes
+                in_diff = balance_in_before - balance_in_after
+                out_diff = balance_out_after - balance_out_before
+                
+                if in_diff <= 0 or out_diff <= 0:
+                    self.logger.error(
+                        f"Balance verification failed: in_diff={in_diff}, "
+                        f"out_diff={out_diff}, expected_min_out={amount_out_min}"
+                    )
+                    return None
+                
+                # Log transaction
+                self._log_transaction(
+                    receipt['transactionHash'].hex(),
+                    amount_in,
+                    out_diff,  # Use actual output amount
+                    path
+                )
+                
+                return receipt
+            else:
+                self.logger.error("Transaction failed or returned invalid receipt")
+                return None
             
         except Exception as e:
-            self.logger.error(f"Failed to get total liquidity: {e}")
-            return Decimal(0)
+            self._handle_error(e, "V3 swap execution")
+            return None
 
-    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
-        """Get 24-hour trading volume for a token pair."""
-        try:
-            # Get pool address using V3 factory method
-            pool_address = await self._retry_async(
-                lambda: self.factory.functions.getPool(
-                    token0,
-                    token1,
-                    self.fee
-                ).call()
-            )
-            
-            if pool_address == "0x0000000000000000000000000000000000000000":
-                return Decimal(0)
-            
-            # Get pool contract
-            pool = await self.web3_manager.get_contract_async(
-                address=pool_address,
-                abi=self.pool_abi
-            )
-            
-            # Get volume from Swap events in last 24h
-            current_block = await self.web3_manager.w3.eth.block_number
-            from_block = current_block - 7200  # ~24h of blocks
-            
-            swap_filter = pool.events.Swap.create_filter(fromBlock=from_block)
-            swap_events = await self._retry_async(
-                lambda: swap_filter.get_all_entries()
-            )
-            
-            volume = Decimal(0)
-            for event in swap_events:
-                amount0 = abs(Decimal(event['args']['amount0']))
-                amount1 = abs(Decimal(event['args']['amount1']))
-                volume += max(amount0, amount1)
-            
-            return volume
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get 24h volume: {e}")
-            return Decimal(0)
-
-    async def _prepare_exact_input_params(
+    def _prepare_exact_input_params(
         self,
         amount_in: int,
         amount_out_min: int,
         path: List[str],
         to: str,
         deadline: int
-    ) -> TxReceipt:
+    ) -> Dict[str, Any]:
         """Prepare parameters for V3 exactInput swap."""
         # Validate inputs
-        await self._validate_path(path)
-        await self._validate_amounts(amount_in, amount_out_min)
+        self._validate_path(path)
+        self._validate_amounts(amount_in, amount_out_min)
         
         # Encode the path with fees
         encoded_path = self._encode_path(path)
@@ -174,67 +208,13 @@ class BaseDEXV3(BaseDEX):
             'amountOutMinimum': amount_out_min
         }
 
-    async def swap_exact_tokens_for_tokens(
-        self,
-        amount_in: int,
-        amount_out_min: int,
-        path: List[str],
-        to: str,
-        deadline: int
-    ) -> TxReceipt:
-        """Execute a V3 swap using exactInput."""
-        try:
-            # Prepare swap parameters
-            params = await self._prepare_exact_input_params(
-                amount_in,
-                amount_out_min,
-                path,
-                to,
-                deadline
-            )
-            
-            # Build transaction
-            tx = await self.router.functions.exactInput((params,)).build_transaction({
-                'from': to,
-                'gas': 350000,  # V3 needs more gas
-                'nonce': await self.w3.eth.get_transaction_count(to)
-            })
-            
-            # Sign and send transaction
-            signed_tx = await self._retry_async(lambda: self.w3.eth.account.sign_transaction(
-                tx,
-                private_key=self.config.get('wallet', {}).get('private_key')
-            ))
-            tx_hash = await self._retry_async(lambda: self.w3.eth.send_raw_transaction(
-                signed_tx.rawTransaction
-            ))
-            
-            # Wait for receipt
-            receipt = await self._retry_async(
-                lambda: self.w3.eth.wait_for_transaction_receipt(tx_hash)
-            )
-            
-            # Log transaction
-            self._log_transaction(
-                tx_hash.hex(),
-                amount_in,
-                amount_out_min,
-                path
-            )
-            
-            return receipt
-            
-        except Exception as e:
-            self._handle_error(e, "V3 swap execution")
-            raise
-
-    async def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
+    def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
         """Get quote from quoter contract if available."""
         if not self.quoter:
             return None
             
         encoded_path = self._encode_path(path)
-        return await self._retry_async(
+        return self._retry_sync(
             lambda: self.quoter.functions.quoteExactInput(
                 encoded_path,
                 amount_in
@@ -250,208 +230,124 @@ class BaseDEXV3(BaseDEX):
         encoded += bytes.fromhex(path[-1][2:])  # Add final token
         return encoded
 
-    async def get_best_path(
-        self,
-        token_in: str,
-        token_out: str,
-        amount_in: int,
-        max_hops: int = 2
-    ) -> Optional[Dict[str, Any]]:
-        """Find best trading path between tokens."""
+    def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+        """Get 24-hour trading volume for a token pair."""
         try:
-            if not self.initialized:
-                raise ValueError("DEX not initialized")
-
-            # Try quoter first if available
-            direct_amount_out = None
-            if self.quoter:
-                try:
-                    direct_amount_out = await self.get_quote_from_quoter(
-                        amount_in,
-                        [token_in, token_out]
-                    )
-                except Exception as e:
-                    self.logger.debug(f"Quoter failed, falling back to pool state: {e}")
+            # Validate and checksum addresses
+            token0 = Web3.to_checksum_address(token0)
+            token1 = Web3.to_checksum_address(token1)
             
-            # Fall back to pool state if quoter fails
-            if direct_amount_out is None:
-                direct_quote = await self.get_quote_with_impact(
-                    amount_in=amount_in,
-                    path=[token_in, token_out]
-                )
-                if not direct_quote:
-                    return None
-                direct_amount_out = direct_quote['amount_out']
-
-            if direct_amount_out:
-                return {
-                    'path': [token_in, token_out],
-                    'amounts': [amount_in, direct_amount_out],
-                    'fees': [self.fee],
-                    'price_impact': await self._get_price_impact(
-                        token_in,
-                        token_out,
-                        amount_in,
-                        direct_amount_out
-                    )
-                }
-
-            # If direct path fails and max_hops > 1, try common intermediary tokens
-            if max_hops > 1:
-                intermediaries = ['WETH', 'USDC', 'USDT', 'DAI']
-                best_quote = None
-                best_amount_out = 0
-
-                for mid_token in intermediaries:
-                    mid_address = self.config.get('tokens', {}).get(mid_token, {}).get('address')
-                    if not mid_address:
-                        continue
-
-                    # Try path through intermediary
-                    try:
-                        # Get first hop quote
-                        first_amount_out = None
-                        if self.quoter:
-                            try:
-                                first_amount_out = await self.get_quote_from_quoter(
-                                    amount_in,
-                                    [token_in, mid_address]
-                                )
-                            except Exception:
-                                pass
-                        
-                        if first_amount_out is None:
-                            first_quote = await self.get_quote_with_impact(
-                                amount_in=amount_in,
-                                path=[token_in, mid_address]
-                            )
-                            if not first_quote:
-                                continue
-                            first_amount_out = first_quote['amount_out']
-
-                        # Get second hop quote
-                        second_amount_out = None
-                        if self.quoter:
-                            try:
-                                second_amount_out = await self.get_quote_from_quoter(
-                                    first_amount_out,
-                                    [mid_address, token_out]
-                                )
-                            except Exception:
-                                pass
-
-                        if second_amount_out is None:
-                            second_quote = await self.get_quote_with_impact(
-                                amount_in=first_amount_out,
-                                path=[mid_address, token_out]
-                            )
-                            if not second_quote:
-                                continue
-                            second_amount_out = second_quote['amount_out']
-                            
-                        if second_amount_out > best_amount_out:
-                            best_amount_out = second_amount_out
-                            total_impact = await self._get_price_impact(
-                                token_in,
-                                token_out,
-                                amount_in,
-                                second_amount_out
-                            )
-                            
-                            if total_impact is None:
-                                total_impact = 1.0  # Default to high impact
-                            
-                            best_quote = {
-                                'path': [token_in, mid_address, token_out],
-                                'amounts': [
-                                    amount_in,
-                                    first_amount_out,
-                                    second_amount_out
-                                ],
-                                'fees': [self.fee, self.fee],
-                                'price_impact': total_impact
-                            }
-                    except Exception as e:
-                        self.logger.debug(f"Failed to check path through {mid_token}: {e}")
-                        continue
-
-                return best_quote
-
-            return None
-
-        except Exception as e:
-            self._handle_error(e, "Finding best V3 path")
-            return None
-
-    async def _get_price_impact(
-        self,
-        token_in: str,
-        token_out: str,
-        amount_in: int,
-        amount_out: int
-    ) -> Optional[float]:
-        """Calculate price impact for a trade."""
-        try:
-            # Get pool address
-            pool_address = await self._retry_async(
+            # Get pool address using V3 factory method
+            pool_address = self._retry_sync(
                 lambda: self.factory.functions.getPool(
-                    token_in,
-                    token_out,
+                    token0,
+                    token1,
                     self.fee
                 ).call()
             )
-
+            
             if pool_address == "0x0000000000000000000000000000000000000000":
-                return None
-
-            # Get pool contract
-            pool = await self.web3_manager.get_contract_async(
-                address=pool_address,
+                return Decimal(0)
+            
+            # Get pool contract with checksummed address
+            pool = self.web3_manager.get_contract(
+                address=Web3.to_checksum_address(pool_address),
                 abi=self.pool_abi
             )
-
-            # Get pool state
-            slot0 = await self._retry_async(
-                lambda: pool.functions.slot0().call()
+            
+            # Get volume from Swap events in last 24h
+            current_block = self.web3_manager.w3.eth.block_number
+            from_block = current_block - 7200  # ~24h of blocks
+            
+            swap_filter = pool.events.Swap.create_filter(fromBlock=from_block)
+            swap_events = self._retry_sync(
+                lambda: swap_filter.get_all_entries()
             )
-            liquidity = await self._retry_async(
-                lambda: pool.functions.liquidity().call()
-            )
-
-            return self._calculate_price_impact(
-                amount_in=amount_in,
-                amount_out=amount_out,
-                sqrt_price_x96=slot0[0],
-                liquidity=liquidity
-            )
-
+            
+            volume = Decimal(0)
+            for event in swap_events:
+                amount0 = abs(Decimal(event['args']['amount0']))
+                amount1 = abs(Decimal(event['args']['amount1']))
+                volume += max(amount0, amount1)
+            
+            return volume
+            
         except Exception as e:
-            self.logger.error(f"Failed to calculate price impact: {e}")
-            return None
-    def _calculate_price_impact(
-        self,
-        amount_in: int,
-        amount_out: int,
-        sqrt_price_x96: int,
-        liquidity: int
-    ) -> float:
-        """Calculate price impact percentage for V3 pools."""
+            self.logger.error(f"Failed to get 24h volume: {e}")
+            return Decimal(0)
+
+    def get_total_liquidity(self) -> Decimal:
+        """Get total liquidity across all pairs."""
         try:
-            # Convert sqrtPriceX96 to price
-            price = (sqrt_price_x96 ** 2) / (2 ** 192)
+            total_liquidity = Decimal(0)
             
-            # Calculate expected output without impact
-            expected_out = amount_in * price
+            # Get pools from PoolCreated events
+            pool_created_filter = self.factory.events.PoolCreated.create_filter(fromBlock=0)
+            events = self._retry_sync(
+                lambda: pool_created_filter.get_all_entries()
+            )
             
-            # Calculate actual price impact
-            impact = (expected_out - amount_out) / expected_out
+            # Limit to most recent 100 pools for performance
+            for event in events[-100:]:
+                try:
+                    pool_address = Web3.to_checksum_address(event['args']['pool'])
+                    pool = self.web3_manager.get_contract(
+                        address=pool_address,
+                        abi=self.pool_abi
+                    )
+                    
+                    # Get liquidity
+                    liquidity = self._retry_sync(
+                        lambda: pool.functions.liquidity().call()
+                    )
+                    total_liquidity += Decimal(liquidity)
+                    
+                except Exception as e:
+                    self.logger.warning(f"Failed to get liquidity for pool {pool_address}: {e}")
+                    continue
             
-            # Adjust impact based on liquidity depth
-            liquidity_factor = min(1, amount_in / liquidity)
-            adjusted_impact = impact * liquidity_factor
-            
-            return float(adjusted_impact)
+            return total_liquidity
             
         except Exception as e:
-            self.logger.error(f"Failed to calculate V3 price impact: {e}")
-            return 1.0  # Return 100% impact on error (will prevent trade)
+            self.logger.error(f"Failed to get total liquidity: {e}")
+            return Decimal(0)
+
+    def _retry_sync(self, func, retries=3, delay=1):
+        """Synchronous retry helper."""
+        last_error = None
+        for attempt in range(retries):
+            try:
+                return func()
+            except Exception as e:
+                last_error = e
+                if attempt < retries - 1:
+                    eventlet.sleep(delay * (2 ** attempt))  # Exponential backoff
+                    continue
+                self.logger.error(f"Failed after {retries} attempts: {e}")
+                raise last_error
+        return None
+
+    def get_token_price(self, token_address: str) -> float:
+        """Get current price for a token."""
+        try:
+            # For V3, use the quoter if available
+            if self.quoter and token_address != self.config.get('weth_address'):
+                weth_address = self.config.get('weth_address')
+                if not weth_address:
+                    raise ValueError("WETH address not configured")
+                
+                # Get quote for 1 token worth of WETH
+                amount_in = 10**18  # 1 WETH
+                quote = self.get_quote_from_quoter(
+                    amount_in,
+                    [weth_address, token_address]
+                )
+                
+                if quote:
+                    return float(quote) / (10**18)
+            
+            return 0.0
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get token price: {e}")
+            return 0.0

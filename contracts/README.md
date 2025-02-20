@@ -1,49 +1,129 @@
-# Smart Contracts Directory
+# Multi-Path Arbitrage System
 
-## Structure
+## Overview
+This system enables complex arbitrage trades across multiple DEXs and tokens, supporting both direct and triangular arbitrage opportunities.
 
-- `v2/`, `v3/`, `v4/` - Historical versions of the arbitrage bot
-- `ArbitrageBotV5.sol` - Current production version
-- `interfaces/` - Contract interfaces and external contract definitions
-- `utils/` - Utility contracts and libraries
-- `dex/` - DEX-specific implementations
-- `monitoring/` - Monitoring and safety contracts
-- `mocks/` - Mock contracts for testing
+## Contracts
 
-## Version History
+### MultiPathArbitrage.sol
+Advanced flash loan arbitrage contract that supports:
+- Multi-token trading paths (e.g., ETH → USDC → TOKEN → ETH)
+- Multiple DEX interactions in a single transaction
+- Both V2 and V3 DEX protocols
+- Atomic execution through flash loans
 
-### V5 (Current)
-- Enhanced security features
-- Circuit breaker implementation
-- Flash loan integration
-- Emergency withdrawal system
-- Gas optimization improvements
+## Deployment
 
-### V4
-- Initial flash loan implementation
-- Basic security features
-- Multi-DEX support
+1. Deploy the contract:
+```bash
+npx hardhat run scripts/deploy-multi-path.js --network base
+```
 
-### V3
-- Multiple token pair support
-- Basic profit calculation
+2. The deployment script will:
+   - Deploy the contract
+   - Set up the profit recipient
+   - Verify the contract on Etherscan
+   - Save deployment details to `multi-path-deployment-details.json`
 
-### V2
-- Initial implementation
-- Single token pair support
+## Usage
 
-## Development Guidelines
+### Example: Triangular Arbitrage
 
-1. All new features should be added to V5
-2. Maintain backward compatibility when possible
-3. Document all state variables and functions
-4. Include events for important state changes
-5. Add comprehensive test coverage for new features
+```javascript
+// Example trade path: ETH → USDC → TOKEN → ETH
+const tradeSteps = [
+    {
+        router: "0x...", // DEX1 router address
+        path: [WETH_ADDRESS, USDC_ADDRESS],
+        isV3: true,
+        amount: ethers.utils.parseEther("1"),
+        fee: 500 // 0.05% fee tier
+    },
+    {
+        router: "0x...", // DEX2 router address
+        path: [USDC_ADDRESS, TOKEN_ADDRESS],
+        isV3: false,
+        amount: 0, // Will be set to output from previous step
+        fee: 0 // Not used for V2
+    },
+    {
+        router: "0x...", // DEX3 router address
+        path: [TOKEN_ADDRESS, WETH_ADDRESS],
+        isV3: true,
+        amount: 0, // Will be set to output from previous step
+        fee: 3000 // 0.3% fee tier
+    }
+];
 
-## Security Considerations
+// Execute flash loan with trade steps
+await contract.executeFlashLoan(
+    WETH_ADDRESS,
+    ethers.utils.parseEther("1"),
+    tradeSteps
+);
+```
 
-- All contracts must pass security audit before mainnet deployment
-- Follow the security checklist in SECURITY_CHECKLIST.json
-- Implement proper access controls
-- Use SafeERC20 for token transfers
-- Include circuit breakers and pause mechanisms
+### Example: Direct Arbitrage
+
+```javascript
+// Example: Buy on DEX1, sell on DEX2
+const tradeSteps = [
+    {
+        router: "0x...", // DEX1 router address
+        path: [WETH_ADDRESS, USDC_ADDRESS],
+        isV3: true,
+        amount: ethers.utils.parseEther("1"),
+        fee: 500
+    },
+    {
+        router: "0x...", // DEX2 router address
+        path: [USDC_ADDRESS, WETH_ADDRESS],
+        isV3: true,
+        amount: 0, // Will be set to output from previous step
+        fee: 500
+    }
+];
+
+await contract.executeFlashLoan(
+    WETH_ADDRESS,
+    ethers.utils.parseEther("1"),
+    tradeSteps
+);
+```
+
+## Safety Features
+
+1. **Atomic Execution**: All trades in a path must succeed, or the entire transaction reverts
+2. **Flash Loan Security**: Loan must be repaid in the same transaction
+3. **Profit Protection**: Transaction reverts if final balance is insufficient
+4. **Emergency Functions**: Owner can withdraw stuck tokens/ETH if needed
+
+## Gas Optimization
+
+The contract is optimized for gas usage:
+- Minimizes storage operations
+- Uses efficient data structures
+- Batches approvals when possible
+- Reuses token allowances
+
+## Monitoring
+
+Monitor trades and profits through events:
+- `FlashLoanExecuted`: Emitted after successful flash loan execution
+- `ProfitTransferred`: Emitted when profits are sent to recipient
+- `TradeExecuted`: Emitted for each successful trade step
+
+## Testing
+
+Run the test suite:
+```bash
+npx hardhat test
+```
+
+## Security Notes
+
+1. Always verify token allowances before trading
+2. Test with small amounts first
+3. Monitor gas prices to ensure profitability
+4. Keep emergency ETH buffer for gas costs
+5. Regularly check for contract upgrades

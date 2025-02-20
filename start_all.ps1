@@ -2,10 +2,15 @@
 Write-Host "Starting Listonian Arbitrage Bot Setup..."
 
 # Create logs directory if it doesn't exist
-New-Item -ItemType Directory -Force -Path "logs" | Out-Null
+if (-not (Test-Path "logs")) {
+    New-Item -ItemType Directory -Force -Path "logs" | Out-Null
+}
 
-# Set timestamp for log files
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+# Set dashboard port
+[Environment]::SetEnvironmentVariable("DASHBOARD_PORT", "5000")
+
+# Set Python path to include current directory
+[Environment]::SetEnvironmentVariable("PYTHONPATH", "$PWD")
 
 # Check Python installation
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
@@ -13,23 +18,23 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Create and activate virtual environment
-Write-Host "Creating virtual environment..."
-python -m venv venv
-if ($IsLinux -or $IsMacOS) {
-    $env:VIRTUAL_ENV = Join-Path $PWD "venv"
-    $env:PATH = "$env:VIRTUAL_ENV/bin:$env:PATH"
-} else {
-    & ./venv/Scripts/Activate.ps1
+# Install dependencies if needed
+Write-Host "Checking dependencies..."
+python -m pip install -r requirements.txt --quiet --no-input
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to install dependencies. Please check pip logs for details."
+    exit 1
 }
 
-# Install dependencies (with minimal output)
-Write-Host "Installing dependencies..."
-pip install -r requirements.txt --quiet
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to install dependencies. Check logs for details."
-    exit 1
+# Initialize secure environment if needed
+Write-Host "Checking secure environment..."
+if (-not (Test-Path secure/.key)) {
+    Write-Host "Initializing secure environment..."
+    python init_secure.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to initialize secure environment. Please check the error messages above."
+        exit 1
+    }
 }
 
 # Check config files
@@ -57,22 +62,60 @@ if (Test-Path .env.production) {
     Write-Warning ".env.production not found. Using default environment variables."
 }
 
-# Start dashboard in background with minimal output
-Write-Host "Starting dashboard..."
-$dashboardJob = Start-Job -ScriptBlock {
-    $env:PYTHONWARNINGS="ignore"
-    python start_dashboard.py *> "logs/dashboard_$using:timestamp.log"
+# Kill any existing Python processes
+Write-Host "Cleaning up any existing Python processes..."
+Get-Process | Where-Object { $_.ProcessName -eq "python" } | ForEach-Object { 
+    try {
+        Stop-Process -Id $_.Id -Force
+        Write-Host "Stopped Python process: $($_.Id)"
+    } catch {
+        Write-Warning "Could not stop process: $($_.Id)"
+    }
 }
+
+# Additional cleanup for port 5000
+Write-Host "Checking for existing processes on port 5000..."
+$existingProcess = Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess
+if ($existingProcess) {
+    Write-Host "Found existing process on port 5000. Stopping..."
+    Stop-Process -Id $existingProcess -Force
+    Start-Sleep -Seconds 2
+}
+
+# Ensure required directories exist
+Write-Host "Creating required directories..."
+@(
+    "data/memory",
+    "data/storage",
+    "minimal_dashboard/static",
+    "minimal_dashboard/templates"
+) | ForEach-Object {
+    if (-not (Test-Path $_)) {
+        New-Item -ItemType Directory -Force -Path $_ | Out-Null
+        Write-Host "Created directory: $_"
+    }
+}
+
+# Set timestamp for log files
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+# Start main arbitrage bot first (for live data)
+Write-Host "Starting main arbitrage bot..."
+python run_bot.py 2> "logs/bot_$timestamp.error.log" "&"
+
+# Wait for main bot to initialize
+Write-Host "Waiting for bot initialization..."
+Start-Sleep -Seconds 10
+
+# Set timestamp for log files
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+# Start dashboard
+Write-Host "Starting minimal dashboard..."
+python minimal_dashboard.py 2> "logs/dashboard_$timestamp.error.log" "&"
 
 # Wait for dashboard to initialize
 Start-Sleep -Seconds 5
-
-# Start main bot with minimal output
-Write-Host "Starting arbitrage bot..."
-$botJob = Start-Job -ScriptBlock {
-    $env:PYTHONWARNINGS="ignore"
-    python main.py *> "logs/bot_$using:timestamp.log"
-}
 
 # Display status
 Write-Host ""
@@ -80,33 +123,24 @@ Write-Host "==============================="
 Write-Host "Listonian Arbitrage Bot Status"
 Write-Host "==============================="
 Write-Host ""
-Write-Host "Dashboard: Running (Job ID: $($dashboardJob.Id))"
-Write-Host "Bot: Running (Job ID: $($botJob.Id))"
+Write-Host "Main Bot: Running (providing live data)"
 Write-Host ""
-Write-Host "Monitor the logs directory for detailed output."
+Write-Host "Dashboard: Running (visualizing data)"
+Write-Host ""
+Write-Host "Monitor the logs directory for detailed output:"
+Write-Host "- logs/bot_$timestamp.log (main bot logs)"
+Write-Host "- logs/dashboard_$timestamp.log (dashboard logs)"
+Write-Host ""
+Write-Host "Access dashboard at: http://localhost:5000"
+Write-Host ""
 Write-Host "Press Ctrl+C to stop all processes."
 Write-Host ""
 
-# Handle cleanup on exit
-$cleanupAction = {
-    Write-Host "Stopping processes..."
-    Get-Job | Stop-Job
-    Get-Job | Remove-Job
-}
+# Keep script running but don't stream logs
+Write-Host "Bot and dashboard are running. Check logs directory for updates."
+Write-Host "Press Ctrl+C to stop all processes."
 
-# Register cleanup action
-Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action $cleanupAction | Out-Null
-
-# Keep script running and monitor jobs with minimal output
-try {
-    while ($true) {
-        $dashboardState = Receive-Job $dashboardJob -Keep
-        $botState = Receive-Job $botJob -Keep
-        if ($dashboardState -match "^ERROR|^CRITICAL|^FATAL") { Write-Host "Dashboard: $dashboardState" }
-        if ($botState -match "^ERROR|^CRITICAL|^FATAL") { Write-Host "Bot: $botState" }
-        Start-Sleep -Seconds 1
-    }
-} finally {
-    # Cleanup on script end
-    & $cleanupAction
+# Keep script alive without streaming logs
+while ($true) {
+    Start-Sleep -Seconds 60
 }

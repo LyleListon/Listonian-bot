@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from decimal import Decimal
 
-from ...utils.mcp_client import use_market_analysis
+from ...utils.mcp_helper import call_mcp_tool
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ class StatisticalArbitrage:
         """Analyze price patterns across DEXes."""
         try:
             # Get market analysis
-            analysis = await use_market_analysis(
+            analysis = await call_mcp_tool(
+                "market-analysis",
                 "analyze_opportunities",
                 {
                     "token": token,
@@ -116,7 +117,8 @@ class StatisticalArbitrage:
         """Detect mean reversion opportunities."""
         try:
             # Get historical opportunities
-            analysis = await use_market_analysis(
+            analysis = await call_mcp_tool(
+                "market-analysis",
                 "analyze_opportunities",
                 {
                     "token": token,

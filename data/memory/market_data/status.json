@@ -1,12 +1,13 @@
 {
   "data": {
     "status": {
-      "last_update": 1739332389.761619,
-      "active_pairs": 0,
-      "total_volume_24h": 0.0,
-      "total_opportunities": 0,
-      "average_profit": 0.0
+      "last_update": 1739721188.767287,
+      "active_pairs": 5,
+      "total_volume_24h": 1000.0,
+      "total_opportunities": 10,
+      "average_profit": 0.5
     }
   },
-  "timestamp": 1739332389.7616274
+  "timestamp": 1739721188.7672875,
+  "ttl": null
 }

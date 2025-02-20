@@ -1,0 +1,63 @@
+{
+  "data": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "timestamp": {
+        "type": "number"
+      },
+      "pair": {
+        "type": "string"
+      },
+      "buy_dex": {
+        "type": "string"
+      },
+      "sell_dex": {
+        "type": "string"
+      },
+      "buy_price": {
+        "type": "number"
+      },
+      "sell_price": {
+        "type": "number"
+      },
+      "amount": {
+        "type": "number"
+      },
+      "profit": {
+        "type": "number"
+      },
+      "gas_estimate": {
+        "type": "number"
+      },
+      "net_profit": {
+        "type": "number"
+      },
+      "executed": {
+        "type": "boolean"
+      },
+      "execution_id": {
+        "type": "string",
+        "nullable": true
+      }
+    },
+    "required": [
+      "id",
+      "timestamp",
+      "pair",
+      "buy_dex",
+      "sell_dex",
+      "buy_price",
+      "sell_price",
+      "amount",
+      "profit",
+      "gas_estimate",
+      "net_profit",
+      "executed"
+    ]
+  },
+  "timestamp": 1739745881.977666,
+  "ttl": null
+}

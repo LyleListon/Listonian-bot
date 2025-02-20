@@ -2,35 +2,44 @@
 
 import logging
 from typing import Dict, Any, Optional
-from ...utils.market_analyzer import MarketAnalyzer
+from ..analysis.market_analyzer import MarketAnalyzer
+from ..web3.web3_manager import Web3Manager
 
 logger = logging.getLogger(__name__)
 
 
-def create_risk_manager(risk_params: Dict[str, Any]) -> "RiskManager":
+def create_risk_manager(
+    risk_params: Dict[str, Any],
+    web3_manager: Web3Manager,
+    config: Dict[str, Any]
+) -> "RiskManager":
     """
     Create risk manager instance.
 
     Args:
         risk_params (Dict[str, Any]): Risk management parameters
+        web3_manager (Web3Manager): Web3Manager instance
+        config (Dict[str, Any]): Configuration dictionary
 
     Returns:
         RiskManager: Risk manager instance
     """
-    return RiskManager(risk_params)
+    return RiskManager(risk_params, web3_manager, config)
 
 
 class RiskManager:
     """Manages trading risk and exposure."""
 
-    def __init__(self, risk_params: Dict[str, Any]):
+    def __init__(self, risk_params: Dict[str, Any], web3_manager: Web3Manager, config: Dict[str, Any]):
         """
         Initialize risk manager.
 
         Args:
             risk_params (Dict[str, Any]): Risk management parameters
+            web3_manager (Web3Manager): Web3Manager instance
+            config (Dict[str, Any]): Configuration dictionary
         """
-        self.market_analyzer = MarketAnalyzer()
+        self.market_analyzer = MarketAnalyzer(web3_manager=web3_manager, config=config)
         self.risk_params = risk_params
         logger.info("Risk manager initialized with params: %s", risk_params)
 

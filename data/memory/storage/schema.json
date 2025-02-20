@@ -1,0 +1,157 @@
+{
+  "data": {
+    "type": "object",
+    "properties": {
+      "version": {
+        "type": "string"
+      },
+      "network": {
+        "type": "object",
+        "properties": {
+          "chain_id": {
+            "type": "integer"
+          },
+          "rpc_url": {
+            "type": "string"
+          },
+          "ws_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "explorer_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id",
+          "rpc_url",
+          "explorer_url"
+        ]
+      },
+      "trading": {
+        "type": "object",
+        "properties": {
+          "min_profit": {
+            "type": "number"
+          },
+          "max_slippage": {
+            "type": "number"
+          },
+          "gas_limit": {
+            "type": "integer"
+          },
+          "max_gas_price": {
+            "type": "number"
+          },
+          "retry_attempts": {
+            "type": "integer"
+          },
+          "retry_delay": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min_profit",
+          "max_slippage",
+          "gas_limit",
+          "max_gas_price",
+          "retry_attempts",
+          "retry_delay"
+        ]
+      },
+      "monitoring": {
+        "type": "object",
+        "properties": {
+          "update_interval": {
+            "type": "integer"
+          },
+          "price_deviation_threshold": {
+            "type": "number"
+          },
+          "liquidity_threshold": {
+            "type": "number"
+          },
+          "gas_price_threshold": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "update_interval",
+          "price_deviation_threshold",
+          "liquidity_threshold",
+          "gas_price_threshold"
+        ]
+      },
+      "dexes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "factory_address": {
+              "type": "string"
+            },
+            "router_address": {
+              "type": "string"
+            },
+            "fee_tiers": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          "required": [
+            "name",
+            "enabled",
+            "factory_address",
+            "router_address"
+          ]
+        }
+      },
+      "tokens": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "symbol": {
+              "type": "string"
+            },
+            "address": {
+              "type": "string"
+            },
+            "decimals": {
+              "type": "integer"
+            },
+            "min_amount": {
+              "type": "number"
+            },
+            "max_amount": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "symbol",
+            "address",
+            "decimals"
+          ]
+        }
+      }
+    },
+    "required": [
+      "version",
+      "network",
+      "trading",
+      "monitoring",
+      "dexes",
+      "tokens"
+    ]
+  },
+  "timestamp": 1739745882.1947827,
+  "ttl": null
+}

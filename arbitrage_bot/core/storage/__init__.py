@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional, List, Union, TypeVar, Generic
 from dataclasses import dataclass, asdict
 import json
 import os
+import eventlet
 import time
 import shutil
 from pathlib import Path
@@ -120,7 +121,7 @@ class StorageManager(Generic[T]):
         except JsonValidationError as e:
             raise ValidationError(f"Schema validation failed: {e}")
     
-    async def store(self, key: str, data: T, schema: Optional[Dict] = None,
+    def store(self, key: str, data: T, schema: Optional[Dict] = None,
               create_backup: bool = True) -> StorageMetadata:
         """Store data with optional schema validation and backup.
         
@@ -178,11 +179,11 @@ class StorageManager(Generic[T]):
         
         # Update cache if memory bank is available
         if self.memory_bank:
-            await self.memory_bank.store(key, data, self.category, ttl=None)
+            self.memory_bank.store(key, data, self.category, ttl=None)
         
         return metadata
     
-    async def retrieve(self, key: str, validate: bool = True) -> Optional[T]:
+    def retrieve(self, key: str, validate: bool = True) -> Optional[T]:
         """Retrieve stored data with optional validation.
         
         Args:
@@ -225,7 +226,7 @@ class StorageManager(Generic[T]):
             
             # Update cache if memory bank is available
             if self.memory_bank:
-                await self.memory_bank.store(key, data, self.category, ttl=None)
+                self.memory_bank.store(key, data, self.category, ttl=None)
             
             return data
         except Exception as e:
@@ -309,7 +310,7 @@ class StorageManager(Generic[T]):
         """
         return list(self._metadata.keys())
 
-    async def retrieve_recent(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def retrieve_recent(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Retrieve most recent items.
         
         Args:
@@ -328,7 +329,7 @@ class StorageManager(Generic[T]):
         # Retrieve data for each key
         items = []
         for key in sorted_keys:
-            data = await self.retrieve(key)
+            data = self.retrieve(key)
             if data:
                 items.append({
                     'key': key,

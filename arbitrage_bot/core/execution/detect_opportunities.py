@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 import time
 import lru
 
-from ..dex.dex_manager import DEXManager
+from ..dex import DexManager
 from ..analytics.analytics_system import AnalyticsSystem
 from ..ml.ml_system import MLSystem
 from ..models.opportunity import Opportunity, OpportunityStatus
@@ -36,7 +36,7 @@ class OpportunityDetector:
         self,
         config: Dict[str, Any],
         web3_manager: Any,
-        dex_manager: DEXManager,
+        dex_manager: DexManager,
         analytics: AnalyticsSystem,
         ml_system: MLSystem
     ):

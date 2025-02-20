@@ -1,0 +1,14 @@
+{
+  "contract": "MultiPathArbitrage",
+  "address": "0x899D71f0080D8C70538aC26Deb5564b50383B41E",
+  "network": "base",
+  "parameters": {
+    "poolAddressProvider": "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D",
+    "profitRecipient": "0x257a30645bF0C91BC155bd9C01BD722322050F7b"
+  },
+  "transactions": {
+    "deployment": "0xa0ff8e7919d87d5469280dfdce25e267779b6842bf95006ecb195dad32758275",
+    "setProfitRecipient": "0x0d5917420fa576bf58f28e854c57454945b10f96aca39cf929ef451cdb3b587f"
+  },
+  "timestamp": "2025-02-20T04:08:00.320Z"
+}

@@ -1,0 +1,17 @@
+{
+  "data": {
+    "price": 2677.155806296325,
+    "trend": "sideways",
+    "trend_strength": 0.0,
+    "trend_duration": 0.0,
+    "volatility": 0.0,
+    "confidence": 0.0,
+    "volume_24h": 0.0,
+    "liquidity": 0.0,
+    "volatility_24h": 0.0,
+    "price_impact": 0.0,
+    "timestamp": 1739745917.585913
+  },
+  "timestamp": 1739745918.22669,
+  "ttl": 30
+}

@@ -1,164 +1,91 @@
-Dashboard Integration Guide
+# Dashboard Integration Guide
 
-## Overview
-The dashboard provides real-time monitoring of market data, price feeds, and system performance through WebSocket integration.
+## Current Status
+We've been working on integrating a dynamic dashboard with real-time updates. Here's what's been done and what needs attention:
 
-## Architecture
+### Completed Work
+1. Set up basic server structure with FastAPI
+2. Implemented WebSocket support for real-time updates
+3. Created test page with:
+   - Memory bank status display
+   - Real-time opportunity tracking
+   - Trade history visualization
+   - Performance charts
+   - Responsive styling
+4. Fixed memory bank to use eventlet instead of asyncio
+5. Fixed portfolio tracker to prevent recursive nesting of trade data
+6. Updated DEX implementations (base_dex.py, baseswap.py, base_dex_v2.py) to use eventlet instead of asyncio
 
-### Data Flow
-```
-Market Analyzer → WebSocket Server → Dashboard
-     ↑               ↑                  ↑
-Price Data     Real-time Updates    User Interface
-```
+### Current Issues
+We're seeing coroutine warnings from several components that need to be converted from asyncio to eventlet:
+1. DistributionManager.initialize
+2. ExecutionManager.initialize
+3. WebSocketServer.initialize
+4. create_storage_hub
+5. create_gas_optimizer
+6. initialize_market_analyzer
+7. create_dex_manager
 
-### Components
+### Next Steps
+1. Update app.py to handle component initialization properly:
+   - Remove all async/await syntax
+   - Use eventlet.sleep(INIT_WAIT) between component initializations
+   - Call initialize() methods directly instead of awaiting them
+   - Use synchronous versions of create_* functions
 
-1. **WebSocket Server**
-   - Port: 8772 (configurable)
-   - Handles client connections
-   - Streams market data
-   - Manages connection state
+2. Key files that need attention:
+   - arbitrage_bot/dashboard/app.py (main focus)
+   - arbitrage_bot/core/distribution/manager.py
+   - arbitrage_bot/core/execution/manager.py
+   - arbitrage_bot/dashboard/websocket_server.py
+   - arbitrage_bot/core/storage/factory.py
+   - arbitrage_bot/core/gas/gas_optimizer.py
+   - arbitrage_bot/core/analysis/memory_market_analyzer.py
+   - arbitrage_bot/core/dex/dex_manager.py
 
-2. **Dashboard Frontend**
-   - Real-time price charts
-   - Market pair overview
-   - Performance metrics
-   - System status
+3. Pattern for converting async code:
+   ```python
+   # Before:
+   async def initialize(self):
+       result = await some_async_function()
+       return result
 
-3. **Data Pipeline**
-   - Price updates every second
-   - Performance stats every 5 seconds
-   - System health checks every minute
+   # After:
+   def initialize(self):
+       result = some_sync_function()
+       return result
+   ```
 
-## Integration Points
+4. For component initialization in app.py:
+   ```python
+   # Before:
+   await component.initialize()
 
-### 1. Market Data
-```python
-# Data format
-{
-    "type": "price_update",
-    "data": {
-        "pair": "WETH/USDC",
-        "price": "2650.42",
-        "timestamp": "2025-02-10T00:31:44Z"
-    }
-}
-```
+   # After:
+   component.initialize()
+   eventlet.sleep(INIT_WAIT)  # Add delay between initializations
+   ```
 
-### 2. Performance Metrics
-```python
-# Metrics format
-{
-    "type": "performance",
-    "data": {
-        "memory_usage": 205.90,
-        "cpu_usage": 25.5,
-        "network_rx": 1.2,
-        "network_tx": 0.8
-    }
-}
-```
+### Important Notes
+1. All async/await code should be converted to use eventlet
+2. Add INIT_WAIT (2 seconds) between component initializations
+3. Keep error handling and logging in place
+4. Maintain the same initialization order of components
+5. Verify each component is ready before proceeding
+6. Use eventlet.monkey_patch() at the start of app.py
 
-### 3. System Status
-```python
-# Status format
-{
-    "type": "status",
-    "data": {
-        "dexes": ["baseswap", "swapbased"],
-        "pairs_monitored": 6,
-        "last_update": "2025-02-10T00:31:44Z"
-    }
-}
-```
+### Testing
+After making changes:
+1. Run start_dashboard.ps1
+2. Check for coroutine warnings
+3. Verify all components initialize properly
+4. Test WebSocket connections
+5. Monitor memory usage for any leaks
 
-## Implementation Details
+### Environment Details
+- Working Directory: d:/Listonian-bot
+- API Keys and Credentials: Already configured in .env.production
+- Base Network RPC URL: https://base-mainnet.g.alchemy.com/v2/[key]
+- Dashboard Port: 5001
 
-### 1. WebSocket Connection
-```javascript
-// Client-side connection
-const ws = new WebSocket('ws://localhost:8772');
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    updateDashboard(data);
-};
-```
-
-### 2. Data Processing
-```python
-# Server-side processing
-async def process_market_data():
-    while True:
-        data = await get_market_data()
-        await broadcast_to_clients(data)
-        await asyncio.sleep(1)
-```
-
-### 3. Error Handling
-- Connection retry logic
-- Data validation
-- Error reporting
-- State recovery
-
-## Configuration
-
-### 1. Environment Variables
-```bash
-DASHBOARD_PORT=5001
-DASHBOARD_WEBSOCKET_PORT=8772
-```
-
-### 2. WebSocket Settings
-```python
-# Server configuration
-websocket_config = {
-    "ping_interval": 30,
-    "ping_timeout": 10,
-    "max_connections": 100
-}
-```
-
-## Monitoring
-
-### 1. Connection Health
-- Track client connections
-- Monitor message latency
-- Log connection events
-- Watch error rates
-
-### 2. Data Quality
-- Validate price updates
-- Check data freshness
-- Monitor update frequency
-- Track data gaps
-
-### 3. Performance
-- Message throughput
-- Connection count
-- Memory usage
-- CPU utilization
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Connection Drops**
-   - Check network stability
-   - Verify port availability
-   - Monitor server resources
-   - Review client logs
-
-2. **Data Delays**
-   - Check market analyzer
-   - Verify WebSocket server
-   - Monitor network latency
-   - Review queue size
-
-3. **High Resource Usage**
-   - Check connection count
-   - Monitor message size
-   - Review update frequency
-   - Optimize data structure
-
-Last Updated: 2025-02-10
+This should help the next assistant quickly understand the current state and continue the work efficiently.

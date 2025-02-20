@@ -8,6 +8,8 @@ setup(
     install_requires=[
         'flask',
         'flask-socketio',
+        'eventlet',
+        'cryptography',
         'flask-cors',
         'web3',
         'eth-tester',

@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-02-20T06:52:05.742Z",
+  "steps": [
+    {
+      "step": "Wallet Creation",
+      "derived": "0xc9eC57087138210a8cbbDD430D5763b94C6122b1",
+      "expected": "0x257a30645bF0C91BC155bd9C01BD722322050F7b",
+      "matches": false
+    },
+    {
+      "step": "Network Connection",
+      "name": "unknown",
+      "chainId": 8453
+    },
+    {
+      "step": "Balance Check",
+      "balance": "0.000009978765059176",
+      "balanceWei": "9978765059176"
+    },
+    {
+      "step": "Deployment Estimates",
+      "gasPrice": "0.008612247",
+      "estimatedGas": 3000000,
+      "estimatedCost": "0.000025836741",
+      "hasSufficientFunds": false
+    }
+  ],
+  "success": true
+}

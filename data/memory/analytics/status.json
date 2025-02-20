@@ -1,12 +1,13 @@
 {
   "data": {
     "status": {
-      "last_update": 1739332389.762857,
-      "success_rate": 0.0,
-      "profit_per_trade": 0.0,
-      "gas_efficiency": 0.0,
-      "opportunity_hit_rate": 0.0
+      "last_update": 1739721188.768288,
+      "success_rate": 80.0,
+      "profit_per_trade": 0.25,
+      "gas_efficiency": 0.85,
+      "opportunity_hit_rate": 0.75
     }
   },
-  "timestamp": 1739332389.762862
+  "timestamp": 1739721188.7682884,
+  "ttl": null
 }

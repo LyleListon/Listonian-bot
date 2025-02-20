@@ -1,11 +1,11 @@
 """Memory bank for storing and retrieving arbitrage opportunities and trade results."""
 
 import logging
-import asyncio
 import time
 import os
 import json
 import zlib
+import eventlet
 from typing import Dict, List, Any, Optional
 from dataclasses import asdict
 from concurrent.futures import ThreadPoolExecutor
@@ -13,13 +13,14 @@ from collections import namedtuple, defaultdict
 import lru
 
 from ..models.opportunity import Opportunity
+from .file_manager import FileManager
 
 logger = logging.getLogger(__name__)
 
-async def create_memory_bank(config: Optional[Dict[str, Any]] = None) -> 'MemoryBank':
+def create_memory_bank(config: Optional[Dict[str, Any]] = None) -> 'MemoryBank':
     """Create and initialize a memory bank instance."""
     memory_bank = MemoryBank()
-    success = await memory_bank.initialize(config)
+    success = memory_bank.initialize(config)
     if not success:
         raise RuntimeError("Failed to initialize memory bank")
     return memory_bank
@@ -27,8 +28,6 @@ async def create_memory_bank(config: Optional[Dict[str, Any]] = None) -> 'Memory
 # Cache settings
 CACHE_TTL = 60  # 60 seconds
 BATCH_SIZE = 50  # Process 50 items at a time
-MAX_RETRIES = 3  # Maximum number of retries for failed operations
-RETRY_DELAY = 1  # Delay between retries in seconds
 COMPRESSION_THRESHOLD = 1024  # Minimum size in bytes for compression
 CACHE_SIZE = 1000  # Maximum number of items in LRU cache
 
@@ -69,9 +68,10 @@ class MemoryBank:
         self.executor = ThreadPoolExecutor(max_workers=4)
         
         # Locks for thread safety
-        self._storage_locks = {category: asyncio.Lock() for category in self._categories}
-        self._stats_lock = asyncio.Lock()
-        self._file_lock = asyncio.Lock()
+        self._storage_locks = {}
+        for category in self._categories:
+            self._storage_locks[category] = eventlet.semaphore.Semaphore()
+        self._stats_lock = eventlet.semaphore.Semaphore()
         
         # LRU caches for frequently accessed data
         self._data_cache = lru.LRU(CACHE_SIZE)
@@ -83,37 +83,87 @@ class MemoryBank:
             # Use absolute path from project root
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
             self.base_path = os.path.join(project_root, "data", "memory")
-        os.makedirs(self.base_path, exist_ok=True)
+            
+        # Initialize file manager
+        self.file_manager = FileManager(self.base_path)
         
         logger.debug(f"Memory bank instance created with base path: {self.base_path}")
 
-    async def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
+    def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """Initialize memory bank with configuration."""
         try:
             if self.initialized:
                 logger.debug("Memory bank already initialized")
                 return True
                 
-            logger.info("Initializing memory bank...")
+            logger.debug("Initializing memory bank...")
             
             # Store configuration
             self.config = config or {}
             
             # Create category directories
             for category in self._categories:
-                category_path = os.path.join(self.base_path, category)
-                os.makedirs(category_path, exist_ok=True)
-                logger.debug(f"Created directory: {category_path}")
+                if not self.file_manager.ensure_directory(category):
+                    logger.error(f"Failed to create directory for category: {category}")
+                    return False
+            
+            # Load historical data
+            self._load_historical_data()
             
             self.initialized = True
-            logger.info("Memory bank initialization complete")
+            logger.debug("Memory bank initialization complete")
             return True
             
         except Exception as e:
             logger.error(f"Failed to initialize memory bank: {e}", exc_info=True)
             return False
 
-    async def store(self, key: str, data: Any, category: str, ttl: Optional[int] = None) -> None:
+    def _load_historical_data(self) -> None:
+        """Load historical data from disk."""
+        try:
+            # Load opportunities
+            opportunities = self.file_manager.read_json(os.path.join('market_data', 'opportunities.json'))
+            if opportunities:
+                self.opportunities = opportunities
+                logger.debug(f"Loaded {len(self.opportunities)} historical opportunities")
+
+            # Load trade results
+            trade_results = self.file_manager.read_json(os.path.join('transactions', 'trade_results.json'))
+            if trade_results:
+                self.trade_results = trade_results
+                logger.debug(f"Loaded {len(self.trade_results)} historical trade results")
+
+            # Load other categories
+            for category in self._categories:
+                if category not in ['market_data', 'transactions']:
+                    category_path = os.path.join(self.base_path, category)
+                    if os.path.exists(category_path):
+                        for filename in os.listdir(category_path):
+                            if filename.endswith('.json'):
+                                key = filename[:-5]  # Remove .json extension
+                                file_path = os.path.join(category, filename)
+                                try:
+                                    data_obj = self.file_manager.read_json(file_path)
+                                    if data_obj:
+                                        # Check TTL
+                                        if 'ttl' in data_obj and data_obj['ttl'] is not None:
+                                            if time.time() - data_obj['timestamp'] > data_obj['ttl']:
+                                                self.file_manager.delete_file(file_path)
+                                                continue
+                                        
+                                        # Store in memory
+                                        with self._storage_locks[category]:
+                                            self.storage[category][key] = data_obj
+                                except Exception as e:
+                                    logger.error(f"Failed to load {file_path}: {e}")
+                                    continue
+
+            logger.debug("Historical data loading complete")
+            
+        except Exception as e:
+            logger.error(f"Failed to load historical data: {e}")
+
+    def store(self, key: str, data: Any, category: str, ttl: Optional[int] = None) -> None:
         """Store data in specified category."""
         if not self.initialized:
             logger.warning("Memory bank not initialized")
@@ -127,39 +177,76 @@ class MemoryBank:
             # Store in memory
             data_obj = {
                 'data': data,
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'ttl': ttl
             }
-            async with self._storage_locks[category]:
+            with self._storage_locks[category]:
                 self.storage[category][key] = data_obj
             
             # Store to disk
-            logger.debug(f"Writing {category}/{key} to disk")
-            try:
-                file_path = os.path.join(self.base_path, category, f"{key}.json")
-                logger.debug(f"Writing to file: {file_path}")
+            file_path = os.path.join(category, f"{key}.json")
+            if not self.file_manager.write_json(file_path, data_obj):
+                logger.error(f"Failed to write data to {file_path}")
                 
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                
-                # Prepare data
-                json_data = json.dumps(data_obj, indent=2).encode('utf-8')
-                
-                # Write file
-                async with self._file_lock:
-                    await asyncio.get_event_loop().run_in_executor(
-                        self.executor,
-                        lambda: open(file_path, 'wb').write(json_data)
-                    )
-                logger.debug(f"Successfully wrote data to {file_path}")
-            except Exception as e:
-                logger.error(f"Failed to write file {file_path}: {e}")
-                raise
-            
         except Exception as e:
             logger.error(f"Error storing data: {e}")
             raise
 
-    async def store_opportunities(self, opportunities: List[Opportunity]) -> None:
+    def retrieve(self, key: str, category: str) -> Optional[Any]:
+        """Retrieve data from specified category."""
+        if not self.initialized:
+            logger.warning("Memory bank not initialized")
+            return None
+
+        try:
+            # Check cache first
+            cache_key = f"{category}:{key}"
+            if cache_key in self._data_cache:
+                with self._stats_lock:
+                    self.stats['cache_hits'] += 1
+                    return self._data_cache[cache_key]['data']
+
+            with self._stats_lock:
+                self.stats['cache_misses'] += 1
+
+            # Check memory storage
+            with self._storage_locks[category]:
+                if key in self.storage[category]:
+                    data_obj = self.storage[category][key]
+                    
+                    # Check TTL
+                    if 'ttl' in data_obj and data_obj['ttl'] is not None:
+                        if time.time() - data_obj['timestamp'] > data_obj['ttl']:
+                            del self.storage[category][key]
+                            return None
+                    
+                    # Update cache
+                    self._data_cache[cache_key] = data_obj
+                    return data_obj['data']
+
+            # If not in memory, try to load from disk
+            file_path = os.path.join(category, f"{key}.json")
+            data_obj = self.file_manager.read_json(file_path)
+            if data_obj:
+                # Check TTL
+                if 'ttl' in data_obj and data_obj['ttl'] is not None:
+                    if time.time() - data_obj['timestamp'] > data_obj['ttl']:
+                        self.file_manager.delete_file(file_path)
+                        return None
+                
+                # Store in memory and cache
+                with self._storage_locks[category]:
+                    self.storage[category][key] = data_obj
+                self._data_cache[cache_key] = data_obj
+                return data_obj['data']
+
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error retrieving data: {e}")
+            return None
+
+    def store_opportunities(self, opportunities: List[Opportunity]) -> None:
         """Store arbitrage opportunities."""
         if not self.initialized:
             logger.warning("Memory bank not initialized")
@@ -183,32 +270,14 @@ class MemoryBank:
             logger.debug(f"Added {len(opp_dicts)} opportunities to memory")
             
             # Store to disk
-            logger.debug("Writing opportunities to disk")
-            try:
-                file_path = os.path.join(self.base_path, 'market_data', 'opportunities.json')
-                logger.debug(f"Writing to file: {file_path}")
-                
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                
-                # Prepare data
-                json_data = json.dumps(self.opportunities, indent=2).encode('utf-8')
-                
-                # Write file
-                async with self._file_lock:
-                    await asyncio.get_event_loop().run_in_executor(
-                        self.executor,
-                        lambda: open(file_path, 'wb').write(json_data)
-                    )
-                logger.debug(f"Successfully wrote {len(self.opportunities)} opportunities to {file_path}")
-            except Exception as e:
-                logger.error(f"Failed to write opportunities to disk: {e}")
-                raise
+            file_path = os.path.join('market_data', 'opportunities.json')
+            if not self.file_manager.write_json(file_path, self.opportunities):
+                logger.error("Failed to write opportunities to disk")
             
         except Exception as e:
             logger.error(f"Error storing opportunities: {e}", exc_info=True)
 
-    async def store_trade_result(
+    def store_trade_result(
         self,
         opportunity: Dict[str, Any],
         success: bool,
@@ -236,32 +305,14 @@ class MemoryBank:
             self.trade_results.append(result)
             
             # Store to disk
-            logger.debug("Writing trade results to disk")
-            try:
-                file_path = os.path.join(self.base_path, 'transactions', 'trade_results.json')
-                logger.debug(f"Writing to file: {file_path}")
-                
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                
-                # Prepare data
-                json_data = json.dumps(self.trade_results, indent=2).encode('utf-8')
-                
-                # Write file
-                async with self._file_lock:
-                    await asyncio.get_event_loop().run_in_executor(
-                        self.executor,
-                        lambda: open(file_path, 'wb').write(json_data)
-                    )
-                logger.debug(f"Successfully wrote {len(self.trade_results)} trade results to {file_path}")
-            except Exception as e:
-                logger.error(f"Failed to write trade results to disk: {e}")
-                raise
+            file_path = os.path.join('transactions', 'trade_results.json')
+            if not self.file_manager.write_json(file_path, self.trade_results):
+                logger.error("Failed to write trade results to disk")
             
         except Exception as e:
             logger.error(f"Error storing trade result: {e}")
 
-    async def get_trade_history(self, limit: Optional[int] = None, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_trade_history(self, limit: Optional[int] = None, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get trade execution history."""
         if not self.initialized:
             logger.warning("Memory bank not initialized")
@@ -322,7 +373,7 @@ class MemoryBank:
                 'compression_savings': 0
             }
 
-    async def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get recent arbitrage opportunities."""
         try:
             current_time = time.time()
@@ -340,7 +391,7 @@ class MemoryBank:
             logger.error(f"Error getting recent opportunities: {e}")
             return []
 
-    async def get_memory_stats(self) -> MemoryStats:
+    def get_memory_stats(self) -> MemoryStats:
         """Get memory usage statistics."""
         try:
             total_size = 0

@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Dict, Any, Union
 from web3 import Web3
 from web3.contract import Contract
+import eventlet
 
 from ..web3.connection import create_web3_manager, Web3Manager
 
@@ -35,7 +36,7 @@ class DashboardWeb3Utils:
             logger.error(f"Error loading contract: {str(e)}")
             raise
 
-    async def eth_call(self, transaction: Dict[str, Any]) -> bytes:
+    def eth_call(self, transaction: Dict[str, Any]) -> bytes:
         """Make eth_call"""
         try:
             result = self.w3.eth.call(transaction)
@@ -45,7 +46,7 @@ class DashboardWeb3Utils:
             logger.error(f"Error in eth_call: {str(e)}")
             raise
 
-    async def get_balance(self) -> float:
+    def get_balance(self) -> float:
         """Get ETH balance for wallet address"""
         try:
             if not self.wallet_address:
@@ -58,7 +59,7 @@ class DashboardWeb3Utils:
             logger.error(f"Error getting ETH balance: {str(e)}")
             return 0.0
 
-    async def get_token_balance(
+    def get_token_balance(
         self, token_address: str, token_decimals: int = 18
     ) -> float:
         """Get token balance for wallet address"""

@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from ..web3.web3_manager import Web3Manager
 from ..analytics.analytics_system import AnalyticsSystem
 from ..ml.ml_system import MLSystem
-from ..dex.dex_manager import DEXManager
+from ..dex import DexManager
 from ..dex.utils import COMMON_TOKENS
 from ...utils.database import DateTimeEncoder
 
@@ -34,7 +34,7 @@ class TransactionMonitor:
         web3_manager: Web3Manager,
         analytics: AnalyticsSystem,
         ml_system: MLSystem,
-        dex_manager: DEXManager,
+        dex_manager: DexManager,
         monitoring_dir: str = "monitoring_data",
         max_blocks_history: int = 1000,
         mempool_refresh_rate: float = 0.1,  # seconds
@@ -754,7 +754,7 @@ async def create_transaction_monitor(
     web3_manager: Web3Manager,
     analytics: AnalyticsSystem,
     ml_system: MLSystem,
-    dex_manager: DEXManager,
+    dex_manager: DexManager,
     monitoring_dir: Optional[str] = None,
     max_blocks_history: Optional[int] = None,
     mempool_refresh_rate: Optional[float] = None,

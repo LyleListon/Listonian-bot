@@ -12,8 +12,69 @@ logger = logging.getLogger(__name__)
 
 class ConfigurationError(Exception):
     """Configuration related errors."""
-
     pass
+
+
+class InitializationError(Exception):
+    """Base class for initialization related errors."""
+    pass
+
+
+def resolve_secure_value(value: str, required: bool = True) -> str:
+    """
+    Resolve secure value from environment variable.
+    
+    Args:
+        value (str): Value to resolve (e.g. "$SECURE:ALCHEMY_API_KEY")
+        required (bool): Whether the environment variable is required
+        
+    Returns:
+        str: Resolved value from environment variable
+    """
+    if not (isinstance(value, str) and value.startswith("$SECURE:")):
+        return value
+        
+    env_key = value.replace("$SECURE:", "")
+    env_value = os.getenv(env_key)
+    
+    # Only raise error if value is required
+    if not env_value and required:
+        raise ConfigurationError(f"Required environment variable {env_key} not set")
+        
+    # Return original value if not found and not required
+    return env_value if env_value else value
+
+
+def resolve_secure_values(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Recursively resolve secure values in config.
+    
+    Args:
+        config (Dict[str, Any]): Configuration dictionary
+        
+    Returns:
+        Dict[str, Any]: Configuration with resolved values
+    """
+    resolved = {}
+    for key, value in config.items():
+        if isinstance(value, dict):
+            resolved[key] = resolve_secure_values(value)
+        elif isinstance(value, list):
+            resolved[key] = [resolve_secure_values(item) if isinstance(item, dict) else resolve_secure_value(item) for item in value]
+        else:
+            # Only require certain environment variables
+            required = key in ['WALLET_ADDRESS', 'PRIVATE_KEY', 'BASE_RPC_URL']
+            resolved[key] = resolve_secure_value(value, required=required)
+            
+            # Special handling for profit_recipient
+            if key == 'profit_recipient' and not resolved[key].startswith('0x'):
+                # If profit_recipient not set, use wallet_address
+                if 'wallet_address' in resolved:
+                    resolved[key] = resolved['wallet_address']
+                elif 'wallet' in resolved and 'wallet_address' in resolved['wallet']:
+                    resolved[key] = resolved['wallet']['wallet_address']
+                    
+    return resolved
 
 
 class ConfigLoader:
@@ -105,6 +166,117 @@ def create_config_loader(testing: bool = False) -> ConfigLoader:
     return ConfigLoader(testing)
 
 
+def get_default_config() -> Dict[str, Any]:
+    """
+    Get default configuration settings.
+    
+    Returns:
+        Dict[str, Any]: Default configuration dictionary
+    """
+    return {
+        "network": "mainnet",
+        "rpc_url": "http://localhost:8545",
+        "auto_execute": False,
+        "execution": {
+            "enabled": True,
+            "loop_interval": 10,
+            "min_profit_threshold": 0.002,
+            "max_concurrent_trades": 1,
+        },
+        "monitoring": {
+            "update_interval": 10,
+            "log_level": "INFO"
+        },
+        "trading": {
+            "max_slippage": 0.01,
+            "min_liquidity": 1000,
+            "max_trade_size": 1.0,
+        },
+    }
+
+def get_test_config() -> Dict[str, Any]:
+    """
+    Get test configuration settings.
+    
+    Returns:
+        Dict[str, Any]: Test configuration dictionary
+    """
+    return {
+        "network": "test",
+        "rpc_url": "http://localhost:8545",
+        "auto_execute": False,
+        "execution": {
+            "enabled": True,
+            "loop_interval": 1,
+            "min_profit_threshold": 0.001,
+            "max_concurrent_trades": 1,
+        },
+        "monitoring": {
+            "update_interval": 1,
+            "log_level": "INFO"
+        },
+        "trading": {
+            "max_slippage": 0.01,
+            "min_liquidity": 100,
+            "max_trade_size": 0.1,
+        },
+        "tokens": {
+            "WETH": {
+                "address": "0x0000000000000000000000000000000000000000",
+                "decimals": 18,
+            },
+            "USDC": {
+                "address": "0x0000000000000000000000000000000000000001",
+                "decimals": 6,
+            },
+        },
+        "mcp": {
+            "price_validation": {
+                "enabled": True,
+                "max_deviation_percent": 5.0,
+                "required_confidence": 0.8,
+                "update_interval": 60,
+                "tokens": {
+                    "WETH": "ethereum",
+                    "USDC": "usd-coin",
+                    "DAI": "dai"
+                }
+            },
+            "market_analysis": {
+                "enabled": True,
+                "metrics": ["volatility", "volume", "trend"],
+                "thresholds": {
+                    "high_volatility": 0.5,
+                    "medium_volatility": 0.3,
+                    "min_volume_usd": 100000,
+                    "min_liquidity_usd": 500000
+                },
+                "cache_duration": 300
+            }
+        },
+    }
+
+def _create_default_config_file(config_path: Path) -> bool:
+    """
+    Create a new config file with default settings.
+    
+    Args:
+        config_path (Path): Path where to create the config file
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        config = get_default_config()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create config file: {e}")
+        return False
+
 def ensure_config_exists(testing: bool = False) -> bool:
     """
     Ensure configuration file exists.
@@ -139,11 +311,8 @@ def ensure_config_exists(testing: bool = False) -> bool:
     for template_path in template_paths:
         if template_path.exists():
             try:
-                # Create config directory if needed
                 config_path = Path("config.json")
                 config_path.parent.mkdir(parents=True, exist_ok=True)
-
-                # Copy template to config
                 shutil.copy2(template_path, config_path)
                 logger.info(f"Created config from template: {config_path}")
                 return True
@@ -151,35 +320,13 @@ def ensure_config_exists(testing: bool = False) -> bool:
                 logger.error(f"Failed to copy config template: {e}")
                 continue
 
-    # Create default config
+    # Create default config if no template was found
     try:
-        config = {
-            "network": "mainnet",
-            "rpc_url": "http://localhost:8545",
-            "auto_execute": False,
-            "execution": {
-                "enabled": True,
-                "loop_interval": 10,
-                "min_profit_threshold": 0.002,
-                "max_concurrent_trades": 1,
-            },
-            "monitoring": {"update_interval": 10, "log_level": "INFO"},
-            "trading": {
-                "max_slippage": 0.01,
-                "min_liquidity": 1000,
-                "max_trade_size": 1.0,
-            },
-        }
-
         config_path = Path("config.json")
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2)
-
-        logger.info(f"Created default config: {config_path}")
-        return True
-
+        if _create_default_config_file(config_path):
+            logger.info(f"Created default config: {config_path}")
+            return True
+        return False
     except Exception as e:
         logger.error(f"Failed to create default config: {e}")
         return False
@@ -206,57 +353,7 @@ def load_config(testing: bool = False) -> Dict[str, Any]:
         return merged
 
     if testing:
-        return {
-            "network": "test",
-            "rpc_url": "http://localhost:8545",
-            "auto_execute": False,
-            "execution": {
-                "enabled": True,
-                "loop_interval": 1,
-                "min_profit_threshold": 0.001,
-                "max_concurrent_trades": 1,
-            },
-            "monitoring": {"update_interval": 1, "log_level": "INFO"},
-            "trading": {
-                "max_slippage": 0.01,
-                "min_liquidity": 100,
-                "max_trade_size": 0.1,
-            },
-            "tokens": {
-                "WETH": {
-                    "address": "0x0000000000000000000000000000000000000000",
-                    "decimals": 18,
-                },
-                "USDC": {
-                    "address": "0x0000000000000000000000000000000000000001",
-                    "decimals": 6,
-                },
-            },
-            "mcp": {
-                "price_validation": {
-                    "enabled": True,
-                    "max_deviation_percent": 5.0,
-                    "required_confidence": 0.8,
-                    "update_interval": 60,
-                    "tokens": {
-                        "WETH": "ethereum",
-                        "USDC": "usd-coin",
-                        "DAI": "dai"
-                    }
-                },
-                "market_analysis": {
-                    "enabled": True,
-                    "metrics": ["volatility", "volume", "trend"],
-                    "thresholds": {
-                        "high_volatility": 0.5,
-                        "medium_volatility": 0.3,
-                        "min_volume_usd": 100000,
-                        "min_liquidity_usd": 500000
-                    },
-                    "cache_duration": 300
-                }
-            },
-        }
+        return get_test_config()
 
     # Load main config
     config = None
@@ -302,6 +399,13 @@ def load_config(testing: bool = False) -> Dict[str, Any]:
                 break
             except Exception as e:
                 logger.error(f"Failed to load DEX config from {path}: {e}")
+
+    # Resolve secure values
+    try:
+        config = resolve_secure_values(config)
+    except ConfigurationError as e:
+        logger.error(f"Failed to resolve secure values: {e}")
+        raise
 
     logger.debug(f"Final merged config: {json.dumps(config, indent=2)}")
     logger.info(f"Config loaded successfully: {len(config)} top-level keys")

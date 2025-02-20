@@ -1,247 +1,91 @@
 {% extends "base.html" %}
 
-{% block title %}Memory Monitor{% endblock %}
-
 {% block content %}
-<div class="container">
-    <h1>Memory Bank Monitor</h1>
-    
-    <div class="row mt-4">
-        <!-- Memory Usage Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Memory Usage</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="memoryUsageChart"></canvas>
-                    <div class="mt-3">
-                        <p>Cache Size: <span id="cacheSize">-</span></p>
-                        <p>Disk Size: <span id="diskSize">-</span></p>
-                        <p>Total Entries: <span id="totalEntries">-</span></p>
-                    </div>
-                </div>
+<div class="card">
+    <div class="card-header">
+        <h3>Memory Bank</h3>
+    </div>
+    <div class="card-body">
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h4>Memory Usage</h4>
+                <div class="metric-value" id="memory-usage">0%</div>
+            </div>
+            <div class="metric-card">
+                <h4>Stored Items</h4>
+                <div class="metric-value" id="stored-items">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Last Update</h4>
+                <div class="metric-value" id="last-update">Never</div>
             </div>
         </div>
         
-        <!-- Category Distribution Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Category Distribution</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="categoryChart"></canvas>
-                </div>
+        <div class="card">
+            <div class="card-header">
+                <h4>Memory Contents</h4>
             </div>
-        </div>
-    </div>
-    
-    <div class="row mt-4">
-        <!-- Version History Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Version History</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table" id="versionTable">
-                            <thead>
-                                <tr>
-                                    <th>Key</th>
-                                    <th>Version</th>
-                                    <th>Comment</th>
-                                    <th>Timestamp</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Compression Stats Card -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Compression Statistics</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table" id="compressionTable">
-                            <thead>
-                                <tr>
-                                    <th>Key</th>
-                                    <th>Original Size</th>
-                                    <th>Compressed Size</th>
-                                    <th>Ratio</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Key</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Last Access</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="memory-list">
+                        <!-- Memory items will be inserted here -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
-{% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% block extra_js %}
 <script>
-let memoryUsageChart;
-let categoryChart;
-
-function initCharts() {
-    // Memory Usage Chart
-    const memoryCtx = document.getElementById('memoryUsageChart').getContext('2d');
-    memoryUsageChart = new Chart(memoryCtx, {
-        type: 'bar',
-        data: {
-            labels: ['Cache', 'Disk'],
-            datasets: [{
-                label: 'Size (MB)',
-                data: [0, 0],
-                backgroundColor: ['rgba(54, 162, 235, 0.5)', 'rgba(255, 99, 132, 0.5)'],
-                borderColor: ['rgba(54, 162, 235, 1)', 'rgba(255, 99, 132, 1)'],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Size (MB)'
-                    }
-                }
-            }
-        }
-    });
-
-    // Category Distribution Chart
-    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
-    categoryChart = new Chart(categoryCtx, {
-        type: 'pie',
-        data: {
-            labels: [],
-            datasets: [{
-                data: [],
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.5)',
-                    'rgba(54, 162, 235, 0.5)',
-                    'rgba(255, 206, 86, 0.5)',
-                    'rgba(75, 192, 192, 0.5)',
-                    'rgba(153, 102, 255, 0.5)'
-                ],
-                borderColor: [
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 206, 86, 1)',
-                    'rgba(75, 192, 192, 1)',
-                    'rgba(153, 102, 255, 1)'
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'right'
-                }
-            }
-        }
-    });
-}
-
-function updateMemoryStats(data) {
-    const stats = data.stats.memory;
-    
-    // Update charts
-    memoryUsageChart.data.datasets[0].data = [
-        stats.cache_size / (1024 * 1024),
-        stats.total_size / (1024 * 1024)
-    ];
-    memoryUsageChart.update();
-
-    const categories = Object.keys(stats.categories);
-    const sizes = categories.map(cat => stats.categories[cat].size);
-    categoryChart.data.labels = categories;
-    categoryChart.data.datasets[0].data = sizes;
-    categoryChart.update();
-
-    // Update text displays
-    document.getElementById('cacheSize').textContent = 
-        `${(stats.cache_size / (1024 * 1024)).toFixed(2)} MB`;
-    document.getElementById('diskSize').textContent = 
-        `${(stats.total_size / (1024 * 1024)).toFixed(2)} MB`;
-    document.getElementById('totalEntries').textContent = stats.total_entries;
-}
-
-function updateCompressionStats(stats) {
-    if (!stats) return;
-    
-    const tbody = document.querySelector('#compressionTable tbody');
-    tbody.innerHTML = '';
-    
-    for (const [key, stat] of Object.entries(stats)) {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${key}</td>
-            <td>${(stat.original_size / 1024).toFixed(2)} KB</td>
-            <td>${(stat.compressed_size / 1024).toFixed(2)} KB</td>
-            <td>${stat.ratio.toFixed(2)}x</td>
-            <td>${(stat.time_taken * 1000).toFixed(2)} ms</td>
-        `;
-        tbody.appendChild(row);
-    }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    initCharts();
-    
-    // Connect to Socket.IO for real-time updates
-    const socket = io();
-    
-    socket.on('memory_stats', (data) => {
-        updateMemoryStats(data);
-        if (data.stats.compression) {
-            updateCompressionStats(data.stats.compression);
-        }
-    });
-    
-    socket.on('version_history', (data) => {
-        updateVersionHistory(data.versions);
-    });
-
-    function updateVersionHistory(versions) {
-        const tbody = document.querySelector('#versionTable tbody');
-        tbody.innerHTML = '';
+    socket.on('memory_update', (data) => {
+        if (!data) return;
         
-        for (const [key, history] of Object.entries(versions)) {
-            for (const version of history) {
-                const row = document.createElement('tr');
-                const timestamp = new Date(version.timestamp * 1000);
-                row.innerHTML = `
-                    <td>${key}</td>
-                    <td>${version.version}</td>
-                    <td>${version.comment || '-'}</td>
-                    <td>${timestamp.toLocaleString()}</td>
-                `;
-                tbody.appendChild(row);
-            }
-        }
+        // Update metrics
+        document.getElementById('memory-usage').textContent = `${(data.usage * 100).toFixed(1)}%`;
+        document.getElementById('stored-items').textContent = data.item_count;
+        document.getElementById('last-update').textContent = new Date(data.last_update).toLocaleTimeString();
+        
+        // Update memory list
+        const memoryList = document.getElementById('memory-list');
+        if (!memoryList || !data.items) return;
+        
+        memoryList.innerHTML = data.items.map(item => `
+            <tr>
+                <td>${item.key}</td>
+                <td>${item.type}</td>
+                <td>${formatSize(item.size)}</td>
+                <td>${new Date(item.last_access).toLocaleTimeString()}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="clearMemoryItem('${item.key}')">
+                        Clear
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    });
+
+    function clearMemoryItem(key) {
+        socket.emit('clear_memory_item', { key });
     }
-});
+
+    function formatSize(bytes) {
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        } else if (bytes >= 1024) {
+            return `${(bytes / 1024).toFixed(2)} KB`;
+        }
+        return `${bytes} B`;
+    }
 </script>
 {% endblock %}

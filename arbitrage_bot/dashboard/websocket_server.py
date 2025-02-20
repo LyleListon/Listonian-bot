@@ -1,208 +1,216 @@
-"""WebSocket server for real-time data streaming."""
+"""WebSocket server for real-time dashboard updates."""
 
-import asyncio
 import logging
-from typing import Dict, Any, Optional, cast
+import json
+import eventlet
+from typing import Dict, Any, Optional
+from flask_socketio import SocketIO, emit
+from decimal import Decimal
 from datetime import datetime
-from web3 import Web3
-from web3.types import BlockData
-from arbitrage_bot.core.web3.web3_manager import Web3Manager
-from arbitrage_bot.core.analytics.analytics_system import create_analytics_system
-from arbitrage_bot.core.analysis.market_analyzer import create_market_analyzer
-from arbitrage_bot.core.gas.gas_optimizer import create_gas_optimizer
 
 logger = logging.getLogger(__name__)
 
 class WebSocketServer:
-    """WebSocket server for streaming real-time data."""
+    """WebSocket server for real-time dashboard updates."""
 
-    def __init__(self, socketio):
+    def __init__(
+        self,
+        socketio: SocketIO,
+        market_analyzer: Any = None,
+        portfolio_tracker: Any = None,
+        memory_bank: Any = None,
+        storage_hub: Any = None,
+        distribution_manager: Any = None,
+        execution_manager: Any = None,
+        gas_optimizer: Any = None
+    ):
         """Initialize WebSocket server."""
         self.socketio = socketio
-        self.connected_clients = set()
-        self.last_update = {
-            'state': 0,
-            'metrics': 0,
-            'market': 0
-        }
-        
-        # Core components
-        self.web3_manager = None
-        self.analytics_system = None
-        self.market_analyzer = None
-        self.gas_optimizer = None
+        self.market_analyzer = market_analyzer
+        self.portfolio_tracker = portfolio_tracker
+        self.memory_bank = memory_bank
+        self.storage_hub = storage_hub
+        self.distribution_manager = distribution_manager
+        self.execution_manager = execution_manager
+        self.gas_optimizer = gas_optimizer
+        self.is_running = False
+        self.update_interval = 5  # seconds
+        logger.debug("WebSocket server initialized")
 
-    async def initialize(self, config: Dict[str, Any]) -> bool:
-        """Initialize core components."""
+    def initialize(self) -> bool:
+        """Initialize server components."""
         try:
-            # Initialize Web3 manager
-            self.web3_manager = Web3Manager(config)
-            
-            # Initialize analytics system
-            self.analytics_system = await create_analytics_system(config)
-            
-            # Initialize market analyzer
-            self.market_analyzer = await create_market_analyzer(
-                web3_manager=self.web3_manager,
-                config=config
-            )
-            
-            # Initialize gas optimizer
-            self.gas_optimizer = await create_gas_optimizer(
-                web3_manager=self.web3_manager,
-                config=config
-            )
-            
+            # Verify all required components
+            if not all([
+                self.socketio,
+                self.market_analyzer,
+                self.portfolio_tracker,
+                self.memory_bank,
+                self.storage_hub,
+                self.distribution_manager,
+                self.execution_manager,
+                self.gas_optimizer
+            ]):
+                logger.error("Missing required components")
+                return False
+
+            # Register event handlers
+            self._register_handlers()
+            logger.debug("WebSocket server initialized successfully")
             return True
+
         except Exception as e:
             logger.error(f"Failed to initialize WebSocket server: {e}")
             return False
 
-    async def start(self):
-        """Start the WebSocket server."""
-        await asyncio.gather(
-            self._state_loop(),
-            self._metrics_loop(),
-            self._market_loop()
-        )
+    def start(self):
+        """Start WebSocket server."""
+        try:
+            self.is_running = True
+            eventlet.spawn(self._update_loop)
+            logger.debug("WebSocket server started")
 
-    async def _state_loop(self):
-        """Stream real-time state data (2s updates)."""
-        while True:
-            try:
-                # Get opportunities
-                opportunities = await self.market_analyzer.get_opportunities()
-                
-                # Get gas data
-                gas_analysis = await self.gas_optimizer.analyze_gas_usage()
-                optimal_gas = await self.gas_optimizer.get_optimal_gas_price()
-                
-                # Get latest block
-                block = self.web3_manager.get_block()
-                block_data = self._get_block_data(block)
-                
-                # Combine data
-                data = {
-                    'opportunities': [opp.__dict__ for opp in opportunities],
-                    'gas': {
-                        'analysis': gas_analysis,
-                        'optimal_price': optimal_gas,
-                        'current_price': block_data.get('base_fee')
-                    },
-                    'network': {
-                        'status': 'connected' if self.web3_manager.is_connected() else 'disconnected',
-                        'block': block_data
-                    }
-                }
-                
-                self.socketio.emit('state_update', data, namespace='/')
-            except Exception as e:
-                logger.error(f"Error in state loop: {e}")
-            await asyncio.sleep(2)  # 2 second updates
+        except Exception as e:
+            logger.error(f"Failed to start WebSocket server: {e}")
+            self.is_running = False
+            raise
 
-    async def _metrics_loop(self):
-        """Stream performance metrics data (5s updates)."""
-        while True:
-            try:
-                # Get analytics metrics
-                analytics = await self.analytics_system.get_metrics()
-                
-                # Get performance metrics
-                performance = await self.market_analyzer.get_performance_metrics()
-                
-                # Get DEX metrics
-                dex_metrics = {}
-                for dex_name in self.web3_manager.config['dexes']:
-                    if not self.config['dexes'][dex_name].get('enabled', True):
-                        continue
-                        
-                    dex_class = self._get_dex_class(dex_name)
-                    if not dex_class:
-                        continue
-                        
-                    dex = dex_class(self.web3_manager, self.config['dexes'][dex_name])
-                    await dex.initialize()
-                    
-                    liquidity = await dex.get_total_liquidity()
-                    volume = await dex.get_24h_volume()
-                    
-                    dex_metrics[dex_name] = {
-                        'active': True,
-                        'liquidity': float(liquidity) if liquidity else 0,
-                        'volume_24h': float(volume) if volume else 0
-                    }
-                
-                # Combine data
-                data = {
-                    'analytics': analytics,
-                    'performance': performance,
-                    'dex_metrics': dex_metrics
-                }
-                
-                self.socketio.emit('metrics_update', data, namespace='/')
-            except Exception as e:
-                logger.error(f"Error in metrics loop: {e}")
-            await asyncio.sleep(5)  # 5 second updates
+    def stop(self):
+        """Stop WebSocket server."""
+        self.is_running = False
+        logger.debug("WebSocket server stopped")
 
-    async def _market_loop(self):
-        """Stream market analysis data (10s updates)."""
-        while True:
-            try:
-                market_data = {}
-                
-                # Get market conditions for each token
-                for token in self.web3_manager.config['tokens']:
-                    condition = await self.market_analyzer.get_market_condition(token)
-                    if condition:
-                        market_data[token] = condition.__dict__
-                
-                # Get competition analysis
-                competition = await self.tx_monitor.get_metrics()
-                
-                # Get ML analysis
-                ml_state = self.ml_system.get_state()
-                
-                data = {
-                    'market_conditions': market_data,
-                    'competition': competition,
-                    'analysis': ml_state.get('market_state', {})
-                }
-                
-                self.socketio.emit('market_update', data, namespace='/')
-            except Exception as e:
-                logger.error(f"Error in market loop: {e}")
-            await asyncio.sleep(10)  # 10 second updates
-
-    def _get_block_data(self, block: BlockData) -> Dict[str, Any]:
-        """Safely extract block data."""
-        block_dict = cast(Dict[str, Any], block)
+    def _register_handlers(self):
+        """Register WebSocket event handlers."""
         
-        timestamp = block_dict.get('timestamp')
-        timestamp_str = datetime.fromtimestamp(timestamp).isoformat() if timestamp else None
-        
-        base_fee = block_dict.get('baseFeePerGas')
-        base_fee_gwei = Web3.from_wei(base_fee, 'gwei') if base_fee else None
-        
-        return {
-            'number': block_dict.get('number'),
-            'timestamp': timestamp_str,
-            'gas_used': block_dict.get('gasUsed'),
-            'gas_limit': block_dict.get('gasLimit'),
-            'base_fee': base_fee_gwei,
-            'transaction_count': len(block_dict.get('transactions', []))
-        }
+        @self.socketio.on('connect')
+        def handle_connect():
+            """Handle client connection."""
+            logger.debug("Client connected")
+            self._send_initial_data()
 
-    def handle_client_connect(self, client_id: str):
-        """Handle client connection."""
-        self.connected_clients.add(client_id)
-        logger.info(f"Client {client_id} connected. Total clients: {len(self.connected_clients)}")
+        @self.socketio.on('disconnect')
+        def handle_disconnect():
+            """Handle client disconnection."""
+            logger.debug("Client disconnected")
 
-    def handle_client_disconnect(self, client_id: str):
-        """Handle client disconnection."""
-        self.connected_clients.discard(client_id)
-        logger.info(f"Client {client_id} disconnected. Total clients: {len(self.connected_clients)}")
+        @self.socketio.on('request_update')
+        def handle_update_request(data):
+            """Handle update request from client."""
+            try:
+                update_type = data.get('type')
+                if update_type == 'market_data':
+                    self._send_market_data()
+                elif update_type == 'portfolio':
+                    self._send_portfolio_data()
+                elif update_type == 'memory':
+                    self._send_memory_data()
+                elif update_type == 'storage':
+                    self._send_storage_data()
+                elif update_type == 'distribution':
+                    self._send_distribution_data()
+                elif update_type == 'execution':
+                    self._send_execution_data()
+                elif update_type == 'gas':
+                    self._send_gas_data()
+                else:
+                    logger.warning(f"Unknown update type requested: {update_type}")
+            except Exception as e:
+                logger.error(f"Error handling update request: {e}")
 
-    def broadcast(self, event: str, data: Dict[str, Any]):
-        """Broadcast data to all connected clients."""
-        for client_id in self.connected_clients:
-            self.socketio.emit(event, data, room=client_id)
+    def _update_loop(self):
+        """Main update loop for pushing data to clients."""
+        while self.is_running:
+            try:
+                self._send_market_data()
+                self._send_portfolio_data()
+                self._send_memory_data()
+                self._send_storage_data()
+                self._send_distribution_data()
+                self._send_execution_data()
+                self._send_gas_data()
+                eventlet.sleep(self.update_interval)
+            except Exception as e:
+                logger.error(f"Error in update loop: {e}")
+                eventlet.sleep(1)  # Brief delay before retry
+
+    def _send_initial_data(self):
+        """Send initial data to newly connected client."""
+        try:
+            self._send_market_data()
+            self._send_portfolio_data()
+            self._send_memory_data()
+            self._send_storage_data()
+            self._send_distribution_data()
+            self._send_execution_data()
+            self._send_gas_data()
+        except Exception as e:
+            logger.error(f"Error sending initial data: {e}")
+
+    def _send_market_data(self):
+        """Send market data update."""
+        try:
+            market_data = self.market_analyzer.get_market_summary()
+            self.socketio.emit('market_update', market_data)
+        except Exception as e:
+            logger.error(f"Error sending market data: {e}")
+
+    def _send_portfolio_data(self):
+        """Send portfolio data update."""
+        try:
+            portfolio_data = self.portfolio_tracker.get_portfolio_summary()
+            self.socketio.emit('portfolio_update', portfolio_data)
+        except Exception as e:
+            logger.error(f"Error sending portfolio data: {e}")
+
+    def _send_memory_data(self):
+        """Send memory bank data update."""
+        try:
+            memory_data = self.memory_bank.get_status()
+            self.socketio.emit('memory_update', memory_data)
+        except Exception as e:
+            logger.error(f"Error sending memory data: {e}")
+
+    def _send_storage_data(self):
+        """Send storage hub data update."""
+        try:
+            storage_data = self.storage_hub.get_status()
+            self.socketio.emit('storage_update', storage_data)
+        except Exception as e:
+            logger.error(f"Error sending storage data: {e}")
+
+    def _send_distribution_data(self):
+        """Send distribution data update."""
+        try:
+            distribution_data = self.distribution_manager.get_metrics()
+            self.socketio.emit('distribution_update', distribution_data)
+        except Exception as e:
+            logger.error(f"Error sending distribution data: {e}")
+
+    def _send_execution_data(self):
+        """Send execution data update."""
+        try:
+            execution_data = self.execution_manager.get_metrics()
+            self.socketio.emit('execution_update', execution_data)
+        except Exception as e:
+            logger.error(f"Error sending execution data: {e}")
+
+    def _send_gas_data(self):
+        """Send gas price update."""
+        try:
+            gas_data = {
+                'gas_prices': {
+                    'fast': self.gas_optimizer.gas_prices['fast'],
+                    'standard': self.gas_optimizer.gas_prices['standard'],
+                    'slow': self.gas_optimizer.gas_prices['slow'],
+                    'base_fee': self.gas_optimizer.gas_prices['base_fee'],
+                    'priority_fee': self.gas_optimizer.gas_prices['priority_fee'],
+                    'pending_txs': self.gas_optimizer.gas_prices['pending_txs']
+                },
+                'metrics': {
+                    'historical_prices': self.gas_optimizer.gas_metrics['historical_prices'][-10:]  # Last 10 entries
+                }
+            }
+            self.socketio.emit('gas_update', gas_data)
+        except Exception as e:
+            logger.error(f"Error sending gas data: {e}")
