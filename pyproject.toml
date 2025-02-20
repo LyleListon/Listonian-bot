@@ -9,35 +9,33 @@ authors = [
     { name = "Your Name", email = "your.email@example.com" },
 ]
 description = "Arbitrage trading bot for Base network"
-requires-python = ">=3.7"
+requires-python = ">=3.12"
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "flask-socketio",
-    "eventlet",
-    "cryptography",
-    "flask-cors",
+    "flask-socketio>=5.3.0",
+    "eventlet>=0.35.0",
+    "cryptography>=41.0.0",
+    "flask-cors>=4.0.0",
     "web3>=7.0.0",
-    "eth-tester",
-
+    "eth-tester>=0.9.0",
     "python-dotenv>=1.0.0",
-    "aiohttp>=3.8.0",
-    "asyncio",
-    "websockets>=10.0",
-    "requests",
-    "pandas",
-    "numpy",
-    "scikit-learn",
-    "joblib",
-    "sqlalchemy",
-    "psycopg2-binary",
-    "redis",
-    "aioredis",
-    "prometheus_client",
-    "pyyaml",
-    "jsonschema",
+    "aiohttp>=3.9.0",
+    "websockets>=12.0",
+    "requests>=2.31.0",
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "scikit-learn>=1.4.0",
+    "joblib>=1.3.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "redis>=5.0.0",
+    "aioredis>=2.0.0",
+    "prometheus_client>=0.19.0",
+    "pyyaml>=6.0.0",
+    "jsonschema>=4.20.0"
 ]
 
 [tool.setuptools]
@@ -46,3 +44,6 @@ package-dir = { "" = "." }
 
 [tool.setuptools.package-data]
 arbitrage_bot = ["configs/*.json", "abi/*.json"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

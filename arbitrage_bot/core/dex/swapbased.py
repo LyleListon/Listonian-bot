@@ -20,40 +20,35 @@ class SwapBased(BaseDEXV3):
         self.weth_address = Web3.to_checksum_address(config['weth_address'])
         self.quoter_address = Web3.to_checksum_address(config['quoter'])
         self.fee = config.get('fee', 3000)  # Default to 0.3%
+        self.is_enabled = config.get('enabled', False)
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Initialize the SwapBased interface."""
         try:
-            # Load contract ABIs with correct filenames
-            self.router_abi = self.web3_manager.load_abi("swapbased_v3_router")
-            self.factory_abi = self.web3_manager.load_abi("swapbased_v3_factory")
-            self.pool_abi = self.web3_manager.load_abi("swapbased_v3_pool")
-            self.quoter_abi = self.web3_manager.load_abi("swapbased_v3_quoter")
-            
             # Initialize contracts with checksummed addresses
             self.router = self.web3_manager.get_contract(
                 address=self.router_address,
-                abi=self.router_abi
+                abi_name="swapbased_v3_router"
             )
             self.factory = self.web3_manager.get_contract(
                 address=self.factory_address,
-                abi=self.factory_abi
+                abi_name="swapbased_v3_factory"
             )
             self.quoter = self.web3_manager.get_contract(
                 address=self.quoter_address,
-                abi=self.quoter_abi
+                abi_name="swapbased_v3_quoter"
             )
             
             # Initialize contracts
             self.initialized = True
-            self.logger.info(f"{self.name} interface initialized")
+            self.logger.info(self.name + " interface initialized")
             return True
             
         except Exception as e:
             self._handle_error(e, "SwapBased initialization")
             return False
 
-    def get_quote_with_impact(
+    async def get_quote_with_impact(
         self,
         amount_in: int,
         path: List[str]
@@ -68,22 +63,14 @@ class SwapBased(BaseDEXV3):
             for fee in self.FEE_TIERS:
                 try:
                     # Get pool address
-                    pool_address = self._retry_sync(
-                        lambda: self.factory.functions.getPool(
-                            path[0],
-                            path[1],
-                            fee
-                        ).call()
-                    )
-                    
-                    if pool_address == "0x0000000000000000000000000000000000000000":
-                        self.logger.debug(f"No pool found for fee tier {fee}")
+                    pool_address = self.get_pool_address(path[0], path[1], fee)
+                    if not pool_address:
                         continue
                         
                     # Get pool contract
                     pool = self.web3_manager.get_contract(
                         address=Web3.to_checksum_address(pool_address),
-                        abi=self.pool_abi
+                        abi_name="swapbased_v3_pool"
                     )
                     
                     # Get pool state
@@ -103,7 +90,7 @@ class SwapBased(BaseDEXV3):
                         ).call()
                     )
                     if not amount_out:
-                        self.logger.debug(f"No quote available for fee tier {fee}")
+                        self.logger.debug("No quote available for fee tier " + str(fee))
                         continue
                         
                     # Calculate price impact
@@ -123,17 +110,18 @@ class SwapBased(BaseDEXV3):
                         'estimated_gas': 350000,  # Base estimate for V3 swap
                         'min_out': int(amount_out * 0.995)  # 0.5% slippage default
                     }
+                    
                 except Exception as e:
-                    self.logger.debug(f"Error getting quote for fee tier {fee}: {e}")
+                    self.logger.debug("Error getting quote for fee tier " + str(fee) + ": " + str(e))
                     continue
             
             return None
             
         except Exception as e:
-            self.logger.error(f"Failed to get V3 quote: {e}")
+            self.logger.error("Failed to get V3 quote: " + str(e))
             return None
 
-    def get_token_price(self, token_address: str) -> float:
+    async def get_token_price(self, token_address: str) -> float:
         """Get current token price."""
         try:
             # If token is WETH, return 1.0 since price is in WETH
@@ -143,26 +131,20 @@ class SwapBased(BaseDEXV3):
             # Try each fee tier
             for fee in self.FEE_TIERS:
                 try:
-                    self.logger.debug(f"Trying fee tier {fee} for {token_address}")
                     # Get pool address
-                    pool_address = self._retry_sync(
-                        lambda: self.factory.functions.getPool(
-                            token_address,
-                            self.weth_address,
-                            fee
-                        ).call()
+                    pool_address = self.get_pool_address(
+                        token_address,
+                        self.weth_address,
+                        fee
                     )
                     
-                    if pool_address == "0x0000000000000000000000000000000000000000":
-                        self.logger.debug(f"No pool found for fee tier {fee}")
+                    if not pool_address:
                         continue
                         
-                    self.logger.debug(f"Found pool {pool_address} for fee tier {fee}")
-                    
                     # Get pool contract
                     pool = self.web3_manager.get_contract(
                         address=Web3.to_checksum_address(pool_address),
-                        abi=self.pool_abi
+                        abi_name="swapbased_v3_pool"
                     )
                     
                     # Get slot0 data which contains the current sqrt price
@@ -173,10 +155,8 @@ class SwapBased(BaseDEXV3):
                     # Calculate price from sqrtPriceX96
                     sqrt_price_x96 = slot0[0]
                     if sqrt_price_x96 == 0:
-                        self.logger.debug(f"Zero price for fee tier {fee}")
                         continue
                         
-                    # Convert sqrtPriceX96 to price
                     price = (sqrt_price_x96 / (2 ** 96)) ** 2
                     
                     # Adjust for token order
@@ -187,18 +167,16 @@ class SwapBased(BaseDEXV3):
                     if token_address.lower() == token0.lower():
                         price = 1 / price
                         
-                    self.logger.debug(f"Got price {price} for fee tier {fee}")
                     return float(price)
                     
                 except Exception as e:
-                    self.logger.debug(f"Error getting price for fee tier {fee}: {e}")
+                    self.logger.debug("Error getting price for fee tier " + str(fee) + ": " + str(e))
                     continue
             
-            self.logger.debug("No valid price found in any fee tier")
             return 0.0
             
         except Exception as e:
-            self.logger.error(f"Failed to get token price: {e}")
+            self.logger.error("Failed to get token price: " + str(e))
             return 0.0
 
     def _encode_path(self, path: List[str], fee: int = None) -> bytes:
@@ -210,7 +188,7 @@ class SwapBased(BaseDEXV3):
         encoded += bytes.fromhex(path[-1][2:])  # Add final token
         return encoded
 
-    def get_supported_tokens(self) -> List[str]:
+    async def get_supported_tokens(self) -> List[str]:
         """Get list of supported tokens with active pools."""
         try:
             supported_tokens = set()
@@ -237,19 +215,19 @@ class SwapBased(BaseDEXV3):
                         # Get pool contract
                         pool = self.web3_manager.get_contract(
                             address=Web3.to_checksum_address(pool_address),
-                            abi=self.pool_abi
+                            abi_name="swapbased_v3_pool"
                         )
                         
                 except Exception as e:
-                    self.logger.debug(f"Error checking fee tier {fee}: {e}")
+                    self.logger.debug("Error checking fee tier " + str(fee) + ": " + str(e))
                     continue
             
             return list(supported_tokens)
         except Exception as e:
-            self.logger.error(f"Failed to get supported tokens: {e}")
+            self.logger.error("Failed to get supported tokens: " + str(e))
             return []
 
-    def swap_exact_tokens_for_tokens(
+    async def swap_exact_tokens_for_tokens(
         self,
         amount_in: int,
         amount_out_min: int,
@@ -272,11 +250,11 @@ class SwapBased(BaseDEXV3):
                 self.web3_manager.wallet_address,
                 self.router_address
             ).call() >= amount_in:
-                logger.info(f"Approving token {token_in} for amount {amount_in}")
-                if not self.check_and_approve_token(token_in, amount_in):
-                    logger.error(f"Failed to approve token {token_in}")
-                    raise Exception(f"Token approval failed for {token_in}")
-                logger.info(f"Token {token_in} approved successfully")
+                self.logger.info("Approving token " + str(token_in) + " for amount " + str(amount_in))
+                if not await self.check_and_approve_token(token_in, amount_in):
+                    self.logger.error("Failed to approve token " + str(token_in))
+                    raise Exception("Token approval failed for " + str(token_in))
+                self.logger.info("Token " + str(token_in) + " approved successfully")
             
             # Encode path with fees
             encoded_path = self._encode_path(path)
@@ -304,9 +282,9 @@ class SwapBased(BaseDEXV3):
             self.logger.info("="*50)
             self.logger.info("SWAP TRANSACTION DETAILS")
             self.logger.info("="*50)
-            self.logger.info(f"Token In: {token_in}")
-            self.logger.info(f"Token Out: {path[-1]}")
-            self.logger.info(f"Recipient Address: {to}")
+            self.logger.info("Token In: " + str(token_in))
+            self.logger.info("Token Out: " + str(path[-1]))
+            self.logger.info("Recipient Address: " + str(to))
             # Package arguments into the expected struct format
             params = {
                 'path': encoded_path,
@@ -315,17 +293,17 @@ class SwapBased(BaseDEXV3):
                 'amountIn': amount_in,
                 'amountOutMinimum': amount_out_min
             }
-            self.logger.info(f"""
-Transaction Parameters:
-- Method: exactInput
-- Path Length: {len(encoded_path)} bytes
-- Recipient: {params['recipient']}
-- Gas: {tx_params.get('gas')}
-- MaxFeePerGas: {tx_params.get('maxFeePerGas')}
-- MaxPriorityFeePerGas: {tx_params.get('maxPriorityFeePerGas')}
-            """)
+            self.logger.info(
+                "Transaction Parameters:\n" +
+                "- Method: exactInput\n" +
+                "- Path Length: " + str(len(encoded_path)) + " bytes\n" +
+                "- Recipient: " + str(params['recipient']) + "\n" +
+                "- Gas: " + str(tx_params.get('gas')) + "\n" +
+                "- MaxFeePerGas: " + str(tx_params.get('maxFeePerGas')) + "\n" +
+                "- MaxPriorityFeePerGas: " + str(tx_params.get('maxPriorityFeePerGas'))
+            )
 
-            receipt = self.web3_manager.build_and_send_transaction(
+            receipt = await self.web3_manager.build_and_send_transaction(
                 self.router,
                 'exactInput',
                 params, tx_params=tx_params)
@@ -339,22 +317,22 @@ Transaction Parameters:
                         if log['topics'][0].hex() == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':  # Transfer event
                             from_addr = '0x' + log['topics'][1].hex()[-40:]
                             to_addr = '0x' + log['topics'][2].hex()[-40:]
-                            self.logger.info(f"Transfer Event Detected:")
-                            self.logger.info(f"From: {from_addr}")
-                            self.logger.info(f"To: {to_addr}")
+                            self.logger.info("Transfer Event Detected:")
+                            self.logger.info("From: " + str(from_addr))
+                            self.logger.info("To: " + str(to_addr))
                 except Exception as e:
-                    self.logger.error(f"Failed to parse transaction logs: {e}")
+                    self.logger.error("Failed to parse transaction logs: " + str(e))
             
             # Log transaction result
             self.logger.info("="*50)
             self.logger.info("TRANSACTION RESULT")
             self.logger.info("="*50)
-            self.logger.info(f"Transaction Hash: {receipt['transactionHash'].hex()}")
-            self.logger.info(f"Block Number: {receipt['blockNumber']}")
-            self.logger.info(f"Gas Used: {receipt['gasUsed']}")
-            self.logger.info(f"Status: {'✅ Success' if receipt['status'] == 1 else '❌ Failed'}")
+            self.logger.info("Transaction Hash: " + str(receipt['transactionHash'].hex()))
+            self.logger.info("Block Number: " + str(receipt['blockNumber']))
+            self.logger.info("Gas Used: " + str(receipt['gasUsed']))
+            self.logger.info("Status: " + ("✅ Success" if receipt['status'] == 1 else "❌ Failed"))
             self.logger.info("="*50)
-            self.logger.info(f"Verify funds at: https://basescan.org/address/{to}")
+            self.logger.info("Verify funds at: https://basescan.org/address/" + str(to))
             
             self._log_transaction(receipt['transactionHash'].hex(), amount_in, amount_out_min, path, to)
             return receipt

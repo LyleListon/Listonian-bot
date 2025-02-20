@@ -3,7 +3,7 @@
 from typing import Dict, Any, List, Optional
 from web3.types import TxReceipt
 from decimal import Decimal
-import eventlet
+import time
 from web3 import Web3
 
 from .base_dex import BaseDEX
@@ -19,6 +19,7 @@ class BaseDEXV3(BaseDEX):
         self.fee = config.get('fee', 3000)  # 0.3% default fee
         self.pool_abi = None
         self.quoter_abi = None
+        self.is_enabled = config.get('enabled', False)
         
         # Checksum addresses
         if self.router_address:
@@ -28,29 +29,22 @@ class BaseDEXV3(BaseDEX):
         if self.quoter_address:
             self.quoter_address = Web3.to_checksum_address(self.quoter_address)
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Initialize the V3 DEX interface."""
         try:
-            # Load contract ABIs
-            self.router_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_router")
-            self.factory_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_factory")
-            self.pool_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_pool")
-            if self.quoter_address:
-                self.quoter_abi = self.web3_manager.load_abi(f"{self.name.lower()}_v3_quoter")
-            
             # Initialize contracts with checksummed addresses
             self.router = self.web3_manager.get_contract(
                 address=self.router_address,
-                abi=self.router_abi
+                abi_name=self.name.lower() + "_v3_router"
             )
             self.factory = self.web3_manager.get_contract(
                 address=self.factory_address,
-                abi=self.factory_abi
+                abi_name=self.name.lower() + "_v3_factory"
             )
             if self.quoter_address:
                 self.quoter = self.web3_manager.get_contract(
                     address=self.quoter_address,
-                    abi=self.quoter_abi
+                    abi_name=self.name.lower() + "_v3_quoter"
                 )
             
             # Test connection by checking if contracts are deployed
@@ -58,23 +52,23 @@ class BaseDEXV3(BaseDEX):
                 lambda: self.web3_manager.w3.eth.get_code(self.router_address)
             )
             if len(code) <= 2:  # Empty or just '0x'
-                raise ValueError(f"No contract deployed at router address {self.router_address}")
+                raise ValueError("No contract deployed at router address " + str(self.router_address))
                 
             code = self._retry_sync(
                 lambda: self.web3_manager.w3.eth.get_code(self.factory_address)
             )
             if len(code) <= 2:
-                raise ValueError(f"No contract deployed at factory address {self.factory_address}")
+                raise ValueError("No contract deployed at factory address " + str(self.factory_address))
                 
             if self.quoter_address:
                 code = self._retry_sync(
                     lambda: self.web3_manager.w3.eth.get_code(self.quoter_address)
                 )
                 if len(code) <= 2:
-                    raise ValueError(f"No contract deployed at quoter address {self.quoter_address}")
+                    raise ValueError("No contract deployed at quoter address " + str(self.quoter_address))
                 
             self.initialized = True
-            self.logger.info(f"{self.name} V3 interface initialized")
+            self.logger.info(self.name + " V3 interface initialized")
             return True
             
         except Exception as e:
@@ -93,7 +87,7 @@ class BaseDEXV3(BaseDEX):
         try:
             # Use provided recipient address
             recipient = to
-            self.logger.info(f"Using provided recipient address: {recipient}")
+            self.logger.info("Using provided recipient address: " + str(recipient))
             
             # Validate inputs
             self._validate_path(path)
@@ -109,7 +103,7 @@ class BaseDEXV3(BaseDEX):
             # Check and approve token spending
             if not self.check_and_approve_token(path[0], amount_in):
                 self.logger.error(
-                    f"Failed to approve token {path[0]} for spending"
+                    "Failed to approve token " + str(path[0]) + " for spending"
                 )
                 return None
             
@@ -161,8 +155,9 @@ class BaseDEXV3(BaseDEX):
                 
                 if in_diff <= 0 or out_diff <= 0:
                     self.logger.error(
-                        f"Balance verification failed: in_diff={in_diff}, "
-                        f"out_diff={out_diff}, expected_min_out={amount_out_min}"
+                        "Balance verification failed: in_diff=" + str(in_diff) + 
+                        ", out_diff=" + str(out_diff) + 
+                        ", expected_min_out=" + str(amount_out_min)
                     )
                     return None
                 
@@ -252,7 +247,7 @@ class BaseDEXV3(BaseDEX):
             # Get pool contract with checksummed address
             pool = self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pool_address),
-                abi=self.pool_abi
+                abi_name=self.name.lower() + "_v3_pool"
             )
             
             # Get volume from Swap events in last 24h
@@ -273,7 +268,7 @@ class BaseDEXV3(BaseDEX):
             return volume
             
         except Exception as e:
-            self.logger.error(f"Failed to get 24h volume: {e}")
+            self.logger.error("Failed to get 24h volume: " + str(e))
             return Decimal(0)
 
     def get_total_liquidity(self) -> Decimal:
@@ -293,7 +288,7 @@ class BaseDEXV3(BaseDEX):
                     pool_address = Web3.to_checksum_address(event['args']['pool'])
                     pool = self.web3_manager.get_contract(
                         address=pool_address,
-                        abi=self.pool_abi
+                        abi_name=self.name.lower() + "_v3_pool"
                     )
                     
                     # Get liquidity
@@ -303,13 +298,13 @@ class BaseDEXV3(BaseDEX):
                     total_liquidity += Decimal(liquidity)
                     
                 except Exception as e:
-                    self.logger.warning(f"Failed to get liquidity for pool {pool_address}: {e}")
+                    self.logger.warning("Failed to get liquidity for pool " + str(pool_address) + ": " + str(e))
                     continue
             
             return total_liquidity
             
         except Exception as e:
-            self.logger.error(f"Failed to get total liquidity: {e}")
+            self.logger.error("Failed to get total liquidity: " + str(e))
             return Decimal(0)
 
     def _retry_sync(self, func, retries=3, delay=1):
@@ -321,9 +316,9 @@ class BaseDEXV3(BaseDEX):
             except Exception as e:
                 last_error = e
                 if attempt < retries - 1:
-                    eventlet.sleep(delay * (2 ** attempt))  # Exponential backoff
+                    time.sleep(delay * (2 ** attempt))  # Exponential backoff
                     continue
-                self.logger.error(f"Failed after {retries} attempts: {e}")
+                self.logger.error("Failed after " + str(retries) + " attempts: " + str(e))
                 raise last_error
         return None
 
@@ -349,5 +344,5 @@ class BaseDEXV3(BaseDEX):
             return 0.0
             
         except Exception as e:
-            self.logger.error(f"Failed to get token price: {e}")
+            self.logger.error("Failed to get token price: " + str(e))
             return 0.0

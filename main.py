@@ -7,13 +7,11 @@ import os
 import sys
 import logging
 import signal
+import asyncio
 import subprocess
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
-
-# Import eventlet patch first to ensure monkey patching is done before any other imports
-from arbitrage_bot.utils.eventlet_patch import eventlet
 
 # Import logging configuration
 from arbitrage_bot.utils.logger_config import (
@@ -71,16 +69,23 @@ class ArbitrageBot:
         self.web3_manager = None
         self.arbitrage_executor = None
         self.performance_tracker = None
+        
+        # Initialize asyncio event for shutdown
+        self.shutdown_event = asyncio.Event()
     
     def _validate_environment(self):
         """Validate required environment variables"""
         required_vars = ['PRIVATE_KEY', 'BASE_RPC_URL']
-        missing_vars = [var for var in required_vars if not (env_val := os.getenv(var))]
+        missing_vars = []
+        for var in required_vars:
+            if not os.getenv(var):
+                missing_vars.append(var)
         
         if missing_vars:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+            error_msg = "Missing required environment variables: " + ", ".join(missing_vars)
+            raise ValueError(error_msg)
     
-    def initialize(self):
+    async def initialize(self):
         """Initialize all components"""
         try:
             # Import required components
@@ -96,6 +101,7 @@ class ArbitrageBot:
             from arbitrage_bot.core.memory import get_memory_bank
             from arbitrage_bot.core.balance_manager import BalanceManager
             from arbitrage_bot.core.flash_loan_manager import create_flash_loan_manager
+            from arbitrage_bot.core.alerts.alert_system import create_alert_system
             
             # Get config
             config = self.config_loader.get_config()
@@ -114,7 +120,7 @@ class ArbitrageBot:
             
             # Initialize DEX manager
             logger.info("Initializing DEX manager...")
-            self.dex_manager = eventlet.spawn(create_dex_manager, self.web3_manager, config).wait()
+            self.dex_manager = await create_dex_manager(self.web3_manager, config)
             logger.info("DEX manager initialized")
             
             # Initialize market analyzer with DEX manager
@@ -122,7 +128,7 @@ class ArbitrageBot:
             logger.info("Market analyzer initialized with DEX manager")
             
             # Initialize ML system
-            self.ml_system = eventlet.spawn(create_ml_system, None, self.market_analyzer, config).wait()
+            self.ml_system = await create_ml_system(None, self.market_analyzer, config)
             
             # Initialize portfolio tracker (serves as performance tracker)
             self.portfolio_tracker = create_portfolio_tracker(
@@ -130,16 +136,16 @@ class ArbitrageBot:
                 wallet_address=self.web3_manager.wallet_address,
                 config=config
             )
-            self.performance_tracker = self.portfolio_tracker  # Use portfolio tracker for performance tracking
+            self.performance_tracker = self.portfolio_tracker
             
             # Initialize gas optimizer
             logger.info("Initializing gas optimizer...")
-            self.gas_optimizer = create_gas_optimizer(
+            self.gas_optimizer = await create_gas_optimizer(
                 dex_manager=self.dex_manager,
                 web3_manager=self.web3_manager
             )
-            if not self.gas_optimizer.initialize():
-                raise GasOptimizerError("Gas optimizer initialization failed - check gas price feeds and network connectivity")
+            if not await self.gas_optimizer.initialize():
+                raise GasOptimizerError("Gas optimizer initialization failed")
             logger.info("Gas optimizer initialized")
             
             # Initialize analytics system
@@ -154,33 +160,31 @@ class ArbitrageBot:
             # Initialize memory bank
             self.memory_bank = get_memory_bank()
             
-            # Initialize transaction monitor first
+            # Initialize transaction monitor
             logger.info("Initializing transaction monitor...")
-            self.tx_monitor = eventlet.spawn(create_transaction_monitor, 
-                self.web3_manager, self.analytics_system, self.ml_system, self.dex_manager).wait()
+            self.tx_monitor = await create_transaction_monitor(
+                self.web3_manager, self.analytics_system, self.ml_system, self.dex_manager)
             logger.info("Transaction monitor initialized")
             
             # Initialize balance manager
             logger.info("Initializing balance manager...")
-            # Initialize balance manager using eventlet to handle async
-            self.balance_manager = eventlet.spawn(BalanceManager.get_instance,
+            self.balance_manager = await BalanceManager.get_instance(
                 web3_manager=self.web3_manager,
                 analytics=self.analytics_system,
                 ml_system=self.ml_system,
                 monitor=self.tx_monitor,
                 dex_manager=self.dex_manager,
                 market_analyzer=self.market_analyzer,
-                gas_optimizer=self.gas_optimizer,  # Add gas optimizer to balance manager
+                gas_optimizer=self.gas_optimizer,
                 max_position_size=config.get('trading', {}).get('max_position_size', 0.1),
                 min_reserve_ratio=config.get('trading', {}).get('min_reserve_ratio', 0.2),
                 rebalance_threshold=config.get('trading', {}).get('rebalance_threshold', 0.05),
                 risk_per_trade=config.get('trading', {}).get('risk_per_trade', 0.02)
-            ).wait()
+            )
             logger.info("Balance manager initialized")
             
             # Initialize alert system
-            from arbitrage_bot.core.alerts.alert_system import create_alert_system
-            self.alert_system = create_alert_system(
+            self.alert_system = await create_alert_system(
                 self.analytics_system,
                 self.tx_monitor,
                 self.market_analyzer,
@@ -195,7 +199,7 @@ class ArbitrageBot:
             
             # Finally, initialize arbitrage executor with all components
             logger.info("Initializing arbitrage executor...")
-            self.arbitrage_executor = create_arbitrage_executor(
+            self.arbitrage_executor = await create_arbitrage_executor(
                 web3_manager=self.web3_manager,
                 dex_manager=self.dex_manager,
                 gas_optimizer=self.gas_optimizer,
@@ -213,16 +217,16 @@ class ArbitrageBot:
             return True
         
         except (ConfigurationError, GasOptimizerError, InitializationError) as e:
-            logger.error(f"Initialization error: {e}")
+            logger.error("Initialization error: " + str(e))
             raise
-    
-    def start(self):
+
+    async def start(self):
         """Start the arbitrage bot"""
         try:
             logger.info("Starting arbitrage bot...")
             
             # Initialize components
-            if not self.initialize():
+            if not await self.initialize():
                 raise InitializationError("Failed to initialize components")
             
             self.is_running = True
@@ -234,24 +238,25 @@ class ArbitrageBot:
             if self.config_loader.get_config().get('dashboard', {}).get('enabled', True):
                 # Set dashboard WebSocket port
                 websocket_port = 8771
-                os.environ['DASHBOARD_WEBSOCKET_PORT'] = f'{websocket_port}'
+                os.environ['DASHBOARD_WEBSOCKET_PORT'] = str(websocket_port)
                 
                 # Set analytics system reference
-                os.environ['ANALYTICS_SYSTEM_ID'] = f'{id(self.analytics_system)}'
-                self._start_dashboard()
+                os.environ['ANALYTICS_SYSTEM_ID'] = str(id(self.analytics_system))
+                await self._start_dashboard()
             
             # Main arbitrage loop
-            self._run_arbitrage_loop()
+            await self._run_arbitrage_loop()
         
         except (ConfigurationError, GasOptimizerError, InitializationError, self.DashboardError) as e:
-            logger.error(f"Failed to start arbitrage bot: {e}")
-            self.stop()
+            logger.error("Failed to start arbitrage bot: " + str(e))
+            await self.stop()
     
-    def stop(self):
+    async def stop(self):
         """Stop the arbitrage bot gracefully"""
         try:
             logger.info("Stopping arbitrage bot...")
             self.is_running = False
+            self.shutdown_event.set()
             
             # Stop dashboard if running
             if self.dashboard_process:
@@ -259,19 +264,19 @@ class ArbitrageBot:
                 self.dashboard_process = None
             
             # Perform cleanup
-            self._cleanup()
+            await self._cleanup()
             
             logger.info("Arbitrage bot stopped successfully")
         
         except (self.DashboardError, IOError) as e:
-            logger.error(f"Error during bot shutdown: {e}")
+            logger.error("Error during bot shutdown: " + str(e))
             raise
     
-    def _run_arbitrage_loop(self):
+    async def _run_arbitrage_loop(self):
         """Main arbitrage execution loop"""
         logger.info("Starting arbitrage loop...")
         
-        while self.is_running:
+        while self.is_running and not self.shutdown_event.is_set():
             try:
                 # Get opportunities from market analyzer
                 opportunities = self.market_analyzer.get_opportunities()
@@ -281,7 +286,7 @@ class ArbitrageBot:
                         log_opportunity(opportunity)
                         
                         # Execute opportunity
-                        success = self.arbitrage_executor.execute_opportunity(opportunity)
+                        success = await self.arbitrage_executor.execute_opportunity(opportunity)
                         
                         # Log execution result
                         if success and 'tx_hash' in opportunity:
@@ -293,7 +298,7 @@ class ArbitrageBot:
                             )
                 
                 # Add delay between iterations and log metrics every 60 seconds
-                current_time = time.time()
+                current_time = asyncio.get_event_loop().time()
                 if not hasattr(self, '_last_metrics_time') or current_time - self._last_metrics_time >= 60:
                     import psutil
                     process = psutil.Process()
@@ -305,22 +310,22 @@ class ArbitrageBot:
                     )
                     self._last_metrics_time = current_time
 
-                eventlet.sleep(
+                await asyncio.sleep(
                     self.config_loader.get_config()
                     .get('execution', {})
                     .get('loop_interval', 0.1)  # Reduced to 0.1s for faster response
                 )
             
             except (self.ArbitrageExecutionError, IOError, TimeoutError) as e:
-                logger.error(f"Arbitrage execution failed: {e}")
-                eventlet.sleep(5)  # Brief delay before retry
+                logger.error("Arbitrage execution failed: " + str(e))
+                await asyncio.sleep(5)  # Brief delay before retry
     
-    def _start_dashboard(self):
+    async def _start_dashboard(self):
         """Start the dashboard process"""
         try:
             # Get dashboard port from config
             port = self.config_loader.get_config().get('dashboard', {}).get('port', 5000)
-            os.environ['DASHBOARD_PORT'] = f'{port}'
+            os.environ['DASHBOARD_PORT'] = str(port)
             
             # Start dashboard as a separate Python process
             dashboard_script = str(Path(__file__).parent / 'arbitrage_bot' / 'dashboard' / 'run.py')
@@ -331,19 +336,19 @@ class ArbitrageBot:
             logger.info("Dashboard started successfully")
         
         except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
-            raise self.DashboardError(f"Failed to start dashboard: {e}") from e
+            raise self.DashboardError("Failed to start dashboard: " + str(e)) from e
     
-    def _cleanup(self):
+    async def _cleanup(self):
         """Perform cleanup operations"""
         try:
             # Save final performance metrics
             if self.performance_tracker:
                 summary = self.performance_tracker.get_performance_summary()
-                logger.info(f"Final performance summary: {summary}")
+                logger.info("Final performance summary: " + str(summary))
                 
                 # Log final metrics
                 for metric, value in summary.items():
-                    log_metric(f"final_{metric}", value)
+                    log_metric("final_" + metric, value)
             
             # Close database connections
             # Any other cleanup needed
@@ -351,30 +356,42 @@ class ArbitrageBot:
             logger.info("Cleanup completed successfully")
         
         except IOError as e:
-            logger.error(f"Cleanup operation failed: {e}")
-            raise  # Re-raise the exception after logging
+            logger.error("Cleanup operation failed: " + str(e))
+            raise
     
     def _register_signal_handlers(self):
         """Register signal handlers for graceful shutdown"""
+        loop = asyncio.get_running_loop()
+        
         def signal_handler(signum, frame):
-            logger.info(f"Received signal {signum}")
-            eventlet.spawn(self.stop)
+            logger.info("Received signal " + str(signum))
+            loop.create_task(self.stop())
         
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-def main():
-    """Main entry point"""
+async def async_main():
+    """Async main entry point"""
     try:
         # Create and start bot
         bot = ArbitrageBot()
-        bot.start()
+        await bot.start()
     
     except ConfigurationError as e:
-        logger.error(f"Configuration error: {e}")
+        logger.error("Configuration error: " + str(e))
         sys.exit(1)
     except (ArbitrageBot.ArbitrageExecutionError, ArbitrageBot.DashboardError, IOError) as e:
-        logger.error(f"Critical error: {e}")
+        logger.error("Critical error: " + str(e))
+        sys.exit(1)
+
+def main():
+    """Synchronous entry point that runs the async main"""
+    try:
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt")
+    except Exception as e:
+        logger.error("Critical error: " + str(e), exc_info=True)
         sys.exit(1)
 
 if __name__ == "__main__":

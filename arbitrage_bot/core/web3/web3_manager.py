@@ -39,8 +39,8 @@ class Web3Manager:
         logger.info("="*50)
         logger.info("WALLET CONFIGURATION")
         logger.info("="*50)
-        logger.info(f"Using wallet address: {self.wallet_address}")
-        logger.info(f"Address checksum: {Web3.to_checksum_address(self.wallet_address) if self.wallet_address else None}")
+        logger.info("Using wallet address: " + str(self.wallet_address))
+        logger.info("Address checksum: " + str(Web3.to_checksum_address(self.wallet_address) if self.wallet_address else None))
         logger.debug("="*50)
         
         if not self.wallet_address:
@@ -49,27 +49,61 @@ class Web3Manager:
             raise ValueError("PRIVATE_KEY not found in secure environment")
             
         # Add 0x prefix to private key if missing
-        self._private_key = private_key if private_key.startswith("0x") else f"0x{private_key}"
+        self._private_key = private_key if private_key.startswith("0x") else "0x" + private_key
             
         # Initialize account
         try:
             self._account = Account.from_key(self._private_key)
             if self._account.address.lower() != self.wallet_address.lower():
-                logger.error(f"Private key address: {self._account.address}")
-                logger.error(f"Configured wallet: {self.wallet_address}")
+                logger.error("Private key address: " + str(self._account.address))
+                logger.error("Configured wallet: " + str(self.wallet_address))
                 raise ValueError("Private key does not match wallet address")
         except Exception as e:
-            logger.error(f"Failed to initialize account: {e}")
+            logger.error("Failed to initialize account: " + str(e))
             raise
             
         # Cache for ABIs
         self._abi_cache = {}
             
-        logger.info(f"Initialized Web3 manager with account: {self.wallet_address}")
+        logger.info("Initialized Web3 manager with account: " + str(self.wallet_address))
+
+    def load_abi(self, name: str) -> Dict[str, Any]:
+        """Load ABI from file."""
+        try:
+            if name not in self._abi_cache:
+                abi_path = str(pathlib.Path(__file__).parent.parent.parent.parent / 'abi' / (name + '.json'))
+                with open(abi_path) as f:
+                    self._abi_cache[name] = json.load(f)
+            return self._abi_cache[name]
+        except Exception as e:
+            logger.error("Failed to load ABI " + str(name) + ": " + str(e))
+            raise
+
+    def get_contract(self, address: str, abi_name: str) -> Any:
+        """Get contract instance."""
+        try:
+            # Load ABI if not in cache
+            if abi_name not in self._abi_cache:
+                self._abi_cache[abi_name] = self.load_abi(abi_name)
+
+            # Create contract instance
+            contract = self._web3.eth.contract(
+                address=Web3.to_checksum_address(address),
+                abi=self._abi_cache[abi_name]
+            )
+            return contract
+        except Exception as e:
+            logger.error("Failed to get contract for " + str(address) + " with ABI " + str(abi_name) + ": " + str(e))
+            return None
 
     @property
     def w3(self):
         return self._web3
+
+    @property
+    def private_key(self) -> str:
+        """Get the private key."""
+        return self._private_key
 
     def connect(self):
         """Initialize Web3 connection."""
@@ -77,16 +111,16 @@ class Web3Manager:
             # Get provider URL from environment or config
             if not self.provider_url:
                 config = load_config()
-                logger.debug(f"Loading RPC URL from config: {config.get('network', {}).get('rpc_url')}")
+                logger.debug("Loading RPC URL from config: " + str(config.get('network', {}).get('rpc_url')))
                 rpc_url = config.get('network', {}).get('rpc_url')
                 if rpc_url and rpc_url.startswith('$SECURE:'):
-                    logger.debug(f"Found secure reference: {rpc_url}")
+                    logger.debug("Found secure reference: " + str(rpc_url))
                     var_name = rpc_url.replace('$SECURE:', '')
-                    logger.debug(f"Loading secure variable: {var_name}")
+                    logger.debug("Loading secure variable: " + str(var_name))
                     self.provider_url = self.secure_env.secure_load(var_name)
-                    logger.debug(f"Loaded secure RPC URL: {self.provider_url}")
+                    logger.debug("Loaded secure RPC URL: " + str(self.provider_url))
                     if not self.provider_url:
-                        raise ValueError(f"Failed to load secure variable: {var_name}")
+                        raise ValueError("Failed to load secure variable: " + str(var_name))
                 else:
                     self.provider_url = rpc_url or os.getenv("BASE_RPC_URL")
                     
@@ -94,7 +128,7 @@ class Web3Manager:
                     raise ValueError("No RPC URL configured")
 
             if not isinstance(self.provider_url, str):
-                raise ValueError(f"Invalid RPC URL type: {type(self.provider_url)}")
+                raise ValueError("Invalid RPC URL type: " + str(type(self.provider_url)))
 
             if not self.provider_url.startswith(("http://", "https://")):
                 raise ValueError("Invalid RPC URL format - must start with http:// or https://")
@@ -115,9 +149,7 @@ class Web3Manager:
             # Test connection
             try:
                 block_number = self._web3.eth.block_number
-                logger.info(
-                    f"Successfully connected to network. Current block: {block_number}"
-                )
+                logger.info("Successfully connected to network. Current block: " + str(block_number))
 
                 if not self.chain_id:
                     try:
@@ -130,20 +162,18 @@ class Web3Manager:
                 
                 # Test account setup
                 balance = self._web3.eth.get_balance(self._account.address)
-                logger.info(f"Account {self._account.address} balance: {self._web3.from_wei(balance, 'ether')} ETH")
+                logger.info("Account " + str(self._account.address) + " balance: " + str(self._web3.from_wei(balance, 'ether')) + " ETH")
                 
             except Exception as e:
-                logger.error(f"Connection test failed: {str(e)}")
-                raise Web3ConnectionError(
-                    f"Failed to connect to Web3 provider: {str(e)}"
-                )
+                logger.error("Connection test failed: " + str(e))
+                raise Web3ConnectionError("Failed to connect to Web3 provider: " + str(e))
 
-            logger.info(f"Connected to Web3 provider: {self.provider_url}")
-            logger.info(f"Using account: {self._account.address}")
-            logger.info(f"Chain ID: {self.chain_id}")
+            logger.info("Connected to Web3 provider: " + str(self.provider_url))
+            logger.info("Using account: " + str(self._account.address))
+            logger.info("Chain ID: " + str(self.chain_id))
 
         except Exception as e:
-            logger.error(f"Failed to initialize Web3: {e}")
+            logger.error("Failed to initialize Web3: " + str(e))
             raise
 
     def build_contract_transaction(
@@ -201,14 +231,14 @@ class Web3Manager:
                 final_params['value'] = kwargs['value']
 
             # Log transaction parameters
-            logger.info(f"Built EIP-1559 transaction for {method_name}: {final_params}")
+            logger.info("Built EIP-1559 transaction for " + str(method_name) + ": " + str(final_params))
             
             # Sign the transaction
             signed_tx = self._web3.eth.account.sign_transaction(final_params, self._private_key)
             return signed_tx
             
         except Exception as e:
-            logger.error(f"Failed to build contract transaction for {method_name}: {e}")
+            logger.error("Failed to build contract transaction for " + str(method_name) + ": " + str(e))
             raise
 
     def send_transaction(self, signed_tx) -> str:
@@ -216,19 +246,19 @@ class Web3Manager:
         try:
             # Send the raw transaction
             tx_hash = self._web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-            logger.info(f"Transaction sent: {tx_hash.hex()}")  # Keep this as INFO for transaction tracking
+            logger.info("Transaction sent: " + str(tx_hash.hex()))
             
             # Wait for transaction receipt
             receipt = self._web3.eth.wait_for_transaction_receipt(tx_hash, timeout=30)
             
             if receipt['status'] != 1:
-                raise Exception(f"Transaction failed: {receipt}")
+                raise Exception("Transaction failed: " + str(receipt))
                 
-            logger.info(f"Transaction confirmed in block {receipt['blockNumber']}")  # Keep this as INFO for transaction tracking
+            logger.info("Transaction confirmed in block " + str(receipt['blockNumber']))
             return receipt
             
         except Exception as e:
-            logger.error(f"Transaction failed: {e}")
+            logger.error("Transaction failed: " + str(e))
             raise
 
     def build_and_send_transaction(
@@ -242,11 +272,11 @@ class Web3Manager:
             # Send transaction and get receipt
             receipt = self.send_transaction(signed_tx)
             
-            logger.info(f"Transaction sent successfully: {receipt['transactionHash'].hex()}")  # Keep this as INFO for transaction tracking
+            logger.info("Transaction sent successfully: " + str(receipt['transactionHash'].hex()))
             return receipt
             
         except Exception as e:
-            logger.error(f"Failed to execute transaction {method_name}: {e}")
+            logger.error("Failed to execute transaction " + str(method_name) + ": " + str(e))
             raise
 
     def get_eth_balance(self) -> float:
@@ -259,7 +289,7 @@ class Web3Manager:
             balance = self.w3.eth.get_balance(address)
             return self._web3.from_wei(balance, "ether")
         except Exception as e:
-            logger.error(f"Failed to get balance for {address}: {e}")
+            logger.error("Failed to get balance for " + str(address) + ": " + str(e))
             raise
 
     def use_mcp_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Any:
@@ -267,7 +297,7 @@ class Web3Manager:
         try:
             return call_mcp_tool(server_name, tool_name, arguments)
         except Exception as e:
-            logger.error(f"Failed to use MCP tool {tool_name} on {server_name}: {e}")
+            logger.error("Failed to use MCP tool " + str(tool_name) + " on " + str(server_name) + ": " + str(e))
             raise
             
     def get_network_id(self) -> int:
@@ -281,32 +311,21 @@ class Web3Manager:
         try:
             contract = self.get_token_contract(token_address)
             if not contract:
-                logger.error(f"No contract found for token {token_address}")
+                logger.error("No contract found for token " + str(token_address))
                 return 18  # Default to 18 decimals if contract not found
             
             decimals = contract.functions.decimals().call()
             return decimals
         except Exception as e:
-            logger.error(f"Failed to get decimals for token {token_address}: {e}")
+            logger.error("Failed to get decimals for token " + str(token_address) + ": " + str(e))
             return 18  # Default to 18 decimals on error
 
     def get_token_contract(self, token_address: str) -> Any:
         """Get token contract instance."""
         try:
-            # Load ERC20 ABI if not in cache
-            if 'ERC20' not in self._abi_cache:
-                abi_path = pathlib.Path(__file__).parent.parent.parent.parent / 'abi' / 'ERC20.json'
-                with open(abi_path) as f:
-                    self._abi_cache['ERC20'] = json.load(f)
-
-            # Create contract instance
-            contract = self._web3.eth.contract(
-                address=Web3.to_checksum_address(token_address),
-                abi=self._abi_cache['ERC20']
-            )
-            return contract
+            return self.get_contract(token_address, "ERC20")
         except Exception as e:
-            logger.error(f"Failed to get contract for token {token_address}: {e}")
+            logger.error("Failed to get contract for token " + str(token_address) + ": " + str(e))
             return None
 
 def create_web3_manager(provider_url: Optional[str] = None, chain_id: Optional[int] = None) -> Web3Manager:
@@ -315,13 +334,13 @@ def create_web3_manager(provider_url: Optional[str] = None, chain_id: Optional[i
         # Get provider URL from config or environment if not provided
         if not provider_url:
             config = load_config()
-            logger.debug(f"Loading RPC URL from config: {config.get('network', {}).get('rpc_url')}")
+            logger.debug("Loading RPC URL from config: " + str(config.get('network', {}).get('rpc_url')))
             rpc_url = config.get('network', {}).get('rpc_url')
             if rpc_url and rpc_url.startswith('$SECURE:'):
-                logger.debug(f"Found secure reference: {rpc_url}")
+                logger.debug("Found secure reference: " + str(rpc_url))
                 secure_env = init_secure_environment()
                 var_name = rpc_url.replace('$SECURE:', '')
-                logger.debug(f"Loading secure variable: {var_name}")
+                logger.debug("Loading secure variable: " + str(var_name))
                 provider_url = secure_env.secure_load(var_name)
             else:
                 provider_url = rpc_url or os.getenv("BASE_RPC_URL")
@@ -333,7 +352,7 @@ def create_web3_manager(provider_url: Optional[str] = None, chain_id: Optional[i
             config = load_config()
             chain_id = config.get('network', {}).get('chainId') or int(os.getenv("CHAIN_ID", "8453"))
             if not isinstance(chain_id, int):
-                raise ValueError(f"Invalid chain ID format: {chain_id}")
+                raise ValueError("Invalid chain ID format: " + str(chain_id))
 
         if not provider_url.startswith(("http://", "https://")):
             raise ValueError("Invalid RPC URL format - must start with http:// or https://")
@@ -349,7 +368,7 @@ def create_web3_manager(provider_url: Optional[str] = None, chain_id: Optional[i
             # If primary RPC fails, try backup
             backup_url = os.getenv("BACKUP_RPC_URL")
             if backup_url:
-                logger.warning(f"Primary RPC failed: {primary_error}. Trying backup RPC...")
+                logger.warning("Primary RPC failed: " + str(primary_error) + ". Trying backup RPC...")
                 
                 if not backup_url.startswith(("http://", "https://")):
                     logger.error("Invalid backup RPC URL format")
@@ -363,5 +382,5 @@ def create_web3_manager(provider_url: Optional[str] = None, chain_id: Optional[i
                 raise primary_error
                 
     except Exception as e:
-        logger.error(f"Failed to create Web3Manager: {e}")
+        logger.error("Failed to create Web3Manager: " + str(e))
         raise

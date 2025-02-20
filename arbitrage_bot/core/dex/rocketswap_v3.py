@@ -22,29 +22,26 @@ class RocketSwapV3(BaseDEXV3):
         self.factory_address = Web3.to_checksum_address(config['factory'])
         self.router_address = Web3.to_checksum_address(config['router'])
         self.fee = config.get('fee', 3000)  # Default to 0.3%
+        self.is_enabled = config.get('enabled', False)
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Initialize the RocketSwap V3 interface."""
         try:
-            # Load contract ABIs
-            self.factory_abi = self.web3_manager.load_abi("swapbased_v3_factory")
-            self.pool_abi = self.web3_manager.load_abi("IPancakeV3Pool")  # Use PancakeSwap V3 pool ABI as they're compatible
-            
             # Initialize factory contract
             self.factory = self.web3_manager.get_contract(
                 address=self.factory_address,
-                abi=self.factory_abi
+                abi_name="swapbased_v3_factory"
             )
             
             # Initialize router contract
             self.router = self.web3_manager.get_contract(
                 address=self.router_address,
-                abi=self.web3_manager.load_abi("swapbased_v3_router")  # Use SwapBased V3 router ABI
+                abi_name="swapbased_v3_router"  # Use SwapBased V3 router ABI
             )
             
             # Initialize contracts
             self.initialized = True
-            self.logger.info(f"{self.name} interface initialized")
+            self.logger.info(self.name + " interface initialized")
             return True
             
         except Exception as e:
@@ -65,16 +62,16 @@ class RocketSwapV3(BaseDEXV3):
             ).call()
             
             if pool_address == "0x0000000000000000000000000000000000000000":
-                self.logger.debug(f"No pool found for {token0}-{token1} with fee {fee}")
+                self.logger.debug("No pool found for " + str(token0) + "-" + str(token1) + " with fee " + str(fee))
                 return None
                 
             return pool_address
             
         except Exception as e:
-            self.logger.error(f"Error getting pool address: {e}")
+            self.logger.error("Error getting pool address: " + str(e))
             return None
 
-    def get_quote_with_impact(
+    async def get_quote_with_impact(
         self,
         amount_in: int,
         path: List[str]
@@ -96,7 +93,7 @@ class RocketSwapV3(BaseDEXV3):
                     # Get pool contract
                     pool = self.web3_manager.get_contract(
                         address=Web3.to_checksum_address(pool_address),
-                        abi=self.pool_abi
+                        abi_name="IPancakeV3Pool"  # Use PancakeSwap V3 pool ABI as they're compatible
                     )
                     
                     # Get pool state
@@ -137,16 +134,16 @@ class RocketSwapV3(BaseDEXV3):
                     }
                     
                 except Exception as e:
-                    self.logger.debug(f"Error getting quote for fee tier {fee}: {e}")
+                    self.logger.debug("Error getting quote for fee tier " + str(fee) + ": " + str(e))
                     continue
             
             return None
             
         except Exception as e:
-            self.logger.error(f"Failed to get V3 quote: {e}")
+            self.logger.error("Failed to get V3 quote: " + str(e))
             return None
 
-    def get_token_price(self, token_address: str) -> float:
+    async def get_token_price(self, token_address: str) -> float:
         """Get current token price."""
         try:
             # If token is WETH, return 1.0 since price is in WETH
@@ -169,7 +166,7 @@ class RocketSwapV3(BaseDEXV3):
                     # Get pool contract
                     pool = self.web3_manager.get_contract(
                         address=Web3.to_checksum_address(pool_address),
-                        abi=self.pool_abi
+                        abi_name="IPancakeV3Pool"  # Use PancakeSwap V3 pool ABI
                     )
                     
                     # Get slot0 data which contains the current sqrt price
@@ -195,11 +192,11 @@ class RocketSwapV3(BaseDEXV3):
                     return float(price)
                     
                 except Exception as e:
-                    self.logger.debug(f"Error getting price for fee tier {fee}: {e}")
+                    self.logger.debug("Error getting price for fee tier " + str(fee) + ": " + str(e))
                     continue
             
             return 0.0
             
         except Exception as e:
-            self.logger.error(f"Failed to get token price: {e}")
+            self.logger.error("Failed to get token price: " + str(e))
             return 0.0

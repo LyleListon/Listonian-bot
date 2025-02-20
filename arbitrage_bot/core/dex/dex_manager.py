@@ -1,7 +1,7 @@
 """DEX manager for handling multiple DEX integrations."""
 
 import logging
-import eventlet
+import time
 from typing import Dict, Any, Optional, List, Tuple, cast, Set
 from decimal import Decimal
 from ..web3.web3_manager import Web3Manager
@@ -25,8 +25,8 @@ class DexManager:
         self.config = config
         self.dex_instances = {}
         self.initialized = False
-        self.known_methods: Set[str] = set()  # Common DEX method signatures
-        self.known_contracts: Set[str] = set()  # Known DEX contract addresses
+        self.known_methods = set()  # Common DEX method signatures
+        self.known_contracts = set()  # Known DEX contract addresses
         logger.debug("DEX manager initialized")
 
     async def initialize(self) -> bool:
@@ -42,7 +42,7 @@ class DexManager:
                     'private_key': self.web3_manager.private_key
                 }
             }
-            logger.info(f"Using wallet address: {self.web3_manager.wallet_address}")
+            logger.info("Using wallet address: " + str(self.web3_manager.wallet_address))
             
             # Initialize each enabled DEX
             for dex_name, dex_config in dex_configs.items():
@@ -76,41 +76,33 @@ class DexManager:
                             config=clean_config
                         )
                     else:
-                        logger.warning(f"Unsupported DEX: {dex_name}")
+                        logger.warning("Unsupported DEX: " + str(dex_name))
                         continue
 
                     # Initialize DEX
-                    if await self._initialize_dex(dex):
+                    if await dex.initialize():
                         self.dex_instances[dex_name] = dex
                         # Add DEX methods and contracts to known sets
                         self.known_methods.update(dex.get_method_signatures())
                         self.known_contracts.add(dex.get_router_address())
-                        logger.info(f"Initialized DEX: {dex_name}")
+                        logger.info("Initialized DEX: " + str(dex_name))
                     else:
-                        logger.error(f"Failed to initialize DEX: {dex_name}")
+                        logger.error("Failed to initialize DEX: " + str(dex_name))
 
                 except Exception as e:
-                    logger.error(f"Error initializing DEX {dex_name}: {e}")
+                    logger.error("Error initializing DEX " + str(dex_name) + ": " + str(e))
                     continue
 
             self.initialized = len(self.dex_instances) > 0
             if self.initialized:
-                logger.info(f"Initialized {len(self.dex_instances)} DEXes")
+                logger.info("Initialized " + str(len(self.dex_instances)) + " DEXes")
             else:
                 logger.error("No DEXes were successfully initialized")
 
             return self.initialized
 
         except Exception as e:
-            logger.error(f"Failed to initialize DEX manager: {e}")
-            return False
-
-    async def _initialize_dex(self, dex: BaseDEX) -> bool:
-        """Initialize a DEX instance."""
-        try:
-            return await eventlet.spawn(dex.initialize).wait()
-        except Exception as e:
-            logger.error(f"Error initializing DEX: {e}")
+            logger.error("Failed to initialize DEX manager: " + str(e))
             return False
 
     def get_dex(self, name: str) -> Optional[BaseDEX]:
@@ -141,13 +133,13 @@ class DexManager:
                     if price and price > 0:
                         prices[dex_name] = Decimal(str(price))
                 except Exception as e:
-                    logger.error(f"Error getting price from {dex_name}: {e}")
+                    logger.error("Error getting price from " + str(dex_name) + ": " + str(e))
                     continue
 
             return prices
 
         except Exception as e:
-            logger.error(f"Failed to get token prices: {e}")
+            logger.error("Failed to get token prices: " + str(e))
             return {}
 
     def get_best_price(self, token_address: str, side: str = 'buy') -> Tuple[str, Decimal]:
@@ -167,7 +159,7 @@ class DexManager:
             return best_dex
 
         except Exception as e:
-            logger.error(f"Failed to get best price: {e}")
+            logger.error("Failed to get best price: " + str(e))
             raise
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -183,19 +175,19 @@ class DexManager:
                         'version': dex.config.get('version', 'v2'),
                         'enabled': True,
                         'initialized': dex.initialized,
-                        'last_update': eventlet.time.time(),
+                        'last_update': time.time(),
                         'error_count': getattr(dex, 'error_count', 0),
                         'success_rate': getattr(dex, 'success_rate', 0)
                     }
                     metrics[dex_name] = dex_metrics
                 except Exception as e:
-                    logger.error(f"Error getting metrics for {dex_name}: {e}")
+                    logger.error("Error getting metrics for " + str(dex_name) + ": " + str(e))
                     continue
 
             return metrics
 
         except Exception as e:
-            logger.error(f"Failed to get DEX metrics: {e}")
+            logger.error("Failed to get DEX metrics: " + str(e))
             return {}
 
 
@@ -208,5 +200,5 @@ async def create_dex_manager(web3_manager: Web3Manager, config: Dict[str, Any]) 
         logger.debug("Created DEX manager")
         return manager
     except Exception as e:
-        logger.error(f"Failed to create DEX manager: {e}")
+        logger.error("Failed to create DEX manager: " + str(e))
         raise

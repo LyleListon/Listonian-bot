@@ -1,6 +1,14 @@
 # Start Listonian Arbitrage Bot Setup
 Write-Host "Starting Listonian Arbitrage Bot Setup..."
 
+# Check Python version
+$pythonVersion = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+if ([version]$pythonVersion -lt [version]"3.12") {
+    Write-Error "Python 3.12 or higher is required. Current version: $pythonVersion"
+    Write-Host "Please install Python 3.12 or higher from https://www.python.org/downloads/"
+    exit 1
+}
+
 # Create logs directory if it doesn't exist
 if (-not (Test-Path "logs")) {
     New-Item -ItemType Directory -Force -Path "logs" | Out-Null
@@ -12,14 +20,12 @@ if (-not (Test-Path "logs")) {
 # Set Python path to include current directory
 [Environment]::SetEnvironmentVariable("PYTHONPATH", "$PWD")
 
-# Check Python installation
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Error "Python not found. Please install Python 3.8 or higher."
-    exit 1
-}
+# Set asyncio debug mode for development
+[Environment]::SetEnvironmentVariable("PYTHONASYNCIODEBUG", "1")
 
 # Install dependencies if needed
 Write-Host "Checking dependencies..."
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt --quiet --no-input
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to install dependencies. Please check pip logs for details."
@@ -88,7 +94,8 @@ Write-Host "Creating required directories..."
     "data/memory",
     "data/storage",
     "minimal_dashboard/static",
-    "minimal_dashboard/templates"
+    "minimal_dashboard/templates",
+    "logs"
 ) | ForEach-Object {
     if (-not (Test-Path $_)) {
         New-Item -ItemType Directory -Force -Path $_ | Out-Null
@@ -99,23 +106,79 @@ Write-Host "Creating required directories..."
 # Set timestamp for log files
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 
-# Start main arbitrage bot first (for live data)
+# Function to check if a process has started successfully
+function Wait-ForProcessStart {
+    param (
+        [string]$LogFile,
+        [string]$ProcessName,
+        [int]$TimeoutSeconds = 30
+    )
+    
+    $startTime = Get-Date
+    $timeout = New-TimeSpan -Seconds $TimeoutSeconds
+    
+    while ((Get-Date) - $startTime -lt $timeout) {
+        if (Test-Path $LogFile) {
+            $content = Get-Content $LogFile -Tail 20 -ErrorAction SilentlyContinue
+            
+            # Check for success indicators
+            if ($content -match "initialized|started|running") {
+                return $true
+            }
+            
+            # Check for failure indicators
+            if ($content -match "error|exception|failed") {
+                Write-Host "Error found in $ProcessName log:"
+                $content | Where-Object { $_ -match "error|exception|failed" } | ForEach-Object {
+                    Write-Host "  $_"
+                }
+                return $false
+            }
+        }
+        
+        Write-Host "." -NoNewline
+        Start-Sleep -Seconds 1
+    }
+    
+    Write-Host "`nTimeout waiting for $ProcessName to start"
+    return $false
+}
+
+# Start main arbitrage bot
 Write-Host "Starting main arbitrage bot..."
-python run_bot.py 2> "logs/bot_$timestamp.error.log" "&"
+$botLogFile = "logs/bot_$timestamp.log"
+$botErrorLog = "logs/bot_$timestamp.error.log"
 
-# Wait for main bot to initialize
+# Start the bot process
+Start-Process python -ArgumentList "run_bot.py" -NoNewWindow
+
+# Wait for bot to initialize
 Write-Host "Waiting for bot initialization..."
-Start-Sleep -Seconds 10
+$botStarted = Wait-ForProcessStart -LogFile $botLogFile -ProcessName "Bot" -TimeoutSeconds 60
+if (-not $botStarted) {
+    Write-Error "Bot failed to start properly. Check logs for details."
+    exit 1
+}
 
-# Set timestamp for log files
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+Write-Host "`nBot started successfully!"
 
 # Start dashboard
 Write-Host "Starting minimal dashboard..."
-python minimal_dashboard.py 2> "logs/dashboard_$timestamp.error.log" "&"
+$dashboardLogFile = "logs/dashboard_$timestamp.log"
+$dashboardErrorLog = "logs/dashboard_$timestamp.error.log"
+
+# Start the dashboard process
+Start-Process python -ArgumentList "minimal_dashboard.py" -NoNewWindow
 
 # Wait for dashboard to initialize
-Start-Sleep -Seconds 5
+Write-Host "Waiting for dashboard initialization..."
+$dashboardStarted = Wait-ForProcessStart -LogFile $dashboardLogFile -ProcessName "Dashboard" -TimeoutSeconds 30
+if (-not $dashboardStarted) {
+    Write-Error "Dashboard failed to start properly. Check logs for details."
+    exit 1
+}
+
+Write-Host "`nDashboard started successfully!"
 
 # Display status
 Write-Host ""
@@ -128,19 +191,35 @@ Write-Host ""
 Write-Host "Dashboard: Running (visualizing data)"
 Write-Host ""
 Write-Host "Monitor the logs directory for detailed output:"
-Write-Host "- logs/bot_$timestamp.log (main bot logs)"
-Write-Host "- logs/dashboard_$timestamp.log (dashboard logs)"
+Write-Host "- $botLogFile (main bot logs)"
+Write-Host "- $dashboardLogFile (dashboard logs)"
 Write-Host ""
 Write-Host "Access dashboard at: http://localhost:5000"
 Write-Host ""
 Write-Host "Press Ctrl+C to stop all processes."
 Write-Host ""
 
-# Keep script running but don't stream logs
-Write-Host "Bot and dashboard are running. Check logs directory for updates."
-Write-Host "Press Ctrl+C to stop all processes."
-
-# Keep script alive without streaming logs
+# Monitor processes
 while ($true) {
-    Start-Sleep -Seconds 60
+    try {
+        # Check if processes are still running
+        $botProcess = Get-Process | Where-Object { $_.ProcessName -eq "python" -and $_.MainWindowTitle -match "run_bot" }
+        $dashboardProcess = Get-Process | Where-Object { $_.ProcessName -eq "python" -and $_.MainWindowTitle -match "minimal_dashboard" }
+        
+        if (-not $botProcess) {
+            Write-Warning "Bot process not found. Restarting..."
+            Start-Process python -ArgumentList "run_bot.py" -NoNewWindow
+        }
+        
+        if (-not $dashboardProcess) {
+            Write-Warning "Dashboard process not found. Restarting..."
+            Start-Process python -ArgumentList "minimal_dashboard.py" -NoNewWindow
+        }
+        
+        Start-Sleep -Seconds 30
+    }
+    catch {
+        Write-Error "Error monitoring processes: $_"
+        Start-Sleep -Seconds 30
+    }
 }

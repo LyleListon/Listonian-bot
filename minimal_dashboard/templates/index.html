@@ -10,6 +10,7 @@
     
     <div class="data-section" id="market-section">
         <h2>Market Data</h2>
+        <div id="dex-status">Loading DEX status...</div>
         <div id="market-data">Loading...</div>
         <div class="legend">
             Each opportunity shows:<br>
@@ -18,7 +19,10 @@
             • Trade Size: Amount of the trade<br>
             • Gross Profit: Profit before gas fees<br>
             • Net Profit: <strong>Actual profit after gas fees</strong> (must be ≥$0.05)<br>
-            • Status: Executing → Success/Failed
+            • Price Difference: Percentage difference between DEXes<br>
+            • Liquidity: Available liquidity for the trade<br>
+            • Status: profitable/monitoring/executing<br>
+            • Time: When opportunity was found
         </div>
         <div class="trade-history">
             <h3>Recent Trades</h3>
@@ -88,6 +92,7 @@
                         <div class="trade-history-item">
                             <span>${trade.pair} (${trade.dex})</span>
                             <span class="${trade.success ? 'profit' : 'failed'}">${trade.success ? trade.profit : 'Failed'}</span>
+                            <span class="trade-time">${trade.timestamp}</span>
                         </div>`;
                 });
                 historyDiv.innerHTML = html;
@@ -98,9 +103,25 @@
 
         socket.on('market_update', (data) => {
             const marketDiv = document.getElementById('market-data');
+            const dexStatusDiv = document.getElementById('dex-status');
+            
             if (data.error) {
                 marketDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                 return;
+            }
+            
+            // Update DEX status
+            if (data.dex_status) {
+                let statusHtml = '<div class="dex-status-grid">';
+                for (const [dex, status] of Object.entries(data.dex_status)) {
+                    statusHtml += `
+                        <div class="dex-status-item ${status}">
+                            <span class="dex-name">${dex}</span>
+                            <span class="dex-indicator"></span>
+                        </div>`;
+                }
+                statusHtml += '</div>';
+                dexStatusDiv.innerHTML = statusHtml;
             }
             
             let html = `<h3>Current Opportunities <span class="gas-note">(Gas Cost: ${data.gas_cost})</span></h3>`;
@@ -110,15 +131,20 @@
                     html += `
                         <li class="opportunity">
                             <div class="opportunity-details">
-                                <div>
+                                <div class="opportunity-main">
                                     <div class="token-pair">${opp.pair}</div>
                                     <div class="dex-route">${opp.dex}</div>
-                                </div>
-                                <div class="profit-details">
                                     <div class="trade-size">Trade: ${opp.size}</div>
+                                </div>
+                                <div class="opportunity-profits">
                                     <div class="gross-profit">Gross: ${opp.gross_profit}</div>
                                     <div class="net-profit">Net: ${opp.net_profit}</div>
+                                    <div class="price-diff">Diff: ${opp.price_diff}</div>
+                                </div>
+                                <div class="opportunity-details">
+                                    <div class="liquidity">Liquidity: ${opp.liquidity}</div>
                                     <div class="status ${opp.status}">${opp.status}</div>
+                                    <div class="timestamp">${opp.timestamp}</div>
                                 </div>
                             </div>
                         </li>`;

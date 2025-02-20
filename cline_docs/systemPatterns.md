@@ -27,7 +27,7 @@
 
 ### 1. Modular Design
 - Separation of concerns between core components
-- Pluggable DEX integrations
+- Pluggable DEX integrations with enable/disable support
 - Extensible monitoring system
 - Configurable execution strategies
 - Multi-token path support
@@ -51,12 +51,27 @@
   * Dynamic fee calculation
   * Slippage management across hops
 
-### 3. Event-Driven Architecture
-- Real-time price monitoring
-- Asynchronous transaction processing
-- Event-based alerting system
-- Reactive opportunity detection
-- Multi-token price tracking
+### 3. Asynchronous Architecture
+- **Core Async Patterns**
+  * Async DEX initialization and operations
+  * Async gas price optimization
+  * Asynchronous transaction processing
+  * Event-based alerting system
+  * Reactive opportunity detection
+
+- **DEX Component Design**
+  * Base async DEX class with common functionality
+  * Async initialization sequence
+  * Enable/disable functionality
+  * Standardized async interface
+  * Version-specific implementations (V2/V3)
+
+- **Gas Optimization System**
+  * Async gas price updates
+  * Real-time price monitoring
+  * Dynamic fee adjustment
+  * Multi-token price tracking
+  * Async transaction cost estimation
 
 ### 4. Risk Management Patterns
 - Circuit breakers for emergency stops
@@ -74,11 +89,18 @@
 - Multi-token price tracking
 
 ### 6. Integration Patterns
-- Standardized DEX interfaces
-- Blockchain interaction protocols
-- Price feed integration
-- Flash loan provider integration
-- Cross-DEX communication
+- **DEX Integration**
+  * Standardized async DEX interfaces
+  * Enable/disable capability
+  * Version-specific adapters
+  * Common method signatures
+  * Unified error handling
+
+- **External Systems**
+  * Blockchain interaction protocols
+  * Price feed integration
+  * Flash loan provider integration
+  * Cross-DEX communication
 
 ### 7. Monitoring & Observability
 - Performance metrics collection
@@ -98,8 +120,8 @@
 
 2. **Bot Architecture**
    - Python-based core system
-   - Asynchronous execution model
-   - Modular DEX integration system
+   - Fully asynchronous execution model
+   - Modular DEX integration system with enable/disable support
    - Real-time monitoring and alerting
    - Path finding optimization
 
@@ -129,7 +151,7 @@
    - Fallback mechanisms
    - Connection health monitoring
    - Transaction retry logic
-   - Gas price optimization
+   - Async gas price optimization
 
 ## Implementation Guidelines
 
@@ -141,11 +163,12 @@
    - Support contract upgrades
 
 2. **Bot Development**
-   - Use async/await patterns
-   - Implement error handling
+   - Use async/await patterns consistently
+   - Implement error handling with recovery
    - Add logging and monitoring
    - Support configuration changes
    - Enable path customization
+   - Support DEX enable/disable functionality
 
 3. **Testing Strategy**
    - Unit tests for components
@@ -153,6 +176,7 @@
    - Gas optimization tests
    - Security vulnerability tests
    - Performance benchmarks
+   - Async operation tests
 
 4. **Deployment Process**
    - Environment validation
@@ -160,3 +184,7 @@
    - Configuration checks
    - Security audits
    - Performance testing
+   - Async component validation
+
+## Last Updated
+2/20/2025, 4:33:46 PM (America/Indianapolis, UTC-5:00)

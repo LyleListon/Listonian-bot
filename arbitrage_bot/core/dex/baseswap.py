@@ -15,28 +15,24 @@ class BaseSwap(BaseDEXV2):
         """Initialize BaseSwap interface."""
         super().__init__(web3_manager, config)
         self.weth_address = Web3.to_checksum_address(config['weth_address'])
+        self.is_enabled = config.get('enabled', False)
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Initialize the BaseSwap interface."""
         try:
-            # Load contract ABIs with correct filenames
-            self.router_abi = self.web3_manager.load_abi("baseswap_router")
-            self.factory_abi = self.web3_manager.load_abi("baseswap_factory")
-            self.pair_abi = self.web3_manager.load_abi("baseswap_pair")
-            
             # Initialize contracts with checksummed addresses
             self.router = self.web3_manager.get_contract(
                 address=self.router_address,
-                abi=self.router_abi
+                abi_name="baseswap_router"
             )
             self.factory = self.web3_manager.get_contract(
                 address=self.factory_address,
-                abi=self.factory_abi
+                abi_name="baseswap_factory"
             )
             
             # Initialize contracts
             self.initialized = True
-            self.logger.info(f"{self.name} interface initialized")
+            self.logger.info(self.name + " interface initialized")
             return True
             
         except Exception as e:
@@ -74,7 +70,7 @@ class BaseSwap(BaseDEXV2):
             ).call()
             
             if allowance < amount_in:
-                self.logger.info(f"Approving {path[0]} for router {self.router_address}")
+                self.logger.info("Approving " + str(path[0]) + " for router " + str(self.router_address))
                 approve_tx = self.web3_manager.build_and_send_transaction(
                     token_in,
                     'approve',
@@ -114,15 +110,16 @@ class BaseSwap(BaseDEXV2):
                 
                 if in_diff <= 0 or out_diff <= 0:
                     raise Exception(
-                        f"Balance verification failed: in_diff={in_diff}, "
-                        f"out_diff={out_diff}, expected_min_out={amount_out_min}"
+                        "Balance verification failed: in_diff=" + str(in_diff) + 
+                        ", out_diff=" + str(out_diff) + 
+                        ", expected_min_out=" + str(amount_out_min)
                     )
                 
                 self.logger.info(
-                    f"Swap successful:\n"
-                    f"  In: {in_diff} {path[0]}\n"
-                    f"  Out: {out_diff} {path[-1]}\n"
-                    f"  Gas Used: {receipt['gasUsed']}"
+                    "Swap successful:\n" +
+                    "  In: " + str(in_diff) + " " + str(path[0]) + "\n" +
+                    "  Out: " + str(out_diff) + " " + str(path[-1]) + "\n" +
+                    "  Gas Used: " + str(receipt['gasUsed'])
                 )
                 
                 return receipt
@@ -130,7 +127,7 @@ class BaseSwap(BaseDEXV2):
                 raise Exception("Swap transaction failed")
             
         except Exception as e:
-            self.logger.error(f"Swap failed: {e}")
+            self.logger.error("Swap failed: " + str(e))
             raise
 
     def get_token_price(self, token_address: str) -> float:
@@ -152,7 +149,7 @@ class BaseSwap(BaseDEXV2):
             # Get pair contract
             pair = self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
-                abi=self.pair_abi
+                abi_name="baseswap_pair"
             )
             
             # Get reserves
@@ -181,7 +178,7 @@ class BaseSwap(BaseDEXV2):
             return float(price)
             
         except Exception as e:
-            self.logger.error(f"Failed to get token price: {e}")
+            self.logger.error("Failed to get token price: " + str(e))
             return 0.0
 
     def get_24h_volume(self, token0: str, token1: str) -> Decimal:
@@ -199,7 +196,7 @@ class BaseSwap(BaseDEXV2):
             # Get pair contract
             pair = self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
-                abi=self.pair_abi
+                abi_name="baseswap_pair"
             )
             
             # Get reserves
@@ -213,7 +210,7 @@ class BaseSwap(BaseDEXV2):
             return volume
             
         except Exception as e:
-            self.logger.error(f"Failed to get 24h volume: {e}")
+            self.logger.error("Failed to get 24h volume: " + str(e))
             return Decimal('0')
 
     def get_total_liquidity(self) -> Decimal:
@@ -224,7 +221,7 @@ class BaseSwap(BaseDEXV2):
             return total_liquidity
             
         except Exception as e:
-            self.logger.error(f"Failed to get total liquidity: {e}")
+            self.logger.error("Failed to get total liquidity: " + str(e))
             return Decimal('0')
 
     def get_supported_tokens(self) -> List[str]:
@@ -255,13 +252,13 @@ class BaseSwap(BaseDEXV2):
                     if pair_address != "0x0000000000000000000000000000000000000000":
                         # Add token if pair exists
                         supported_tokens.add(token_address)
-                        self.logger.debug(f"Found active pair for {token_address}")
+                        self.logger.debug("Found active pair for " + str(token_address))
                         
                 except Exception as e:
-                    self.logger.debug(f"Error checking pair for {token_address}: {e}")
+                    self.logger.debug("Error checking pair for " + str(token_address) + ": " + str(e))
                     continue
             
             return list(supported_tokens)
         except Exception as e:
-            self.logger.error(f"Failed to get supported tokens: {e}")
+            self.logger.error("Failed to get supported tokens: " + str(e))
             return []

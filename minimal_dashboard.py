@@ -4,6 +4,8 @@ import logging
 import os
 from datetime import datetime
 import json
+import asyncio
+from decimal import Decimal
 
 # Import eventlet and patch first
 import eventlet
@@ -91,8 +93,16 @@ web3_manager = create_web3_manager(
 
 # Initialize DEX manager
 logger.info("Initializing DEX manager...")
-dex_manager = create_dex_manager(web3_manager, config)
-logger.info("DEX manager initialized")
+dex_manager = None
+
+async def init_dex_manager():
+    """Initialize DEX manager asynchronously."""
+    global dex_manager
+    dex_manager = await create_dex_manager(web3_manager, config)
+    logger.info("DEX manager initialized")
+
+# Run the initialization in the background
+eventlet.spawn(lambda: asyncio.run(init_dex_manager()))
 
 # Initialize market analyzer
 market_analyzer = create_market_analyzer(dex_manager=dex_manager)
@@ -104,6 +114,23 @@ gas_logger = GasLogger()
 init_memory_bank()
 memory_bank = get_memory_bank()
 
+# Token symbol cache
+token_symbols = {}
+
+def get_token_symbol(token_address: str) -> str:
+    """Get human-readable token symbol."""
+    if token_address in token_symbols:
+        return token_symbols[token_address]
+    
+    try:
+        token_contract = web3_manager.get_token_contract(token_address)
+        symbol = token_contract.functions.symbol().call()
+        token_symbols[token_address] = symbol
+        return symbol
+    except Exception as e:
+        logger.error(f"Error getting token symbol: {e}")
+        return token_address[:8]
+
 @app.route('/')
 def index():
     """Render dashboard template."""
@@ -113,9 +140,8 @@ def emit_memory_stats():
     """Emit memory bank statistics."""
     try:
         stats = memory_bank.get_stats()
-        
         socketio.emit('memory_update', stats)
-        logger.info(f"Emitted memory stats: {stats}")
+        logger.debug(f"Emitted memory stats: {stats}")
     except Exception as e:
         logger.error(f"Error emitting memory stats: {e}")
         socketio.emit('memory_update', {'error': str(e)})
@@ -126,7 +152,6 @@ def emit_gas_prices():
         # Get current gas prices
         gas_price = web3_manager.w3.eth.gas_price / 1e9  # Convert to gwei
         latest_block = web3_manager.w3.eth.get_block('latest')
-        logger.debug(f"Latest block: {latest_block}")
         base_fee = latest_block.get('base_fee_per_gas', 0) / 1e9  # Convert to gwei
 
         # Get monthly gas usage summary
@@ -150,7 +175,7 @@ def emit_gas_prices():
             'timestamp': datetime.now().timestamp()
         }
         socketio.emit('gas_update', gas_data)
-        logger.info(f"Emitted gas prices: {gas_data}")
+        logger.debug(f"Emitted gas prices: {gas_data}")
     except Exception as e:
         logger.error(f"Error emitting gas prices: {e}")
         socketio.emit('gas_update', {'error': str(e)})
@@ -158,6 +183,10 @@ def emit_gas_prices():
 def emit_market_data():
     """Emit real market data from market analyzer."""
     try:
+        if not dex_manager or not dex_manager.initialized:
+            logger.warning("DEX manager not initialized yet")
+            return
+
         # Get real opportunities from market analyzer
         logger.debug("Fetching market opportunities...")
         opportunities = market_analyzer.get_opportunities()
@@ -165,13 +194,23 @@ def emit_market_data():
         # Format opportunities for display
         formatted_opportunities = []
         for opp in opportunities:
+            # Get human-readable token symbols
+            token_in_symbol = get_token_symbol(opp['token'])
+            token_out_symbol = get_token_symbol(opp['dex_to_path'][-1])
+            
+            # Calculate status based on profitability
+            status = 'profitable' if opp['profit_usd'] > config['trading']['min_profit_usd'] else 'monitoring'
+            
             formatted_opp = {
-                'pair': f"{opp['token_in']}/{opp['token_out']}",
-                'dex': f"{opp['dex_in']} → {opp['dex_out']}",
-                'size': f"${opp['amount_usd']:.2f}",
-                'gross_profit': f"${opp['gross_profit_usd']:.2f}",
-                'net_profit': f"${opp['net_profit_usd']:.2f}",
-                'status': 'executing'
+                'pair': f"{token_in_symbol}/{token_out_symbol}",
+                'dex': f"{opp['dex_from']} → {opp['dex_to']}",
+                'size': f"${float(opp['amount_in']):.2f}",
+                'gross_profit': f"${float(opp['profit_usd']):.2f}",
+                'net_profit': f"${max(0, float(opp['profit_usd']) - float(config['trading']['min_profit_usd'])):.2f}",
+                'price_diff': f"{float(opp['price_diff']) * 100:.2f}%",
+                'liquidity': f"${float(min(opp['liquidity_from'], opp['liquidity_to'])):.2f}",
+                'status': status,
+                'timestamp': datetime.fromtimestamp(opp['timestamp']).strftime('%H:%M:%S')
             }
             formatted_opportunities.append(formatted_opp)
         
@@ -183,10 +222,14 @@ def emit_market_data():
         
         market_data = {
             'opportunities': formatted_opportunities,
-            'gas_cost': f"${config['trading']['min_profit_usd']:.2f}"
+            'gas_cost': f"${config['trading']['min_profit_usd']:.2f}",
+            'dex_status': {
+                name: 'active' if dex.is_enabled() else 'inactive'
+                for name, dex in dex_manager.dex_instances.items()
+            }
         }
         socketio.emit('market_update', market_data)
-        logger.info(f"Emitted market data: {market_data}")
+        logger.debug(f"Emitted market data with {len(formatted_opportunities)} opportunities")
     except Exception as e:
         logger.error(f"Error emitting market data: {e}")
         socketio.emit('market_update', {'error': str(e)})
