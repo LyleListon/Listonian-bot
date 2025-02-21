@@ -1,169 +1,207 @@
 # Technical Context
 
-## Deployment Information
-- **Network**: Base Mainnet
-- **Chain ID**: 8453
-- **MultiPathArbitrage Contract**: 0x72958f220B8e1CA9b016EAEa5EEC18dBFaAB84eb
-- **Pool Address Provider**: 0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D
-- **Deployer Wallet**: 0x257a30645bF0C91BC155bd9C01BD722322050F7b
-
-## Network Configuration
-- **Primary RPC**: Alchemy (Base Mainnet)
-- **Backup RPC**: Infura (Base Mainnet)
-- **Block Explorer**: Basescan
-- **Gas Strategy**: Dynamic with 20% buffer
-- **Confirmation Blocks**: 2
-
-## Smart Contract Details
-- **Language**: Solidity 0.8.28
-- **Framework**: Hardhat
-- **Dependencies**: OpenZeppelin Contracts
-- **Optimizations**: Enabled (200 runs)
-- **Verified**: Yes (Basescan)
-
 ## Development Environment
-- **Python**: 3.12+
-- **Node.js**: 14+
-- **Package Manager**: npm/pip
-- **Testing Framework**: Hardhat Test, pytest
-- **Code Style**: Solidity Style Guide, PEP 8
-- **Documentation**: NatSpec Format, Docstrings
+- Python 3.12+
+- Web3.py for blockchain interaction
+- Asyncio for async/await support
+- Gevent for event handling
+- VSCode as primary IDE
 
-## Key Dependencies
-```json
-{
-  "contract": {
-    "@openzeppelin/contracts": "^4.x",
-    "@nomiclabs/hardhat-ethers": "^2.x",
-    "@nomiclabs/hardhat-etherscan": "^3.x",
-    "ethers": "^5.x",
-    "hardhat": "^2.x"
-  },
-  "python": {
-    "web3": "^6.x",
-    "aiohttp": "^3.x",
-    "psutil": "^7.x",
-    "pytest": "^7.x",
-    "pytest-asyncio": "^0.x",
-    "python-dotenv": "^1.x"
-  }
-}
-```
+## Core Dependencies
+- web3
+- gevent
+- asyncio
+- logging
+- decimal
+- typing
 
-## Core Components
-### DEX System
-- Async base DEX class
-- Enable/disable functionality
-- V2/V3 protocol support
-- Standardized interfaces
-- Dynamic gas optimization
+## Technical Requirements
 
-### Gas Optimization
-- Async gas price updates
-- Dynamic fee calculation
-- Real-time monitoring
-- Multi-DEX gas tracking
-- Transaction optimization
+### DEX Integration
+1. WETH Address Handling
+   - Required in base configuration
+   - Must be valid checksum address
+   - Injected into all DEX instances
+   - Used for price calculations
+   - Consistent checksumming
 
-### Initialization System
-- Async component startup
-- Dependency management
-- Error recovery
-- State validation
-- Configuration loading
+2. Contract Interactions
+   - Async methods required
+   - Retry mechanism with backoff
+   - Gas estimation
+   - Transaction validation
+   - Contract existence verification
 
-## Security Features
-- Owner-controlled operations
-- Safe token transfers
-- Flash loan security checks
-- Multi-step ownership transfers
-- Emergency withdrawal functions
+3. Event Handling
+   - Proper ABI loading required
+   - Event filters for monitoring
+   - Async event processing
+   - Error recovery
+   - Performance monitoring
 
-## Contract Interfaces
-- Flash loan integration
-- Multi-token trading
-- DEX interactions
-- Profit distribution
-- Owner management
+### Async Implementation
+1. Method Requirements
+   - All DEX methods must be async
+   - Proper await usage
+   - Error handling with context
+   - Timeout handling
+   - Performance tracking
 
-## Monitoring Setup
-- Transaction monitoring
-- Event tracking
-- Gas price monitoring
-- Balance tracking
-- Error alerting
+2. Event Loop Management
+   - Proper initialization
+   - Cleanup on shutdown
+   - Task management
+   - Resource cleanup
+   - Debug mode configuration
 
-## Infrastructure
-- Base mainnet deployment
-- Multiple RPC providers
-- Automated deployment scripts
-- Contract verification
-- Event logging
+### Configuration Management
+1. Required Fields
+   - WETH address
+   - Router address
+   - Factory address
+   - Token configurations
+   - DEX-specific settings
 
-## Gas Optimization
-- Async gas price updates
-- Batch operations
-- Storage optimization
-- Loop optimization
-- Event efficiency
-- Function optimization
+2. Validation Requirements
+   - Address checksum validation
+   - Network compatibility check
+   - Required field presence
+   - Type validation
+   - Contract existence check
 
-## Testing Environment
-- Local hardhat network
-- Mainnet forking capability
-- Test coverage tools
-- Gas reporting
-- Transaction tracing
-- Async component testing
+### Error Handling
+1. Standardization
+   - Context preservation
+   - Proper logging
+   - Error categorization
+   - Recovery mechanisms
+   - Performance impact tracking
 
-## Deployment Process
-1. Environment validation
-2. Contract compilation
-3. Gas estimation
-4. Contract deployment
-5. Verification submission
-6. Event confirmation
-7. Component initialization testing
+2. Retry Logic
+   - Exponential backoff
+   - Maximum retry limits
+   - Timeout handling
+   - Error differentiation
+   - Performance monitoring
 
-## Maintenance Procedures
-- Regular balance checks
-- Gas price monitoring
-- Event log analysis
-- Error tracking
+## Technical Constraints
+
+### Network Constraints
+- Base network compatibility
+- RPC endpoint requirements
+- Gas price limitations
+- Block time considerations
+- Network resilience
+
+### Memory Constraints
+- Contract instance caching
+- Event filter management
+- Price data caching
+- State management
 - Performance optimization
-- Component health checks
 
-## Error Handling
-- Transaction reversion
-- Gas estimation failures
-- RPC connection issues
-- Token transfer failures
-- Network congestion
-- Async operation errors
+### Performance Requirements
+1. Transaction Speed
+   - Quick price checks
+   - Efficient path finding
+   - Fast execution
+   - Low latency
+   - Performance monitoring
 
-## Documentation
-- Contract documentation
-- Deployment records
-- Configuration guides
-- Testing procedures
-- Maintenance guides
-- Component specifications
+2. Resource Usage
+   - Minimal memory footprint
+   - Efficient CPU usage
+   - Network optimization
+   - Storage efficiency
+   - Debug mode control
 
-## Backup Systems
-- Multiple RPC providers
-- Redundant monitoring
-- Transaction retry logic
-- State recovery procedures
-- Error logging
-- Component failover
+### Security Requirements
+1. Input Validation
+   - Address validation
+   - Amount validation
+   - Path validation
+   - Permission checks
+   - Token validation
 
-## Recent Updates
-- Added psutil package for system monitoring
-- Implemented DEX enable/disable functionality
-- Updated to async gas optimization system
-- Enhanced error handling in startup sequence
-- Improved component initialization process
-- Added async support across core components
+2. Transaction Safety
+   - Slippage protection
+   - Gas price limits
+   - Balance verification
+   - Deadline enforcement
+   - Quote validation
 
-## Last Updated
-2/20/2025, 4:34:15 PM (America/Indianapolis, UTC-5:00)
+## Implementation Notes
+
+### Critical Components
+1. DEX Manager
+   - Central coordination
+   - Instance management
+   - Configuration handling
+   - State tracking
+   - Performance monitoring
+
+2. Web3 Manager
+   - Contract management
+   - Transaction handling
+   - Gas optimization
+   - Network interaction
+   - Address validation
+
+3. Event System
+   - Event monitoring
+   - State updates
+   - Alert generation
+   - Data collection
+   - Performance tracking
+
+### Integration Points
+1. Contract Integration
+   - ABI loading
+   - Method calls
+   - Event handling
+   - State tracking
+   - Performance monitoring
+
+2. Price Integration
+   - Oracle integration
+   - Price calculation
+   - Impact assessment
+   - Validation
+   - Performance tracking
+
+3. Network Integration
+   - RPC connection
+   - Transaction submission
+   - Block monitoring
+   - Network status
+   - Performance optimization
+
+## Testing Requirements
+
+### Unit Testing
+- Base class testing
+- Method validation
+- Error handling
+- State management
+- Performance testing
+
+### Integration Testing
+- Contract interaction
+- Event handling
+- Price calculation
+- Transaction flow
+- Performance benchmarking
+
+### Performance Testing
+- Response times
+- Resource usage
+- Network latency
+- Transaction speed
+- Debug mode impact
+
+### Security Testing
+- Input validation
+- Transaction safety
+- Error handling
+- Permission checks
+- Token validation

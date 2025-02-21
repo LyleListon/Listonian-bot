@@ -4,7 +4,6 @@ from typing import Dict, Any, Optional, List, Union, TypeVar, Generic
 from dataclasses import dataclass, asdict
 import json
 import os
-import eventlet
 import time
 import shutil
 from pathlib import Path
@@ -36,7 +35,7 @@ class SchemaError(StorageError):
     pass
 
 class BackupError(StorageError):
-      
+    """Raised when backup operations fail."""
     pass
 
 class StorageManager(Generic[T]):
@@ -119,7 +118,7 @@ class StorageManager(Generic[T]):
         try:
             validate(instance=data, schema=schema)
         except JsonValidationError as e:
-            raise ValidationError(f"Schema validation failed: {e}")
+            raise ValidationError("Schema validation failed: %s" % str(e))
     
     def store(self, key: str, data: T, schema: Optional[Dict] = None,
               create_backup: bool = True) -> StorageMetadata:
@@ -143,7 +142,7 @@ class StorageManager(Generic[T]):
             self._validate_schema(data, schema)
             
             # Store schema for future validation
-            schema_path = self.base_path / "schemas" / f"{key}.json"
+            schema_path = self.base_path / "schemas" / (key + ".json")
             with open(schema_path, 'w') as f:
                 json.dump(schema, f, indent=2)
         
@@ -152,17 +151,17 @@ class StorageManager(Generic[T]):
             try:
                 self._create_backup(key)
             except Exception as e:
-                raise BackupError(f"Failed to create backup: {e}")
+                raise BackupError("Failed to create backup: %s" % str(e))
         
         # Store data
         now = time.time()
-        file_path = self.base_path / "data" / f"{key}.json"
+        file_path = self.base_path / "data" / (key + ".json")
         
         try:
             with open(file_path, 'w') as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
-            raise StorageError(f"Failed to store data: {e}")
+            raise StorageError("Failed to store data: %s" % str(e))
         
         # Update metadata
         metadata = StorageMetadata(
@@ -171,7 +170,7 @@ class StorageManager(Generic[T]):
             updated_at=now,
             checksum=self._calculate_checksum(data),
             category=self.category,
-            backup_path=str(self.base_path / "backups" / f"{key}_{now}.json")
+            backup_path=str(self.base_path / "backups" / (key + "_" + str(now) + ".json"))
                          if create_backup and key in self._metadata else None
         )
         self._metadata[key] = metadata
@@ -207,7 +206,7 @@ class StorageManager(Generic[T]):
         if key not in self._metadata:
             return None
         
-        file_path = self.base_path / "data" / f"{key}.json"
+        file_path = self.base_path / "data" / (key + ".json")
         if not file_path.exists():
             return None
         
@@ -220,8 +219,9 @@ class StorageManager(Generic[T]):
                 checksum = self._calculate_checksum(data)
                 if checksum != self._metadata[key].checksum:
                     raise ValidationError(
-                        f"Checksum validation failed for {key}. "
-                        f"Expected {self._metadata[key].checksum}, got {checksum}"
+                        "Checksum validation failed for %s. Expected %s, got %s" % (
+                            key, self._metadata[key].checksum, checksum
+                        )
                     )
             
             # Update cache if memory bank is available
@@ -230,21 +230,21 @@ class StorageManager(Generic[T]):
             
             return data
         except Exception as e:
-            raise StorageError(f"Failed to retrieve data: {e}")
+            raise StorageError("Failed to retrieve data: %s" % str(e))
     
     def _create_backup(self, key: str) -> None:
         """Create backup of existing data."""
-        source = self.base_path / "data" / f"{key}.json"
+        source = self.base_path / "data" / (key + ".json")
         if not source.exists():
             return
         
         timestamp = time.time()
-        backup = self.base_path / "backups" / f"{key}_{timestamp}.json"
+        backup = self.base_path / "backups" / (key + "_" + str(timestamp) + ".json")
         
         try:
             shutil.copy2(source, backup)
         except Exception as e:
-            raise BackupError(f"Failed to create backup: {e}")
+            raise BackupError("Failed to create backup: %s" % str(e))
     
     def restore_backup(self, key: str, timestamp: Optional[float] = None) -> StorageMetadata:
         """Restore data from backup.
@@ -261,12 +261,12 @@ class StorageManager(Generic[T]):
         """
         # Find backup file
         if timestamp:
-            backup = self.base_path / "backups" / f"{key}_{timestamp}.json"
+            backup = self.base_path / "backups" / (key + "_" + str(timestamp) + ".json")
             if not backup.exists():
-                raise StorageError(f"Backup not found for timestamp {timestamp}")
+                raise StorageError("Backup not found for timestamp %s" % str(timestamp))
         else:
             # Find latest backup
-            backups = list(self.base_path.glob(f"backups/{key}_*.json"))
+            backups = list(self.base_path.glob("backups/" + key + "_*.json"))
             if not backups:
                 raise StorageError("No backups found")
             backup = max(backups, key=lambda p: float(p.stem.split('_')[1]))
@@ -277,7 +277,7 @@ class StorageManager(Generic[T]):
                 data = json.load(f)
             return self.store(key, data, create_backup=False)
         except Exception as e:
-            raise StorageError(f"Failed to restore backup: {e}")
+            raise StorageError("Failed to restore backup: %s" % str(e))
     
     def list_backups(self, key: str) -> List[float]:
         """List available backup timestamps for a key.
@@ -288,7 +288,7 @@ class StorageManager(Generic[T]):
         Returns:
             List of backup timestamps
         """
-        backups = list(self.base_path.glob(f"backups/{key}_*.json"))
+        backups = list(self.base_path.glob("backups/" + key + "_*.json"))
         return [float(p.stem.split('_')[1]) for p in backups]
     
     def get_metadata(self, key: str) -> Optional[StorageMetadata]:
@@ -347,18 +347,18 @@ class StorageManager(Generic[T]):
             keep_backups: Whether to keep backup files
         """
         # Remove data file
-        file_path = self.base_path / "data" / f"{key}.json"
+        file_path = self.base_path / "data" / (key + ".json")
         if file_path.exists():
             file_path.unlink()
         
         # Remove schema if exists
-        schema_path = self.base_path / "schemas" / f"{key}.json"
+        schema_path = self.base_path / "schemas" / (key + ".json")
         if schema_path.exists():
             schema_path.unlink()
         
         # Remove backups if requested
         if not keep_backups:
-            for backup in self.base_path.glob(f"backups/{key}_*.json"):
+            for backup in self.base_path.glob("backups/" + key + "_*.json"):
                 backup.unlink()
         
         # Remove from metadata

@@ -5,17 +5,21 @@ import time
 import os
 import json
 import zlib
-import eventlet
+from ...utils.eventlet_patch import manager as eventlet_manager
 from typing import Dict, List, Any, Optional
 from dataclasses import asdict
 from concurrent.futures import ThreadPoolExecutor
 from collections import namedtuple, defaultdict
 import lru
+import gevent.lock
 
 from ..models.opportunity import Opportunity
 from .file_manager import FileManager
 
 logger = logging.getLogger(__name__)
+
+# Get eventlet instance from manager
+eventlet = eventlet_manager.eventlet
 
 def create_memory_bank(config: Optional[Dict[str, Any]] = None) -> 'MemoryBank':
     """Create and initialize a memory bank instance."""
@@ -70,8 +74,8 @@ class MemoryBank:
         # Locks for thread safety
         self._storage_locks = {}
         for category in self._categories:
-            self._storage_locks[category] = eventlet.semaphore.Semaphore()
-        self._stats_lock = eventlet.semaphore.Semaphore()
+            self._storage_locks[category] = gevent.lock.BoundedSemaphore()
+        self._stats_lock = gevent.lock.BoundedSemaphore()
         
         # LRU caches for frequently accessed data
         self._data_cache = lru.LRU(CACHE_SIZE)
@@ -87,7 +91,7 @@ class MemoryBank:
         # Initialize file manager
         self.file_manager = FileManager(self.base_path)
         
-        logger.debug(f"Memory bank instance created with base path: {self.base_path}")
+        logger.debug("Memory bank instance created with base path: %s", self.base_path)
 
     def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """Initialize memory bank with configuration."""
@@ -104,7 +108,7 @@ class MemoryBank:
             # Create category directories
             for category in self._categories:
                 if not self.file_manager.ensure_directory(category):
-                    logger.error(f"Failed to create directory for category: {category}")
+                    logger.error("Failed to create directory for category: %s", category)
                     return False
             
             # Load historical data
@@ -115,7 +119,7 @@ class MemoryBank:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to initialize memory bank: {e}", exc_info=True)
+            logger.error("Failed to initialize memory bank: %s", str(e), exc_info=True)
             return False
 
     def _load_historical_data(self) -> None:
@@ -125,13 +129,13 @@ class MemoryBank:
             opportunities = self.file_manager.read_json(os.path.join('market_data', 'opportunities.json'))
             if opportunities:
                 self.opportunities = opportunities
-                logger.debug(f"Loaded {len(self.opportunities)} historical opportunities")
+                logger.debug("Loaded %d historical opportunities", len(self.opportunities))
 
             # Load trade results
             trade_results = self.file_manager.read_json(os.path.join('transactions', 'trade_results.json'))
             if trade_results:
                 self.trade_results = trade_results
-                logger.debug(f"Loaded {len(self.trade_results)} historical trade results")
+                logger.debug("Loaded %d historical trade results", len(self.trade_results))
 
             # Load other categories
             for category in self._categories:
@@ -155,13 +159,13 @@ class MemoryBank:
                                         with self._storage_locks[category]:
                                             self.storage[category][key] = data_obj
                                 except Exception as e:
-                                    logger.error(f"Failed to load {file_path}: {e}")
+                                    logger.error("Failed to load %s: %s", file_path, str(e))
                                     continue
 
             logger.debug("Historical data loading complete")
             
         except Exception as e:
-            logger.error(f"Failed to load historical data: {e}")
+            logger.error("Failed to load historical data: %s", str(e))
 
     def store(self, key: str, data: Any, category: str, ttl: Optional[int] = None) -> None:
         """Store data in specified category."""
@@ -171,7 +175,7 @@ class MemoryBank:
 
         try:
             if category not in self.storage:
-                logger.error(f"Invalid category: {category}")
+                logger.error("Invalid category: %s", category)
                 return
 
             # Store in memory
@@ -184,12 +188,12 @@ class MemoryBank:
                 self.storage[category][key] = data_obj
             
             # Store to disk
-            file_path = os.path.join(category, f"{key}.json")
+            file_path = os.path.join(category, key + ".json")
             if not self.file_manager.write_json(file_path, data_obj):
-                logger.error(f"Failed to write data to {file_path}")
+                logger.error("Failed to write data to %s", file_path)
                 
         except Exception as e:
-            logger.error(f"Error storing data: {e}")
+            logger.error("Error storing data: %s", str(e))
             raise
 
     def retrieve(self, key: str, category: str) -> Optional[Any]:
@@ -200,7 +204,7 @@ class MemoryBank:
 
         try:
             # Check cache first
-            cache_key = f"{category}:{key}"
+            cache_key = category + ":" + key
             if cache_key in self._data_cache:
                 with self._stats_lock:
                     self.stats['cache_hits'] += 1
@@ -225,7 +229,7 @@ class MemoryBank:
                     return data_obj['data']
 
             # If not in memory, try to load from disk
-            file_path = os.path.join(category, f"{key}.json")
+            file_path = os.path.join(category, key + ".json")
             data_obj = self.file_manager.read_json(file_path)
             if data_obj:
                 # Check TTL
@@ -243,7 +247,7 @@ class MemoryBank:
             return None
             
         except Exception as e:
-            logger.error(f"Error retrieving data: {e}")
+            logger.error("Error retrieving data: %s", str(e))
             return None
 
     def store_opportunities(self, opportunities: List[Opportunity]) -> None:
@@ -267,7 +271,7 @@ class MemoryBank:
             
             # Add new opportunities
             self.opportunities.extend(opp_dicts)
-            logger.debug(f"Added {len(opp_dicts)} opportunities to memory")
+            logger.debug("Added %d opportunities to memory", len(opp_dicts))
             
             # Store to disk
             file_path = os.path.join('market_data', 'opportunities.json')
@@ -275,7 +279,7 @@ class MemoryBank:
                 logger.error("Failed to write opportunities to disk")
             
         except Exception as e:
-            logger.error(f"Error storing opportunities: {e}", exc_info=True)
+            logger.error("Error storing opportunities: %s", str(e), exc_info=True)
 
     def store_trade_result(
         self,
@@ -310,7 +314,7 @@ class MemoryBank:
                 logger.error("Failed to write trade results to disk")
             
         except Exception as e:
-            logger.error(f"Error storing trade result: {e}")
+            logger.error("Error storing trade result: %s", str(e))
 
     def get_trade_history(self, limit: Optional[int] = None, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get trade execution history."""
@@ -336,7 +340,7 @@ class MemoryBank:
             return filtered_trades
             
         except Exception as e:
-            logger.error(f"Error getting trade history: {e}")
+            logger.error("Error getting trade history: %s", str(e))
             return []
 
     def get_compression_stats(self) -> Dict[str, Any]:
@@ -365,7 +369,7 @@ class MemoryBank:
                 'compression_savings': total_size - compressed_size
             }
         except Exception as e:
-            logger.error(f"Error getting compression stats: {e}")
+            logger.error("Error getting compression stats: %s", str(e))
             return {
                 'total_size': 0,
                 'compressed_size': 0,
@@ -388,7 +392,7 @@ class MemoryBank:
 
             return filtered_opps
         except Exception as e:
-            logger.error(f"Error getting recent opportunities: {e}")
+            logger.error("Error getting recent opportunities: %s", str(e))
             return []
 
     def get_memory_stats(self) -> MemoryStats:
@@ -406,11 +410,11 @@ class MemoryBank:
             
             categories['market_data'] = {
                 'size': opp_size,
-                'items': [f'opportunity_{i}' for i in range(len(self.opportunities))]
+                'items': ['opportunity_%d' % i for i in range(len(self.opportunities))]
             }
             categories['transactions'] = {
                 'size': trade_size,
-                'items': [f'trade_{i}' for i in range(len(self.trade_results))]
+                'items': ['trade_%d' % i for i in range(len(self.trade_results))]
             }
             
             # Add storage categories
@@ -444,5 +448,5 @@ class MemoryBank:
             )
             
         except Exception as e:
-            logger.error(f"Error getting memory stats: {e}")
+            logger.error("Error getting memory stats: %s", str(e))
             return MemoryStats(0, 0, 0, {}, 0, 0)

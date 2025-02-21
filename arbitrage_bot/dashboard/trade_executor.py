@@ -1,7 +1,6 @@
 """Trade Executor Module"""
 
 import logging
-import eventlet
 import time
 import json
 import os
@@ -10,6 +9,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from web3 import Web3
 from web3.contract import Contract
 from pathlib import Path
+from ..utils.eventlet_patch import manager as eventlet_manager
 
 from .web3_utils import get_web3_utils
 from ..dex.interfaces.dex_interface import create_dex_interface
@@ -17,6 +17,8 @@ from ..dex.interfaces.dex_interface import create_dex_interface
 logger = logging.getLogger("TradeExecutor")
 logger.setLevel(logging.INFO)
 
+# Get eventlet instance from manager
+eventlet = eventlet_manager.eventlet
 
 class TradeExecutor:
     """Trade executor class"""
@@ -51,9 +53,9 @@ class TradeExecutor:
 
         self._initialized = True
         logger.info("TradeExecutor initialized with config")
-        logger.info(f"Loaded {len(self.dex_config['dexes'])} DEXes")
-        logger.info(f"Loaded {len(self.dex_config['tokens'])} tokens")
-        logger.info(f"Loaded {len(self.dex_config['pairs'])} pairs")
+        logger.info("Loaded %d DEXes", len(self.dex_config['dexes']))
+        logger.info("Loaded %d tokens", len(self.dex_config['tokens']))
+        logger.info("Loaded %d pairs", len(self.dex_config['pairs']))
 
     def calculate_amount_out(
         self,
@@ -91,7 +93,7 @@ class TradeExecutor:
             with open(abi_path, "r") as f:
                 return json.load(f)
         except Exception as e:
-            logger.error(f"Error loading ABI from {filename}: {e}")
+            logger.error("Error loading ABI from %s: %s", filename, str(e))
             return None
 
     def execute_arbitrage_trade(
@@ -99,7 +101,7 @@ class TradeExecutor:
     ) -> Dict[str, Any]:
         """Execute arbitrage trade"""
         try:
-            logger.info(f"Executing arbitrage trade: {opportunity}")
+            logger.info("Executing arbitrage trade: %s", opportunity)
 
             # Get router contracts
             base_router = self.get_router_contract(opportunity["base_dex"])
@@ -133,7 +135,7 @@ class TradeExecutor:
             return result
 
         except Exception as e:
-            logger.error(f"Error executing arbitrage trade: {e}")
+            logger.error("Error executing arbitrage trade: %s", str(e))
             return {"success": False, "error": str(e)}
 
     def get_router_contract(self, dex_name: str) -> Optional[Contract]:
@@ -143,7 +145,7 @@ class TradeExecutor:
                 return self.router_contracts[dex_name]
 
             if dex_name not in self.dex_config["dexes"]:
-                logger.error(f"DEX {dex_name} not found in config")
+                logger.error("DEX %s not found in config", dex_name)
                 return None
 
             dex_info = self.dex_config["dexes"][dex_name]
@@ -159,7 +161,7 @@ class TradeExecutor:
                 router_abi = self.load_abi("IUniswapV2Router.json")
 
             if not router_abi:
-                logger.error(f"Failed to load router ABI for {dex_name}")
+                logger.error("Failed to load router ABI for %s", dex_name)
                 return None
 
             # Create contract
@@ -167,19 +169,19 @@ class TradeExecutor:
             self.router_contracts[dex_name] = router
 
             # Log router info
-            logger.info(f"Router contract loaded for {dex_name} at {router_address}")
+            logger.info("Router contract loaded for %s at %s", dex_name, router_address)
 
             # Test router connection
             try:
                 factory = router.functions.factory().call()
-                logger.info(f"Router factory address: {factory}")
+                logger.info("Router factory address: %s", factory)
             except Exception as e:
-                logger.error(f"Failed to get factory from router: {e}")
+                logger.error("Failed to get factory from router: %s", str(e))
 
             return router
 
         except Exception as e:
-            logger.error(f"Error getting router contract: {e}")
+            logger.error("Error getting router contract: %s", str(e))
             return None
 
     def get_token_contract(self, token_symbol: str) -> Optional[Contract]:
@@ -189,7 +191,7 @@ class TradeExecutor:
                 return self.token_contracts[token_symbol]
 
             if token_symbol not in self.dex_config["tokens"]:
-                logger.error(f"Token {token_symbol} not found in config")
+                logger.error("Token %s not found in config", token_symbol)
                 return None
 
             token_info = self.dex_config["tokens"][token_symbol]
@@ -207,7 +209,7 @@ class TradeExecutor:
             return token
 
         except Exception as e:
-            logger.error(f"Error getting token contract: {e}")
+            logger.error("Error getting token contract: %s", str(e))
             return None
 
     def execute_direct_trade(
@@ -237,8 +239,8 @@ class TradeExecutor:
 
             # Get WETH address from router
             weth_address = base_router.functions.WETH().call()
-            logger.info(f"WETH address: {weth_address}")
-            logger.info(f"USDC address: {token1_contract.address}")
+            logger.info("WETH address: %s", weth_address)
+            logger.info("USDC address: %s", token1_contract.address)
 
             # Get DEX info
             dex_info = self.dex_config["dexes"][opportunity["base_dex"]]
@@ -265,11 +267,11 @@ class TradeExecutor:
                     ).call()
                     amount_out_min = int(amount_out * 0.995)  # 0.5% slippage
                     params["amountOutMinimum"] = amount_out_min
-                    logger.info(f"Quote received: {amount_out} wei")
-                    logger.info(f"Minimum output: {amount_out_min} wei")
+                    logger.info("Quote received: %d wei", amount_out)
+                    logger.info("Minimum output: %d wei", amount_out_min)
                 except Exception as e:
-                    logger.error(f"Failed to get quote: {e}")
-                    return {"success": False, "error": f"Failed to get quote: {str(e)}"}
+                    logger.error("Failed to get quote: %s", str(e))
+                    return {"success": False, "error": "Failed to get quote: %s" % str(e)}
 
                 # Build transaction
                 tx_params = {
@@ -296,11 +298,11 @@ class TradeExecutor:
                     ).call()
                     amount_out = amounts[1]
                     amount_out_min = int(amount_out * 0.995)  # 0.5% slippage
-                    logger.info(f"Quote received: {amount_out} wei")
-                    logger.info(f"Minimum output: {amount_out_min} wei")
+                    logger.info("Quote received: %d wei", amount_out)
+                    logger.info("Minimum output: %d wei", amount_out_min)
                 except Exception as e:
-                    logger.error(f"Failed to get quote: {e}")
-                    return {"success": False, "error": f"Failed to get quote: {str(e)}"}
+                    logger.error("Failed to get quote: %s", str(e))
+                    return {"success": False, "error": "Failed to get quote: %s" % str(e)}
 
                 # Build transaction
                 tx_params = {
@@ -320,7 +322,7 @@ class TradeExecutor:
                 ).build_transaction(tx_params)
 
             # Log transaction details
-            logger.info(f"Transaction parameters: {tx_params}")
+            logger.info("Transaction parameters: %s", tx_params)
 
             # Send transaction
             tx_hash = self.web3_utils.eth_call(swap_tx)
@@ -340,7 +342,7 @@ class TradeExecutor:
             }
 
         except Exception as e:
-            logger.error(f"Direct trade execution error: {e}")
+            logger.error("Direct trade execution error: %s", str(e))
             return {"success": False, "error": str(e)}
 
 

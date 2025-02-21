@@ -1,7 +1,7 @@
 """Analytics system for tracking and analyzing trading performance."""
 
 import logging
-import eventlet
+from ...utils.eventlet_patch import manager as eventlet_manager
 from typing import Dict, Any, Optional, List, Tuple, Set
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -13,6 +13,9 @@ from ..models.analytics_models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Get eventlet instance from manager
+eventlet = eventlet_manager.eventlet
 
 class AnalyticsSystem:
     """Manages analytics and performance tracking."""
@@ -150,10 +153,10 @@ class AnalyticsSystem:
             self.trade_metrics['last_24h']['volume'] += volume
             self.trade_metrics['last_24h']['profit'] += profit
 
-            logger.debug(f"Updated trade metrics: {trade_data}")
+            logger.debug("Updated trade metrics: %s", trade_data)
 
         except Exception as e:
-            logger.error(f"Failed to update trade metrics: {e}")
+            logger.error("Failed to update trade metrics: %s", str(e))
 
     def update_gas_metrics(self, gas_data: Dict[str, Any]):
         """Update gas-related metrics."""
@@ -202,10 +205,10 @@ class AnalyticsSystem:
             self.gas_metrics['last_24h']['gas_used'] += gas_used
             self.gas_metrics['last_24h']['gas_cost'] += gas_cost
 
-            logger.debug(f"Updated gas metrics: {gas_data}")
+            logger.debug("Updated gas metrics: %s", gas_data)
 
         except Exception as e:
-            logger.error(f"Failed to update gas metrics: {e}")
+            logger.error("Failed to update gas metrics: %s", str(e))
 
     def update_performance_metrics(self, performance_data: Dict[str, Any]):
         """Update performance-related metrics."""
@@ -260,10 +263,10 @@ class AnalyticsSystem:
             if error:
                 self.performance_metrics['last_24h']['errors'] += 1
 
-            logger.debug(f"Updated performance metrics: {performance_data}")
+            logger.debug("Updated performance metrics: %s", performance_data)
 
         except Exception as e:
-            logger.error(f"Failed to update performance metrics: {e}")
+            logger.error("Failed to update performance metrics: %s", str(e))
 
     def update_market_metrics(self, market_data: Dict[str, Any]):
         """Update market-related metrics."""
@@ -290,10 +293,10 @@ class AnalyticsSystem:
 
             self.market_metrics['last_update'] = datetime.now()
 
-            logger.debug(f"Updated market metrics: {market_data}")
+            logger.debug("Updated market metrics: %s", market_data)
 
         except Exception as e:
-            logger.error(f"Failed to update market metrics: {e}")
+            logger.error("Failed to update market metrics: %s", str(e))
 
     def get_analytics_summary(self) -> Dict[str, Any]:
         """Get a summary of all analytics metrics."""
@@ -306,7 +309,7 @@ class AnalyticsSystem:
                 'timestamp': datetime.now().timestamp()
             }
         except Exception as e:
-            logger.error(f"Failed to get analytics summary: {e}")
+            logger.error("Failed to get analytics summary: %s", str(e))
             return {}
 
     def get_profit_analysis(self) -> Dict[str, Any]:
@@ -325,7 +328,7 @@ class AnalyticsSystem:
                 'timestamp': datetime.now().timestamp()
             }
         except Exception as e:
-            logger.error(f"Failed to get profit analysis: {e}")
+            logger.error("Failed to get profit analysis: %s", str(e))
             return {}
 
     def get_performance_analysis(self) -> Dict[str, Any]:
@@ -343,7 +346,7 @@ class AnalyticsSystem:
                 'timestamp': datetime.now().timestamp()
             }
         except Exception as e:
-            logger.error(f"Failed to get performance analysis: {e}")
+            logger.error("Failed to get performance analysis: %s", str(e))
             return {}
 
     def get_market_analysis(self) -> Dict[str, Any]:
@@ -357,7 +360,7 @@ class AnalyticsSystem:
                 'last_update': self.market_metrics['last_update'].timestamp()
             }
         except Exception as e:
-            logger.error(f"Failed to get market analysis: {e}")
+            logger.error("Failed to get market analysis: %s", str(e))
             return {}
 
     def cleanup_old_metrics(self):
@@ -386,7 +389,7 @@ class AnalyticsSystem:
             logger.debug("Cleaned up old metrics")
 
         except Exception as e:
-            logger.error(f"Failed to cleanup old metrics: {e}")
+            logger.error("Failed to cleanup old metrics: %s", str(e))
 
 
 def create_analytics_system(config: Dict[str, Any]) -> AnalyticsSystem:
@@ -396,5 +399,5 @@ def create_analytics_system(config: Dict[str, Any]) -> AnalyticsSystem:
         logger.debug("Created analytics system")
         return analytics
     except Exception as e:
-        logger.error(f"Failed to create analytics system: {e}")
+        logger.error("Failed to create analytics system: %s", str(e))
         raise

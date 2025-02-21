@@ -1,190 +1,158 @@
 # System Patterns
 
-## Architecture Overview
+## DEX Implementation Architecture
 
-### Core Components
-1. **Smart Contracts**
-   - MultiPathArbitrage contract
-   - Flash loan integration
-   - Multi-token trade support
-   - Cross-DEX interaction
-   - V2/V3 protocol compatibility
+### Inheritance Chain
+```
+BaseDEX (abstract)
+├── BaseDEXV2
+│   └── BaseSwap
+└── BaseDEXV3
+    ├── SwapBased
+    ├── RocketSwapV3
+    ├── BaseSwapV3
+    └── PancakeSwap
+```
 
-2. **Arbitrage Bot Core**
-   - DEX management system
-   - Multi-path opportunity detection
-   - Transaction monitoring
-   - Balance management
-   - Alert system
+### Configuration Flow
+1. Config loaded from:
+   - config.json (main config)
+   - dex_config.json (DEX-specific config)
+2. Configs merged by ConfigLoader
+3. DexManager injects:
+   - WETH address
+   - Wallet config
+   - Token configurations
 
-3. **Dashboard & Monitoring**
-   - System status visualization
-   - Performance metrics
-   - Multi-RPC health monitoring
-   - Trade path analysis
+### Initialization Pattern
+1. DexManager loads config
+2. For each enabled DEX:
+   - Creates clean config
+   - Injects required addresses
+   - Initializes DEX instance
+   - Verifies contracts
+   - Sets up event listeners
 
-## Key Technical Patterns
+### Contract Interaction Pattern
+1. Base contract methods defined in BaseDEX
+2. Version-specific methods in BaseDEXV2/V3
+3. DEX-specific implementations override as needed
+4. All contract calls use retry mechanism
+5. Gas estimation handled by Web3Manager
+6. Token addresses always checksummed
 
-### 1. Modular Design
-- Separation of concerns between core components
-- Pluggable DEX integrations with enable/disable support
-- Extensible monitoring system
-- Configurable execution strategies
-- Multi-token path support
+### Error Handling Pattern
+1. Base error handling in BaseDEX
+2. Standardized logging format
+3. Error context preservation
+4. Retry mechanism for transient failures
+5. Validation for quoter responses
 
-### 2. Trading Patterns
-- **Direct Arbitrage**
-  * Simple token swap between two DEXs
-  * Lowest complexity and gas cost
-  * Fastest execution time
-  * Baseline profitability check
+### Async Implementation
+1. All DEX methods are async
+2. Event handling is async
+3. Price updates are async
+4. Contract calls use retry with backoff
+5. Performance monitoring configurable
 
-- **Triangular Arbitrage**
-  * Three-token circular trades
-  * Higher complexity, higher potential profit
-  * Cross-DEX price inefficiency exploitation
-  * Advanced liquidity management
+## Web3 Integration
 
-- **Multi-Hop Trading**
-  * Multiple DEX interactions
-  * Complex path optimization
-  * Dynamic fee calculation
-  * Slippage management across hops
+### Web3Manager Pattern
+1. Centralized web3 instance management
+2. Contract loading and caching
+3. Transaction building and sending
+4. Gas price management
+5. Token address validation
 
-### 3. Asynchronous Architecture
-- **Core Async Patterns**
-  * Async DEX initialization and operations
-  * Async gas price optimization
-  * Asynchronous transaction processing
-  * Event-based alerting system
-  * Reactive opportunity detection
+### Contract Loading Pattern
+1. ABI files stored in /abi directory
+2. Loaded on demand by Web3Manager
+3. Cached for reuse
+4. Version-specific ABIs supported
+5. Contract existence verification
 
-- **DEX Component Design**
-  * Base async DEX class with common functionality
-  * Async initialization sequence
-  * Enable/disable functionality
-  * Standardized async interface
-  * Version-specific implementations (V2/V3)
+## Configuration Management
 
-- **Gas Optimization System**
-  * Async gas price updates
-  * Real-time price monitoring
-  * Dynamic fee adjustment
-  * Multi-token price tracking
-  * Async transaction cost estimation
+### Config Structure
+1. Base configuration
+   - Network settings
+   - Global parameters
+2. DEX configuration
+   - Router addresses
+   - Factory addresses
+   - Fee structures
+3. Token configuration
+   - Token addresses
+   - Decimals
+   - WETH address
 
-### 4. Risk Management Patterns
-- Circuit breakers for emergency stops
-- Transaction validation layers
-- Balance checks and limits
-- Price feed verification
-- Gas price management
-- Path validation checks
+### Config Validation
+1. Required fields checked
+2. Address validation
+3. Network compatibility check
+4. Fee validation
+5. Token address checksumming
 
-### 5. Data Management
-- In-memory state management
-- Persistent storage for analytics
-- Caching strategies for DEX data
-- Efficient path finding algorithms
-- Multi-token price tracking
+## Memory Management
 
-### 6. Integration Patterns
-- **DEX Integration**
-  * Standardized async DEX interfaces
-  * Enable/disable capability
-  * Version-specific adapters
-  * Common method signatures
-  * Unified error handling
+### Caching Pattern
+1. Contract instances cached
+2. ABI definitions cached
+3. Token information cached
+4. Price data cached with TTL
+5. Gas estimates cached
 
-- **External Systems**
-  * Blockchain interaction protocols
-  * Price feed integration
-  * Flash loan provider integration
-  * Cross-DEX communication
+### State Management
+1. DEX state tracked
+2. Initialization state verified
+3. Enabled/disabled state managed
+4. Error state tracking
+5. Performance metrics tracked
 
-### 7. Monitoring & Observability
-- Performance metrics collection
-- Error tracking and logging
-- Health check systems
-- Analytics data aggregation
-- Path execution monitoring
+## Monitoring and Metrics
 
-## Technical Decisions
+### Logging Pattern
+1. Standardized log format
+2. Context-aware logging
+3. Error tracking
+4. Performance monitoring
+5. Debug mode configuration
 
-1. **Smart Contract Architecture**
-   - Modular contract system for upgradability
-   - Flash loan integration for capital efficiency
-   - Multi-DEX interaction capability
-   - Gas optimization patterns
-   - Multi-token trade support
+### Performance Tracking
+1. Gas usage tracking
+2. Transaction success rate
+3. Price impact monitoring
+4. Liquidity depth tracking
+5. Slow operation detection
 
-2. **Bot Architecture**
-   - Python-based core system
-   - Fully asynchronous execution model
-   - Modular DEX integration system with enable/disable support
-   - Real-time monitoring and alerting
-   - Path finding optimization
+## Security Patterns
 
-3. **Dashboard Implementation**
-   - Web-based interface
-   - Real-time data updates
-   - Configuration management
-   - Performance visualization
-   - Trade path analysis
+### Input Validation
+1. Address validation
+2. Amount validation
+3. Path validation
+4. Fee validation
+5. Token address checksumming
 
-4. **Security Measures**
-   - Secure key management
-   - Transaction signing protocols
-   - Rate limiting
-   - Error handling and recovery
-   - Multi-RPC fallback
+### Transaction Safety
+1. Slippage protection
+2. Gas price limits
+3. Transaction deadlines
+4. Balance verification
+5. Quote validation
 
-5. **Trading Strategy**
-   - Multi-token path support
-   - Dynamic fee calculation
-   - Slippage optimization
-   - Gas cost consideration
-   - Profit threshold validation
+## Testing Patterns
 
-6. **Network Interaction**
-   - Multiple RPC providers
-   - Fallback mechanisms
-   - Connection health monitoring
-   - Transaction retry logic
-   - Async gas price optimization
+### Test Categories
+1. Unit tests for base classes
+2. Integration tests for DEX implementations
+3. Contract interaction tests
+4. Configuration tests
+5. Performance tests
 
-## Implementation Guidelines
-
-1. **Contract Development**
-   - Follow Solidity best practices
-   - Optimize gas usage
-   - Implement comprehensive tests
-   - Add detailed documentation
-   - Support contract upgrades
-
-2. **Bot Development**
-   - Use async/await patterns consistently
-   - Implement error handling with recovery
-   - Add logging and monitoring
-   - Support configuration changes
-   - Enable path customization
-   - Support DEX enable/disable functionality
-
-3. **Testing Strategy**
-   - Unit tests for components
-   - Integration tests for paths
-   - Gas optimization tests
-   - Security vulnerability tests
-   - Performance benchmarks
-   - Async operation tests
-
-4. **Deployment Process**
-   - Environment validation
-   - Contract verification
-   - Configuration checks
-   - Security audits
-   - Performance testing
-   - Async component validation
-
-## Last Updated
-2/20/2025, 4:33:46 PM (America/Indianapolis, UTC-5:00)
+### Test Data
+1. Mock contracts
+2. Test networks
+3. Sample configurations
+4. Transaction scenarios
+5. Performance benchmarks

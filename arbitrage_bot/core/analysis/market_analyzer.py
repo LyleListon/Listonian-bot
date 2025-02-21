@@ -8,7 +8,6 @@ __all__ = [
 import logging
 import math
 import time
-import eventlet
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -17,7 +16,6 @@ from ..models.opportunity import Opportunity
 from ..models.market_models import MarketCondition, MarketTrend, PricePoint
 
 logger = logging.getLogger(__name__)
-
 
 class MarketAnalyzer:
     """Analyzes market conditions and opportunities."""
@@ -32,6 +30,7 @@ class MarketAnalyzer:
         self.market_conditions = {}  # Store market conditions for each token
         self.dex_instances = {}  # Store DEX instances
         self.dex_manager = None  # Will be set by DEX manager
+        self.initialized = False
         logger.debug("Market analyzer initialized")
 
     def set_dex_manager(self, dex_manager: Any):
@@ -39,21 +38,40 @@ class MarketAnalyzer:
         self.dex_manager = dex_manager
         logger.debug("DEX manager set in market analyzer")
 
-    def get_market_condition(self, token: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def initialize(self) -> bool:
+        """Initialize the market analyzer."""
+        try:
+            if not self.dex_manager:
+                logger.error("DEX manager not set")
+                return False
+            
+            self.initialized = True
+            return True
+        except Exception as e:
+            logger.error("Failed to initialize market analyzer: %s", str(e))
+            return False
+
+    async def get_market_condition(self, token: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Get current market condition for token."""
         try:
+            if not self.initialized:
+                await self.initialize()
+
             # If token is a string (symbol), get token data from config
             if isinstance(token, str):
                 token_data = self.config.get('tokens', {}).get(token)
                 if not token_data:
-                    raise ValueError(f"Token {token} not found in config")
+                    logger.error("Token %s not found in config", token)
+                    return None
             else:
                 token_data = token
 
             # Get real price data
             if not token_data or 'address' not in token_data:
-                raise ValueError(f"Invalid token data: {token_data}")
-            price = eventlet.spawn(self._fetch_real_price, token_data).wait()
+                logger.error("Invalid token data: %s", str(token_data))
+                return None
+
+            price = await self._fetch_real_price(token_data)
             price_decimal = Decimal(str(price))
 
             # Create market condition
@@ -76,7 +94,7 @@ class MarketAnalyzer:
             return condition
 
         except Exception as e:
-            logger.error(f"Failed to get market condition: {e}")
+            logger.error("Failed to get market condition: %s", str(e))
             return None
 
     def _get_dex_instance(self, dex_name: str) -> Any:
@@ -85,66 +103,33 @@ class MarketAnalyzer:
             raise ValueError("DEX manager not set")
         return self.dex_manager.get_dex(dex_name)
 
-    def _fetch_real_price(self, token: Dict[str, Any]) -> float:
+    async def _fetch_real_price(self, token: Dict[str, Any]) -> float:
         """Fetch real price data from all enabled DEXes."""
         try:
+            if not self.initialized:
+                await self.initialize()
+
             # Ensure token address is valid
             address = token['address']
             if not address or not self.w3.is_address(address):
-                raise ValueError(f"Invalid token address: {address}")
+                raise ValueError("Invalid token address: %s", address)
 
-            # Get all enabled DEXes
-            enabled_dexes = [
-                name for name, config in self.config.get('dexes', {}).items()
-                if config.get('enabled', False)
-            ]
-
-            if not enabled_dexes:
-                raise ValueError("No enabled DEXes found in config")
-
-            prices = []
-            errors = []
-
-            # Try to get price from each enabled DEX
-            for dex_name in enabled_dexes:
-                try:
-                    dex = self._get_dex_instance(dex_name)
-                    if not dex:
-                        logger.debug(f"Failed to get {dex_name} instance")
-                        continue
-
-                    # Ensure DEX is initialized
-                    if not dex.initialized:
-                        if not eventlet.spawn(dex.initialize).wait():
-                            logger.debug(f"Failed to initialize {dex_name}")
-                            continue
-
-                    price = eventlet.spawn(dex.get_token_price, address).wait()
-                    if self.validate_price(price):
-                        prices.append(price)
-                    else:
-                        logger.debug(f"Invalid price from {dex_name}: {price}")
-
-                except Exception as e:
-                    errors.append(f"{dex_name}: {str(e)}")
-                    continue
-
+            # Get prices from enabled DEXes
+            prices = await self.dex_manager.get_token_price(address)
             if not prices:
-                error_msg = "Failed to get valid price from any DEX"
-                if errors:
-                    error_msg += f". Errors: {'; '.join(errors)}"
-                raise ValueError(error_msg)
+                raise ValueError("No valid prices found")
 
             # Calculate median price to filter out outliers
-            prices.sort()
-            mid = len(prices) // 2
-            if len(prices) % 2 == 0:
-                return (prices[mid - 1] + prices[mid]) / 2
+            price_list = list(prices.values())
+            price_list.sort()
+            mid = len(price_list) // 2
+            if len(price_list) % 2 == 0:
+                return float((price_list[mid - 1] + price_list[mid]) / 2)
             else:
-                return prices[mid]
+                return float(price_list[mid])
 
         except Exception as e:
-            logger.error(f"Error fetching real price: {e}")
+            logger.error("Error fetching real price: %s", str(e))
             raise
 
     def validate_price(self, price: float) -> bool:
@@ -162,19 +147,22 @@ class MarketAnalyzer:
                 return price
         return None
 
-    def get_current_price(self, token: str) -> float:
+    async def get_current_price(self, token: str) -> float:
         """Get current price, using cache if available."""
+        if not self.initialized:
+            await self.initialize()
+
         cached_price = self.get_cached_price(token)
         if cached_price is not None:
             return cached_price
 
         token_data = self.config.get('tokens', {}).get(token)
         if not token_data:
-            raise ValueError(f"Token {token} not found in config")
+            raise ValueError("Token %s not found in config", token)
 
-        price = eventlet.spawn(self._fetch_real_price, token_data).wait()
+        price = await self._fetch_real_price(token_data)
         if not self.validate_price(price):
-            raise ValueError(f"Invalid price received for {token}: {price}")
+            raise ValueError("Invalid price received for %s: %s", token, str(price))
 
         self._price_cache[token] = (datetime.now(), price)
         return price
@@ -185,48 +173,22 @@ class MarketAnalyzer:
             raise ValueError("Invalid prices provided")
         return abs(price2 - price1) / price1
 
-    def get_opportunities(self) -> List[Opportunity]:
+    async def get_opportunities(self) -> List[Opportunity]:
         """Get current arbitrage opportunities."""
         try:
+            if not self.initialized:
+                await self.initialize()
+
             opportunities = []
             tokens = self.config.get("tokens", {})
             
             for token_id, token_data in tokens.items():
                 if not token_data or 'address' not in token_data:
-                    logger.debug(f"Invalid token data for {token_id}")
-                    continue
-                    
-                # Get all enabled DEXes
-                enabled_dexes = [
-                    name for name, config in self.config.get('dexes', {}).items()
-                    if config.get('enabled', False)
-                ]
-
-                if not enabled_dexes:
-                    logger.debug("No enabled DEXes found in config")
+                    logger.debug("Invalid token data for %s", token_id)
                     continue
 
-                # Get prices from all enabled DEXes
-                prices = {}
-                for dex_name in enabled_dexes:
-                    try:
-                        dex = self._get_dex_instance(dex_name)
-                        if not dex:
-                            logger.debug(f"Failed to get {dex_name} instance")
-                            continue
-                            
-                        # Ensure DEX is initialized
-                        if not dex.initialized and not eventlet.spawn(dex.initialize).wait():
-                            logger.debug(f"Failed to initialize {dex_name}")
-                            continue
-                            
-                        price = eventlet.spawn(dex.get_token_price, token_data['address']).wait()
-                        if self.validate_price(price):
-                            prices[dex_name] = Decimal(str(price))
-                        else:
-                            logger.debug(f"Invalid price from {dex_name}: {price}")
-                    except Exception as e:
-                        logger.debug(f"Failed to get price from {dex_name}: {e}")
+                # Get prices from enabled DEXes
+                prices = await self.dex_manager.get_token_price(token_data['address'])
                 
                 # Find arbitrage opportunities
                 if len(prices) >= 2:
@@ -255,9 +217,8 @@ class MarketAnalyzer:
             return opportunities
             
         except Exception as e:
-            logger.error(f"Failed to get opportunities: {e}")
+            logger.error("Failed to get opportunities: %s", str(e))
             return []
-
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get current performance metrics."""
@@ -271,11 +232,11 @@ class MarketAnalyzer:
                 'timestamp': datetime.now().timestamp()
             }
         except Exception as e:
-            logger.error(f"Failed to get performance metrics: {e}")
+            logger.error("Failed to get performance metrics: %s", str(e))
             return {}
 
 
-def create_market_analyzer(
+async def create_market_analyzer(
     web3_manager: Optional[Web3Manager] = None,
     config: Optional[Dict[str, Any]] = None,
     dex_manager: Optional[Any] = None
@@ -284,7 +245,7 @@ def create_market_analyzer(
     try:
         if not web3_manager:
             web3_manager = Web3Manager()
-            eventlet.spawn(web3_manager.connect).wait()
+            web3_manager.connect()
             
         if not config:
             from ...utils.config_loader import load_config
@@ -296,9 +257,13 @@ def create_market_analyzer(
         if dex_manager:
             analyzer.set_dex_manager(dex_manager)
             
+        # Initialize the analyzer
+        if not await analyzer.initialize():
+            raise RuntimeError("Failed to initialize market analyzer")
+            
         logger.debug("Market analyzer created and initialized successfully")
         return analyzer
         
     except Exception as e:
-        logger.error(f"Failed to create market analyzer: {e}")
+        logger.error("Failed to create market analyzer: %s", str(e))
         raise

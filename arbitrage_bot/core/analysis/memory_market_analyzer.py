@@ -1,7 +1,6 @@
 """Memory-based market analyzer for efficient market analysis."""
 
 import logging
-import eventlet
 from typing import Dict, Any, Optional, List, Set, Tuple, Union
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -42,7 +41,7 @@ class MemoryMarketAnalyzer:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to initialize memory market analyzer: {e}")
+            logger.error("Failed to initialize memory market analyzer: %s", str(e))
             return False
 
     def set_dex_manager(self, dex_manager: Any):
@@ -57,13 +56,13 @@ class MemoryMarketAnalyzer:
             if isinstance(token, str):
                 token_data = self.config.get('tokens', {}).get(token)
                 if not token_data:
-                    raise ValueError(f"Token {token} not found in config")
+                    raise ValueError("Token %s not found in config" % token)
             else:
                 token_data = token
 
             # Get real price data
             if not token_data or 'address' not in token_data:
-                raise ValueError(f"Invalid token data: {token_data}")
+                raise ValueError("Invalid token data: %s" % str(token_data))
             price = self._fetch_real_price(token_data)
             price_decimal = Decimal(str(price))
 
@@ -87,7 +86,7 @@ class MemoryMarketAnalyzer:
             return condition
 
         except Exception as e:
-            logger.error(f"Failed to get market condition: {e}")
+            logger.error("Failed to get market condition: %s", str(e))
             return None
 
     def _fetch_real_price(self, token: Dict[str, Any]) -> float:
@@ -96,7 +95,7 @@ class MemoryMarketAnalyzer:
             # Ensure token address is valid
             address = token['address']
             if not address or not self.web3_manager.w3.is_address(address):
-                raise ValueError(f"Invalid token address: {address}")
+                raise ValueError("Invalid token address: %s" % address)
 
             # Get all enabled DEXes
             enabled_dexes = [
@@ -115,29 +114,29 @@ class MemoryMarketAnalyzer:
                 try:
                     dex = self.dex_manager.get_dex(dex_name)
                     if not dex:
-                        logger.debug(f"Failed to get {dex_name} instance")
+                        logger.debug("Failed to get %s instance", dex_name)
                         continue
 
                     # Ensure DEX is initialized
                     if not dex.initialized:
                         if not dex.initialize():
-                            logger.debug(f"Failed to initialize {dex_name}")
+                            logger.debug("Failed to initialize %s", dex_name)
                             continue
 
                     price = dex.get_token_price(address)
                     if self._validate_price(price):
                         prices.append(price)
                     else:
-                        logger.debug(f"Invalid price from {dex_name}: {price}")
+                        logger.debug("Invalid price from %s: %s", dex_name, str(price))
 
                 except Exception as e:
-                    errors.append(f"{dex_name}: {str(e)}")
+                    errors.append("%s: %s" % (dex_name, str(e)))
                     continue
 
             if not prices:
                 error_msg = "Failed to get valid price from any DEX"
                 if errors:
-                    error_msg += f". Errors: {'; '.join(errors)}"
+                    error_msg += ". Errors: %s" % "; ".join(errors)
                 raise ValueError(error_msg)
 
             # Sort prices and calculate median
@@ -151,7 +150,7 @@ class MemoryMarketAnalyzer:
                 return prices[mid]
 
         except Exception as e:
-            logger.error(f"Error fetching real price: {e}")
+            logger.error("Error fetching real price: %s", str(e))
             raise
 
     def _validate_price(self, price: float) -> bool:
@@ -168,7 +167,7 @@ class MemoryMarketAnalyzer:
                 'timestamp': datetime.now().timestamp()
             }
         except Exception as e:
-            logger.error(f"Failed to get market summary: {e}")
+            logger.error("Failed to get market summary: %s", str(e))
             return {}
 
 
@@ -181,5 +180,5 @@ def create_memory_market_analyzer(web3_manager: Web3Manager, config: Dict[str, A
         logger.debug("Created memory market analyzer")
         return analyzer
     except Exception as e:
-        logger.error(f"Failed to create memory market analyzer: {e}")
+        logger.error("Failed to create memory market analyzer: %s", str(e))
         raise

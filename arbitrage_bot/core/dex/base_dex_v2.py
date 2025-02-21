@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 from web3.types import TxReceipt
 from decimal import Decimal
 from web3 import Web3
-import eventlet
+import asyncio
 
 from .base_dex import BaseDEX
 from ..web3.web3_manager import Web3Manager
@@ -17,39 +17,40 @@ class BaseDEXV2(BaseDEX):
         super().__init__(web3_manager, config)
         self.fee = config.get('fee', 3000)  # 0.3% default fee for most V2 DEXs
         self.pair_abi = None
+        self.weth_address = Web3.to_checksum_address(config['weth_address'])
         
         # Checksum addresses
         self.router_address = Web3.to_checksum_address(self.router_address)
         self.factory_address = Web3.to_checksum_address(self.factory_address)
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Initialize the V2 DEX interface."""
         try:
             # Load contract ABIs
-            self.router_abi = self.web3_manager.load_abi(f"{self.name.lower()}_router")
-            self.factory_abi = self.web3_manager.load_abi(f"{self.name.lower()}_factory")
-            self.pair_abi = self.web3_manager.load_abi(f"{self.name.lower()}_pair")
+            self.router_abi = self.web3_manager.load_abi(self.name.lower() + "_router")
+            self.factory_abi = self.web3_manager.load_abi(self.name.lower() + "_factory")
+            self.pair_abi = self.web3_manager.load_abi(self.name.lower() + "_pair")
             
             # Initialize contracts with checksummed addresses
             self.router = self.web3_manager.get_contract(
                 address=self.router_address,
-                abi=self.router_abi
+                abi_name=self.name.lower() + "_router"
             )
             self.factory = self.web3_manager.get_contract(
                 address=self.factory_address,
-                abi=self.factory_abi
+                abi_name=self.name.lower() + "_factory"
             )
             
             # Initialize contracts
             self.initialized = True
-            self.logger.info(f"{self.name} interface initialized")
+            self.logger.info("%s interface initialized", self.name)
             return True
             
         except Exception as e:
             self._handle_error(e, "V2 DEX initialization")
             return False
 
-    def get_quote_with_impact(
+    async def get_quote_with_impact(
         self,
         amount_in: int,
         path: List[str]
@@ -61,8 +62,11 @@ class BaseDEXV2(BaseDEX):
             self._validate_amounts(amount_in=amount_in)
             
             # Get pair address
-            pair_address = self._retry(
-                lambda: self.factory.functions.getPair(path[0], path[1]).call(),
+            pair_address = await self._retry_async(
+                self.web3_manager.call_contract_function,
+                self.factory.functions.getPair,
+                path[0],
+                path[1],
                 retries=3
             )
             
@@ -72,17 +76,21 @@ class BaseDEXV2(BaseDEX):
             # Get pair contract
             pair = self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
-                abi=self.pair_abi
+                abi_name=self.name.lower() + "_pair"
             )
             
-            # Get reserves
-            reserves = self._retry(
-                lambda: pair.functions.getReserves().call(),
-                retries=3
-            )
-            token0 = self._retry(
-                lambda: pair.functions.token0().call(),
-                retries=3
+            # Get reserves and token0 concurrently
+            reserves, token0 = await asyncio.gather(
+                self._retry_async(
+                    self.web3_manager.call_contract_function,
+                    pair.functions.getReserves,
+                    retries=3
+                ),
+                self._retry_async(
+                    self.web3_manager.call_contract_function,
+                    pair.functions.token0,
+                    retries=3
+                )
             )
             
             # Determine which reserve corresponds to which token
@@ -125,19 +133,22 @@ class BaseDEXV2(BaseDEX):
             self._handle_error(e, "V2 quote calculation")
             return None
 
-    def swap_exact_tokens_for_tokens(
+    async def swap_exact_tokens_for_tokens(
         self,
         amount_in: int,
         amount_out_min: int,
         path: List[str],
-        to: str,  # This parameter is ignored - we always use web3_manager's wallet
-        deadline: int
+        to: str,
+        deadline: int,
+        gas: Optional[int] = None,
+        maxFeePerGas: Optional[int] = None,
+        maxPriorityFeePerGas: Optional[int] = None
     ) -> TxReceipt:
         """Execute a V2 swap."""
         try:
             # Use provided recipient address
             recipient = to
-            self.logger.info(f"Using provided recipient address: {recipient}")
+            self.logger.info("Using provided recipient address: %s", recipient)
             
             # Validate inputs
             self._validate_path(path)
@@ -147,16 +158,31 @@ class BaseDEXV2(BaseDEX):
             token_in_contract = self.web3_manager.get_token_contract(path[0])
             token_out_contract = self.web3_manager.get_token_contract(path[-1])
             
-            balance_in_before = token_in_contract.functions.balanceOf(recipient).call()
-            balance_out_before = token_out_contract.functions.balanceOf(recipient).call()
+            balance_in_before = await self.web3_manager.call_contract_function(
+                token_in_contract.functions.balanceOf,
+                recipient
+            )
+            balance_out_before = await self.web3_manager.call_contract_function(
+                token_out_contract.functions.balanceOf,
+                recipient
+            )
             
             # Get quote for gas estimation
-            quote = self.get_quote_with_impact(amount_in, path)
+            quote = await self.get_quote_with_impact(amount_in, path)
             if not quote:
                 raise Exception("Failed to get quote for swap")
             
             # Execute swap using web3_manager
-            receipt = self.web3_manager.build_and_send_transaction(
+            # Calculate gas limit
+            gas_limit = gas or int(quote['estimated_gas'] * 1.2)  # 20% buffer if not specified
+            
+            # Get gas parameters if not provided
+            if not all([maxFeePerGas, maxPriorityFeePerGas]):
+                block = await self.web3_manager.get_block('latest')
+                maxFeePerGas = maxFeePerGas or block['baseFeePerGas'] * 2
+                maxPriorityFeePerGas = maxPriorityFeePerGas or await self.web3_manager.get_max_priority_fee()
+            
+            receipt = await self.web3_manager.build_and_send_transaction(
                 self.router,
                 'swapExactTokensForTokens',
                 amount_in,
@@ -165,9 +191,9 @@ class BaseDEXV2(BaseDEX):
                 recipient,  # Use our wallet address
                 deadline,
                 value=0,  # No ETH value for token swaps
-                gas=int(quote['estimated_gas'] * 1.2),  # V2 needs 20% more gas than estimate
-                maxFeePerGas=None,  # Let web3_manager handle EIP-1559 params
-                maxPriorityFeePerGas=None  # Let web3_manager handle EIP-1559 params
+                gas=gas_limit,
+                maxFeePerGas=maxFeePerGas,
+                maxPriorityFeePerGas=maxPriorityFeePerGas
             )
             
             if not receipt:
@@ -176,8 +202,14 @@ class BaseDEXV2(BaseDEX):
             
             if receipt and receipt['status'] == 1:
                 # Get balances after trade
-                balance_in_after = token_in_contract.functions.balanceOf(recipient).call()
-                balance_out_after = token_out_contract.functions.balanceOf(recipient).call()
+                balance_in_after = await self.web3_manager.call_contract_function(
+                    token_in_contract.functions.balanceOf,
+                    recipient
+                )
+                balance_out_after = await self.web3_manager.call_contract_function(
+                    token_out_contract.functions.balanceOf,
+                    recipient
+                )
                 
                 # Verify balance changes
                 in_diff = balance_in_before - balance_in_after
@@ -185,8 +217,8 @@ class BaseDEXV2(BaseDEX):
                 
                 if in_diff <= 0 or out_diff <= 0:
                     self.logger.error(
-                        f"Balance verification failed: in_diff={in_diff}, "
-                        f"out_diff={out_diff}, expected_min_out={amount_out_min}"
+                        "Balance verification failed: in_diff=%s, out_diff=%s, expected_min_out=%s",
+                        in_diff, out_diff, amount_out_min
                     )
                     return None
                 
@@ -195,7 +227,8 @@ class BaseDEXV2(BaseDEX):
                     receipt['transactionHash'].hex(),
                     amount_in,
                     out_diff,  # Use actual output amount
-                    path
+                    path,
+                    recipient
                 )
                 
                 return receipt
@@ -244,15 +277,18 @@ class BaseDEXV2(BaseDEX):
             return float(adjusted_impact)
             
         except Exception as e:
-            self.logger.error(f"Failed to calculate price impact: {e}")
+            self.logger.error("Failed to calculate price impact: %s", str(e))
             return 1.0  # Return 100% impact on error (will prevent trade)
 
-    def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
         """Get 24h trading volume for a token pair."""
         try:
             # Get pair address
-            pair_address = self._retry(
-                lambda: self.factory.functions.getPair(token0, token1).call(),
+            pair_address = await self._retry_async(
+                self.web3_manager.call_contract_function,
+                self.factory.functions.getPair,
+                token0,
+                token1,
                 retries=3
             )
             
@@ -262,12 +298,13 @@ class BaseDEXV2(BaseDEX):
             # Get pair contract
             pair = self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
-                abi=self.pair_abi
+                abi_name=self.name.lower() + "_pair"
             )
             
             # Get reserves
-            reserves = self._retry(
-                lambda: pair.functions.getReserves().call(),
+            reserves = await self._retry_async(
+                self.web3_manager.call_contract_function,
+                pair.functions.getReserves,
                 retries=3
             )
             
@@ -276,10 +313,10 @@ class BaseDEXV2(BaseDEX):
             return volume
             
         except Exception as e:
-            self.logger.error(f"Failed to get 24h volume: {e}")
+            self.logger.error("Failed to get 24h volume: %s", str(e))
             return Decimal('0')
 
-    def get_total_liquidity(self) -> Decimal:
+    async def get_total_liquidity(self) -> Decimal:
         """Get total liquidity across all pairs."""
         try:
             # Get all pairs (simplified - actual implementation would track all pairs)
@@ -287,20 +324,22 @@ class BaseDEXV2(BaseDEX):
             return total_liquidity
             
         except Exception as e:
-            self.logger.error(f"Failed to get total liquidity: {e}")
+            self.logger.error("Failed to get total liquidity: %s", str(e))
             return Decimal('0')
 
-    def get_token_price(self, token_address: str) -> float:
+    async def get_token_price(self, token_address: str) -> float:
         """Get current token price."""
         try:
-            # Get WETH address from config
-            weth_address = self.config.get('weth_address')
-            if not weth_address:
-                raise ValueError("WETH address not configured")
+            # If token is WETH, return 1.0 since price is in WETH
+            if token_address.lower() == self.weth_address.lower():
+                return 1.0
             
             # Get pair address
-            pair_address = self._retry(
-                lambda: self.factory.functions.getPair(token_address, weth_address).call(),
+            pair_address = await self._retry_async(
+                self.web3_manager.call_contract_function,
+                self.factory.functions.getPair,
+                token_address,
+                self.weth_address,
                 retries=3
             )
             
@@ -310,17 +349,21 @@ class BaseDEXV2(BaseDEX):
             # Get pair contract
             pair = self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
-                abi=self.pair_abi
+                abi_name=self.name.lower() + "_pair"
             )
             
-            # Get reserves
-            reserves = self._retry(
-                lambda: pair.functions.getReserves().call(),
-                retries=3
-            )
-            token0 = self._retry(
-                lambda: pair.functions.token0().call(),
-                retries=3
+            # Get reserves and token0 concurrently
+            reserves, token0 = await asyncio.gather(
+                self._retry_async(
+                    self.web3_manager.call_contract_function,
+                    pair.functions.getReserves,
+                    retries=3
+                ),
+                self._retry_async(
+                    self.web3_manager.call_contract_function,
+                    pair.functions.token0,
+                    retries=3
+                )
             )
             
             # Determine which reserve corresponds to which token
@@ -339,5 +382,5 @@ class BaseDEXV2(BaseDEX):
             return float(price)
             
         except Exception as e:
-            self.logger.error(f"Failed to get token price: {e}")
+            self.logger.error("Failed to get token price: %s", str(e))
             return 0.0

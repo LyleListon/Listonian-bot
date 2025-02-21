@@ -46,6 +46,7 @@ class BaseDEX(ABC):
                 - wallet: Wallet configuration (optional)
                 - name: DEX name for ABI loading (required)
                 - enabled: Whether the DEX is enabled (optional)
+                - weth_address: WETH token address (required)
         """
         self.w3 = web3_manager.w3
         self.web3_manager = web3_manager
@@ -54,7 +55,12 @@ class BaseDEX(ABC):
         self.factory_address = config['factory']
         self.name = config.get('name', 'unknown')
         self.initialized = False
-        self.is_enabled = config.get('enabled', False)
+        self._enabled = config.get('enabled', False)
+        
+        # Initialize WETH address
+        if 'weth_address' not in config:
+            raise ValueError("WETH address must be provided in config")
+        self.weth_address = Web3.to_checksum_address(config['weth_address'])
         
         # Initialize contracts
         self.router = None
@@ -63,7 +69,7 @@ class BaseDEX(ABC):
         self.factory_contract = None
         
         # Set up logging
-        self.logger = logging.getLogger("{0}.{1}".format(__name__, self.__class__.__name__))
+        self.logger = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
 
     def get_method_signatures(self) -> Set[str]:
         """Get common method signatures for this DEX."""
@@ -73,7 +79,16 @@ class BaseDEX(ABC):
         """Get router contract address."""
         return self.router_address
 
-    async def check_and_approve_token(self, token_address: str, amount: int) -> bool:
+    async def is_enabled(self) -> bool:
+        """Check if DEX is enabled."""
+        return self._enabled
+
+    async def check_and_approve_token(
+        self,
+        token_address: str,
+        amount: int,
+        gas_limit: Optional[int] = None
+    ) -> bool:
         """
         Check and approve token spending for router.
         Uses EIP-1559 gas parameters for approval transactions.
@@ -87,6 +102,7 @@ class BaseDEX(ABC):
         """
         try:
             # Get token contract
+            token_address = Web3.to_checksum_address(token_address)
             token_contract = self.web3_manager.get_token_contract(token_address)
             
             # Get current allowance
@@ -98,15 +114,29 @@ class BaseDEX(ABC):
             
             # If allowance is sufficient, return True
             if current_allowance >= amount:
-                self.logger.debug("Token " + str(token_address) + " already approved for " + str(current_allowance))
+                self.logger.debug("Token %s already approved for %s", token_address, current_allowance)
                 return True
+            
+            # Estimate gas for approval
+            if not gas_limit:
+                try:
+                    gas_limit = await self.web3_manager.estimate_gas(
+                        token_contract,
+                        'approve',
+                        self.router_address,
+                        amount * 2
+                    )
+                    gas_limit = int(gas_limit * 1.2)  # Add 20% buffer
+                except Exception as e:
+                    self.logger.warning("Failed to estimate gas, using default: %s", str(e))
+                    gas_limit = 100000  # Fallback to standard limit
             
             # Get gas parameters for approval
             block = await self.web3_manager.get_block('latest')
             gas_data = {
                 'maxFeePerGas': block['baseFeePerGas'] * 2,
                 'maxPriorityFeePerGas': await self.web3_manager.get_max_priority_fee(),
-                'gas': 100000  # Standard gas limit for approvals
+                'gas': gas_limit
             }
 
             # Build and send approval transaction
@@ -120,10 +150,13 @@ class BaseDEX(ABC):
 
             # Log approval details
             self.logger.info(
-                "Token approval sent:\n" +
-                "Token: " + str(token_address) + "\n" +
-                "Amount: " + str(amount * 2) + "\n" +
-                "TX Hash: " + str(receipt['transactionHash'].hex())
+                "Token approval sent:\n"
+                "Token: %s\n"
+                "Amount: %s\n"
+                "TX Hash: %s",
+                token_address,
+                amount * 2,
+                receipt['transactionHash'].hex()
             )
             
             if receipt and receipt['status'] == 1:
@@ -135,17 +168,17 @@ class BaseDEX(ABC):
                 )
                 
                 if new_allowance >= amount:
-                    self.logger.info("Approved " + str(amount) + " of token " + str(token_address) + " for router " + str(self.router_address))
+                    self.logger.info("Approved %s of token %s for router %s", amount, token_address, self.router_address)
                     return True
                 else:
-                    self.logger.error("Approval verification failed for " + str(token_address))
+                    self.logger.error("Approval verification failed for %s", token_address)
                     return False
             else:
-                self.logger.error("Token approval failed for " + str(token_address))
+                self.logger.error("Token approval failed for %s", token_address)
                 return False
                 
         except Exception as e:
-            self.logger.error("Failed to approve token " + str(token_address) + ": " + str(e))
+            self.logger.error("Failed to approve token %s: %s", token_address, str(e))
             return False
 
     @abstractmethod
@@ -206,7 +239,7 @@ class BaseDEX(ABC):
                 return [amount_in, quote['amount_out']]
             return []
         except Exception as e:
-            self.logger.error("Failed to get amounts out: " + str(e))
+            self.logger.error("Failed to get amounts out: %s", str(e))
             return []
 
     @abstractmethod
@@ -259,8 +292,10 @@ class BaseDEX(ABC):
             raise ValueError("Path must contain at least 2 tokens")
             
         for token in path:
-            if not self.w3.is_address(token):
-                raise ValueError("Invalid token address in path: " + str(token))
+            try:
+                Web3.to_checksum_address(token)
+            except ValueError:
+                raise ValueError("Invalid token address in path: %s" % token)
                 
         return True
 
@@ -302,13 +337,16 @@ class BaseDEX(ABC):
         error_msg = str(error)
         
         self.logger.error(
-            "Error in " + str(context) + " - " + str(error_type) + ": " + str(error_msg),
+            "Error in %s - %s: %s",
+            context,
+            error_type,
+            error_msg,
             exc_info=True
         )
         
         # Re-raise with context
         raise type(error)(
-            str(context) + " failed: " + str(error_msg)
+            "%s failed: %s" % (context, error_msg)
         ) from error
 
     @abstractmethod
@@ -341,7 +379,8 @@ class BaseDEX(ABC):
         *args,
         retries: int = 3,
         delay: float = 1.0,
-        backoff: float = 2.0
+        backoff: float = 2.0,
+        timeout: float = 30.0
     ) -> T:
         """
         Retry an async function with exponential backoff.
@@ -363,11 +402,18 @@ class BaseDEX(ABC):
         
         for i in range(retries):
             try:
-                if asyncio.iscoroutinefunction(func):
-                    result = await func(*args)
-                else:
-                    result = func(*args)
-                return result
+                try:
+                    if asyncio.iscoroutinefunction(func):
+                        result = await asyncio.wait_for(func(*args), timeout=timeout)
+                    else:
+                        result = func(*args)
+                    return result
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "Operation timed out after %s seconds",
+                        timeout
+                    )
+                    raise
                 
             except Exception as e:
                 last_error = e
@@ -396,12 +442,18 @@ class BaseDEX(ABC):
             recipient: Recipient address
         """
         self.logger.info(
-            "\nTransaction Details:\n" +
-            "==================\n" +
-            "Hash: " + str(tx_hash) + "\n" +
-            "Input Token: " + str(path[0]) + " (Amount: " + str(amount_in) + ")\n" +
-            "Output Token: " + str(path[-1]) + " (Amount: " + str(amount_out) + ")\n" +
-            "Recipient: " + str(recipient) + "\n"
+            "\nTransaction Details:\n"
+            "==================\n"
+            "Hash: %s\n"
+            "Input Token: %s (Amount: %s)\n"
+            "Output Token: %s (Amount: %s)\n"
+            "Recipient: %s\n",
+            tx_hash,
+            path[0],
+            amount_in,
+            path[-1],
+            amount_out,
+            recipient
         )
 
     @abstractmethod
@@ -430,17 +482,39 @@ class BaseDEX(ABC):
         try:
             # Get tokens from config
             tokens = self.config.get('tokens', {})
-            return [token['address'] for token in tokens.values()]
+            return [Web3.to_checksum_address(token['address']) for token in tokens.values()]
             
         except Exception as e:
-            self.logger.error("Failed to get supported tokens: " + str(e))
+            self.logger.error("Failed to get supported tokens: %s", str(e))
             return []
 
+    def _validate_state(self) -> None:
+        """
+        Validate DEX state before operations.
+        
+        Raises:
+            ValueError: If DEX is not initialized or disabled
+        """
+        if not self.initialized:
+            raise ValueError("%s DEX not initialized" % self.name)
+        if not self._enabled:
+            raise ValueError("%s DEX is disabled" % self.name)
+
     @asynccontextmanager
-    async def transaction_context(self) -> AsyncIterator[None]:
-        """Async context manager for transaction operations."""
+    async def transaction_context(self, timeout: float = 300.0) -> AsyncIterator[None]:
+        """
+        Async context manager for transaction operations.
+        
+        Args:
+            timeout: Maximum time in seconds to wait for transaction
+        """
         try:
-            yield
+            self._validate_state()
+            async with asyncio.timeout(timeout):
+                yield
+        except asyncio.TimeoutError:
+            self.logger.error("Transaction timed out after %s seconds", timeout)
+            raise
         except Exception as e:
-            self.logger.error("Transaction failed: " + str(e))
+            self.logger.error("Transaction failed: %s", str(e))
             raise

@@ -2,7 +2,7 @@
 Write-Host "Starting Listonian Arbitrage Bot Setup..."
 
 # Check Python version
-$pythonVersion = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+$pythonVersion = py -3.12 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 if ([version]$pythonVersion -lt [version]"3.12") {
     Write-Error "Python 3.12 or higher is required. Current version: $pythonVersion"
     Write-Host "Please install Python 3.12 or higher from https://www.python.org/downloads/"
@@ -25,8 +25,8 @@ if (-not (Test-Path "logs")) {
 
 # Install dependencies if needed
 Write-Host "Checking dependencies..."
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt --quiet --no-input
+py -3.12 -m pip install --upgrade pip
+py -3.12 -m pip install -r requirements.txt --quiet --no-input
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to install dependencies. Please check pip logs for details."
     exit 1
@@ -36,7 +36,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Checking secure environment..."
 if (-not (Test-Path secure/.key)) {
     Write-Host "Initializing secure environment..."
-    python init_secure.py
+    py -3.12 init_secure.py
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to initialize secure environment. Please check the error messages above."
         exit 1
@@ -150,7 +150,7 @@ $botLogFile = "logs/bot_$timestamp.log"
 $botErrorLog = "logs/bot_$timestamp.error.log"
 
 # Start the bot process
-Start-Process python -ArgumentList "run_bot.py" -NoNewWindow
+Start-Process py -ArgumentList "-3.12 run_bot.py" -NoNewWindow
 
 # Wait for bot to initialize
 Write-Host "Waiting for bot initialization..."
@@ -168,7 +168,7 @@ $dashboardLogFile = "logs/dashboard_$timestamp.log"
 $dashboardErrorLog = "logs/dashboard_$timestamp.error.log"
 
 # Start the dashboard process
-Start-Process python -ArgumentList "minimal_dashboard.py" -NoNewWindow
+Start-Process py -ArgumentList "-3.12 minimal_dashboard.py" -NoNewWindow
 
 # Wait for dashboard to initialize
 Write-Host "Waiting for dashboard initialization..."
@@ -208,12 +208,12 @@ while ($true) {
         
         if (-not $botProcess) {
             Write-Warning "Bot process not found. Restarting..."
-            Start-Process python -ArgumentList "run_bot.py" -NoNewWindow
+            Start-Process py -ArgumentList "-3.12 run_bot.py" -NoNewWindow
         }
         
         if (-not $dashboardProcess) {
             Write-Warning "Dashboard process not found. Restarting..."
-            Start-Process python -ArgumentList "minimal_dashboard.py" -NoNewWindow
+            Start-Process py -ArgumentList "-3.12 minimal_dashboard.py" -NoNewWindow
         }
         
         Start-Sleep -Seconds 30

@@ -19,6 +19,15 @@ class GasOptimizer:
         self.web3_manager = web3_manager
         self.gas_prices = {}
         self.gas_metrics = {}
+        
+        # Initialize gas metrics
+        self.gas_metrics = {
+            'average_gas_used': 0,
+            'total_gas_saved': 0,
+            'optimization_rate': 0.0,
+            'historical_prices': [],
+            'dex_gas_usage': {}
+        }
         self.initialized = False
         
         # Load gas settings from config
@@ -41,21 +50,12 @@ class GasOptimizer:
             # Get initial gas prices
             await self._update_gas_prices()
 
-            # Initialize gas metrics
-            self.gas_metrics = {
-                'average_gas_used': 0,
-                'total_gas_saved': 0,
-                'optimization_rate': 0.0,
-                'historical_prices': [],
-                'dex_gas_usage': {}
-            }
-
             self.initialized = True
             logger.debug("Gas optimizer initialized successfully")
             return True
 
         except Exception as e:
-            logger.error("Failed to initialize gas optimizer: " + str(e))
+            logger.error("Failed to initialize gas optimizer: %s", str(e))
             return False
 
     async def _update_gas_prices(self):
@@ -67,24 +67,24 @@ class GasOptimizer:
                 self.web3_manager.connect()
 
             # Get latest block for base fee
-            latest_block = await self.web3_manager.w3.eth.get_block('latest', full_transactions=False)
+            latest_block = await self.web3_manager.get_block('latest', full_transactions=False)
             base_fee = latest_block['baseFeePerGas']
             base_fee = max(base_fee, int(self.min_base_fee * 1e9))  # Ensure minimum base fee
             
             # Try to get max priority fee, fall back to default if not available
             try:
-                priority_fee = await self.web3_manager.w3.eth.max_priority_fee_per_gas
+                priority_fee = await self.web3_manager.get_max_priority_fee()
             except (AttributeError, ValueError) as e:
-                logger.debug("Could not get max_priority_fee_per_gas: " + str(e))
+                logger.debug("Could not get max_priority_fee_per_gas: %s", str(e))
                 # Use default priority fee from config
                 priority_fee = int(self.max_priority_fee * 1e9)
-                logger.debug("Using default priority fee: " + str(priority_fee))
+                logger.debug("Using default priority fee: %s", priority_fee)
 
             # Ensure priority fee is not zero
             priority_fee = max(priority_fee, int(0.1 * 1e9))  # Minimum 0.1 Gwei
             
             # Get pending transaction count
-            pending_block = await self.web3_manager.w3.eth.get_block('pending', full_transactions=False)
+            pending_block = await self.web3_manager.get_block('pending', full_transactions=False)
             pending_txs = len(pending_block['transactions'])
             
             # Calculate dynamic multipliers based on network congestion
@@ -146,7 +146,7 @@ class GasOptimizer:
             logger.debug("Updated gas prices")
 
         except Exception as e:
-            logger.error("Failed to update gas prices: " + str(e))
+            logger.error("Failed to update gas prices: %s", str(e))
 
     async def optimize_gas(self, tx_params: Dict[str, Any]) -> Dict[str, Any]:
         """Optimize gas parameters for a transaction."""
@@ -160,7 +160,7 @@ class GasOptimizer:
             await self._update_gas_prices()
 
             # Get base gas estimate
-            base_gas = await self.web3_manager.w3.eth.estimate_gas(tx_params)
+            base_gas = await self.web3_manager.estimate_gas(tx_params)
 
             # Get current network conditions
             pending_txs = self.gas_prices['pending_txs']
@@ -220,25 +220,26 @@ class GasOptimizer:
             }
 
         except Exception as e:
-            logger.error("Failed to optimize gas: " + str(e))
+            logger.error("Failed to optimize gas: %s", str(e))
             # Return safe default values within config limits
             try:
                 if not hasattr(self.web3_manager, 'w3') or self.web3_manager.w3 is None:
                     logger.debug("Connecting web3_manager...")
                     self.web3_manager.connect()
             except Exception as connect_error:
-                logger.error("Failed to connect web3_manager: " + str(connect_error))
-            latest_block = await self.web3_manager.w3.eth.get_block('latest', full_transactions=False)
+                logger.error("Failed to connect web3_manager: %s", str(connect_error))
+
+            latest_block = await self.web3_manager.get_block('latest', full_transactions=False)
             base_fee = latest_block['baseFeePerGas']
             
             # Try to get max priority fee, fall back to default if not available
             try:
-                priority_fee = await self.web3_manager.w3.eth.max_priority_fee_per_gas
+                priority_fee = await self.web3_manager.get_max_priority_fee()
             except (AttributeError, ValueError) as e:
-                logger.debug("Could not get max_priority_fee_per_gas: " + str(e))
+                logger.debug("Could not get max_priority_fee_per_gas: %s", str(e))
                 # Use default priority fee from config
                 priority_fee = int(self.max_priority_fee * 1e9)
-                logger.debug("Using default priority fee: " + str(priority_fee))
+                logger.debug("Using default priority fee: %s", priority_fee)
 
             # Ensure priority fee is not zero
             priority_fee = max(priority_fee, int(0.1 * 1e9))  # Minimum 0.1 Gwei
@@ -270,24 +271,25 @@ class GasOptimizer:
                 'baseFee': self.gas_prices['base_fee']
             }
         except Exception as e:
-            logger.error("Failed to get gas price: " + str(e))
+            logger.error("Failed to get gas price: %s", str(e))
             try:
                 if not hasattr(self.web3_manager, 'w3') or self.web3_manager.w3 is None:
                     logger.debug("Connecting web3_manager...")
                     self.web3_manager.connect()
             except Exception as connect_error:
-                logger.error("Failed to connect web3_manager: " + str(connect_error))
-            latest_block = await self.web3_manager.w3.eth.get_block('latest', full_transactions=False)
+                logger.error("Failed to connect web3_manager: %s", str(connect_error))
+
+            latest_block = await self.web3_manager.get_block('latest', full_transactions=False)
             base_fee = latest_block['baseFeePerGas']
             
             # Try to get max priority fee, fall back to default if not available
             try:
-                priority_fee = await self.web3_manager.w3.eth.max_priority_fee_per_gas
+                priority_fee = await self.web3_manager.get_max_priority_fee()
             except (AttributeError, ValueError) as e:
-                logger.debug("Could not get max_priority_fee_per_gas: " + str(e))
+                logger.debug("Could not get max_priority_fee_per_gas: %s", str(e))
                 # Use default priority fee from config
                 priority_fee = int(self.max_priority_fee * 1e9)
-                logger.debug("Using default priority fee: " + str(priority_fee))
+                logger.debug("Using default priority fee: %s", priority_fee)
 
             # Ensure priority fee is not zero
             priority_fee = max(priority_fee, int(0.1 * 1e9))  # Minimum 0.1 Gwei
@@ -315,5 +317,5 @@ async def create_gas_optimizer(dex_manager: DexManager, web3_manager: Web3Manage
         logger.debug("Created gas optimizer")
         return optimizer
     except Exception as e:
-        logger.error("Failed to create gas optimizer: " + str(e))
+        logger.error("Failed to create gas optimizer: %s", str(e))
         raise

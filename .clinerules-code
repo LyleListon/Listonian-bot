@@ -1,0 +1,37 @@
+Just some general things I've been thinking about:
+Use the documentation database to store *all* learned information about the project.  Summarize every session and add it into the knowledge base with the indexes it needs.  
+
+File structure needs to be checked at the beginning and end of every session to make sure needed files are there, and unneeded are not
+
+Q&A session at the beginning of every session.  "Do you have any questions/concerns/suggestions?"
+
+Setup the cline_docs as a persistent "memory" -- only what is needed to get the project working.  The knowledge base for everything else.
+
+Every file that gets created needs documented fully.
+
+Before you change something, take a moment to conside what else will change because of what you're about to do.
+
+Before you fix an error, stop and think about all the reasons why that error could have  occurred.
+
+Constantly looking for ways to make the project more profitable
+
+ Make what's learned from the ML aspect visible  
+
+🔹 Oracle Manipulation Attack
+💡 Example:
+
+Flash loan large volume of an asset
+Manipulate the price oracle by shifting liquidity
+Use the new (incorrect) price to borrow more assets from a lending protocol
+Withdraw funds & dump the manipulated asset
+Repay flash loan and escape with stolen funds
+➡ Why multi-step?
+The first step sets up false market conditions, and the second step exploits it.
+
+---Use Flashbots Protect RPC to track mempool movements.
+Instead of comparing each pair one by one, batch your price fetches across multiple pools at once.
+Implement parallel processing to scan different DEXs simultaneously.
+Use custom price feeds instead of relying solely on chain oracles.
+🚀 Upgrade:
+
+Use multi-threading or async I/O to check multiple markets in parallel.

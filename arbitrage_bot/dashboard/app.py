@@ -1,7 +1,8 @@
 """Flask application for arbitrage bot dashboard."""
 
 # Import eventlet patch first to ensure monkey patching is done before any other imports
-from ..utils.eventlet_patch import eventlet
+import asyncio
+from ..utils.eventlet_patch import manager as eventlet_manager, init
 
 import os
 import json
@@ -40,6 +41,13 @@ INIT_WAIT = 2  # Wait 2 seconds between component initializations
 def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
     """Create Flask application."""
     try:
+        # Initialize eventlet synchronously
+        try:
+            eventlet = eventlet_manager.eventlet or init()
+        except Exception as e:
+            logger.error("Failed to initialize eventlet: " + str(e))
+            raise
+        
         # Initialize Flask app with absolute paths
         dashboard_dir = os.path.dirname(os.path.abspath(__file__))
         app = Flask(__name__, 
@@ -217,8 +225,7 @@ def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
             memory_bank=memory_bank,
             storage_hub=storage_hub,
             distribution_manager=distribution_manager,
-            execution_manager=execution_manager
-,
+            execution_manager=execution_manager,
             gas_optimizer=gas_optimizer
         )
         ws_server.initialize()
@@ -231,5 +238,5 @@ def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
         return app, socketio
 
     except Exception as e:
-        logger.error(f"Failed to create application: {e}")
+        logger.error("Failed to create application: " + str(e))
         raise

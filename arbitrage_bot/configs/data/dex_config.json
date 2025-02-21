@@ -8,7 +8,8 @@
             "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
             "fee": 3000,
             "enabled": true,
-            "min_liquidity_usd": 10000
+            "min_liquidity_usd": 10000,
+            "weth_address": "0x4200000000000000000000000000000000000006"
         },
         "baseswap_v3": {
             "name": "BaseSwap",
@@ -19,7 +20,8 @@
             "fee": 500,
             "enabled": true,
             "min_liquidity_usd": 10000,
-            "tick_spacing": 10
+            "tick_spacing": 10,
+            "weth_address": "0x4200000000000000000000000000000000000006"
         },
         "pancakeswap": {
             "name": "PancakeSwap",
@@ -31,7 +33,8 @@
             "fee": 2500,
             "enabled": true,
             "min_liquidity_usd": 10000,
-            "tick_spacing": 60
+            "tick_spacing": 60,
+            "weth_address": "0x4200000000000000000000000000000000000006"
         },
         "swapbased": {
             "name": "SwapBased",
@@ -42,7 +45,20 @@
             "fee": 500,
             "enabled": true,
             "min_liquidity_usd": 10000,
-            "tick_spacing": 10
+            "tick_spacing": 10,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        },
+        "rocketswap_v3": {
+            "name": "RocketSwap",
+            "version": "v3",
+            "factory": "0x8c1A3cF8f83074169FE5D7aD50B978e1cD6b37c7",
+            "router": "0x1b81D678ffb9C0263b24A97847620C99d213eB14",
+            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+            "fee": 500,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "tick_spacing": 10,
+            "weth_address": "0x4200000000000000000000000000000000000006"
         }
     },
     "tokens": {

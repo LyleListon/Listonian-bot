@@ -170,16 +170,8 @@ class ArbitrageBot:
             logger.info("Initializing balance manager...")
             self.balance_manager = await BalanceManager.get_instance(
                 web3_manager=self.web3_manager,
-                analytics=self.analytics_system,
-                ml_system=self.ml_system,
-                monitor=self.tx_monitor,
                 dex_manager=self.dex_manager,
-                market_analyzer=self.market_analyzer,
-                gas_optimizer=self.gas_optimizer,
-                max_position_size=config.get('trading', {}).get('max_position_size', 0.1),
-                min_reserve_ratio=config.get('trading', {}).get('min_reserve_ratio', 0.2),
-                rebalance_threshold=config.get('trading', {}).get('rebalance_threshold', 0.05),
-                risk_per_trade=config.get('trading', {}).get('risk_per_trade', 0.02)
+                config=config
             )
             logger.info("Balance manager initialized")
             
@@ -217,7 +209,7 @@ class ArbitrageBot:
             return True
         
         except (ConfigurationError, GasOptimizerError, InitializationError) as e:
-            logger.error("Initialization error: " + str(e))
+            logger.error("Initialization error: %s", str(e))
             raise
 
     async def start(self):
@@ -248,7 +240,7 @@ class ArbitrageBot:
             await self._run_arbitrage_loop()
         
         except (ConfigurationError, GasOptimizerError, InitializationError, self.DashboardError) as e:
-            logger.error("Failed to start arbitrage bot: " + str(e))
+            logger.error("Failed to start arbitrage bot: %s", str(e))
             await self.stop()
     
     async def stop(self):
@@ -269,7 +261,7 @@ class ArbitrageBot:
             logger.info("Arbitrage bot stopped successfully")
         
         except (self.DashboardError, IOError) as e:
-            logger.error("Error during bot shutdown: " + str(e))
+            logger.error("Error during bot shutdown: %s", str(e))
             raise
     
     async def _run_arbitrage_loop(self):
@@ -279,22 +271,32 @@ class ArbitrageBot:
         while self.is_running and not self.shutdown_event.is_set():
             try:
                 # Get opportunities from market analyzer
-                opportunities = self.market_analyzer.get_opportunities()
+                opportunities = await self.market_analyzer.get_opportunities()
                 if opportunities:
-                    for opportunity in sorted(opportunities, key=lambda x: x['profit_usd'], reverse=True):
+                    sorted_opportunities = sorted(opportunities, key=lambda x: x.profit_margin, reverse=True)
+                    for opportunity in sorted_opportunities:
                         # Log opportunity before execution
-                        log_opportunity(opportunity)
+                        log_opportunity({
+                            'token_id': opportunity.token_id,
+                            'token_address': opportunity.token_address,
+                            'buy_dex': opportunity.buy_dex,
+                            'sell_dex': opportunity.sell_dex,
+                            'buy_price': float(opportunity.buy_price),
+                            'sell_price': float(opportunity.sell_price),
+                            'profit_margin': float(opportunity.profit_margin),
+                            'timestamp': opportunity.timestamp
+                        })
                         
                         # Execute opportunity
                         success = await self.arbitrage_executor.execute_opportunity(opportunity)
                         
                         # Log execution result
-                        if success and 'tx_hash' in opportunity:
+                        if success and hasattr(opportunity, 'tx_hash'):
                             log_execution(
-                                tx_hash=opportunity['tx_hash'],
+                                tx_hash=opportunity.tx_hash,
                                 status='success',
-                                profit=opportunity['profit_usd'],
-                                gas_cost=opportunity.get('gas_cost_usd', 0)
+                                profit=float(opportunity.profit_margin),
+                                gas_cost=getattr(opportunity, 'gas_cost', 0)
                             )
                 
                 # Add delay between iterations and log metrics every 60 seconds
@@ -317,7 +319,7 @@ class ArbitrageBot:
                 )
             
             except (self.ArbitrageExecutionError, IOError, TimeoutError) as e:
-                logger.error("Arbitrage execution failed: " + str(e))
+                logger.error("Arbitrage execution failed: %s", str(e))
                 await asyncio.sleep(5)  # Brief delay before retry
     
     async def _start_dashboard(self):
@@ -336,7 +338,7 @@ class ArbitrageBot:
             logger.info("Dashboard started successfully")
         
         except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
-            raise self.DashboardError("Failed to start dashboard: " + str(e)) from e
+            raise self.DashboardError("Failed to start dashboard: %s" % str(e)) from e
     
     async def _cleanup(self):
         """Perform cleanup operations"""
@@ -344,7 +346,7 @@ class ArbitrageBot:
             # Save final performance metrics
             if self.performance_tracker:
                 summary = self.performance_tracker.get_performance_summary()
-                logger.info("Final performance summary: " + str(summary))
+                logger.info("Final performance summary: %s", str(summary))
                 
                 # Log final metrics
                 for metric, value in summary.items():
@@ -356,7 +358,7 @@ class ArbitrageBot:
             logger.info("Cleanup completed successfully")
         
         except IOError as e:
-            logger.error("Cleanup operation failed: " + str(e))
+            logger.error("Cleanup operation failed: %s", str(e))
             raise
     
     def _register_signal_handlers(self):
@@ -364,7 +366,7 @@ class ArbitrageBot:
         loop = asyncio.get_running_loop()
         
         def signal_handler(signum, frame):
-            logger.info("Received signal " + str(signum))
+            logger.info("Received signal %s", str(signum))
             loop.create_task(self.stop())
         
         signal.signal(signal.SIGINT, signal_handler)
@@ -378,10 +380,10 @@ async def async_main():
         await bot.start()
     
     except ConfigurationError as e:
-        logger.error("Configuration error: " + str(e))
+        logger.error("Configuration error: %s", str(e))
         sys.exit(1)
     except (ArbitrageBot.ArbitrageExecutionError, ArbitrageBot.DashboardError, IOError) as e:
-        logger.error("Critical error: " + str(e))
+        logger.error("Critical error: %s", str(e))
         sys.exit(1)
 
 def main():
@@ -391,7 +393,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
     except Exception as e:
-        logger.error("Critical error: " + str(e), exc_info=True)
+        logger.error("Critical error: %s", str(e), exc_info=True)
         sys.exit(1)
 
 if __name__ == "__main__":

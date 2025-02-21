@@ -6,13 +6,15 @@ import logging
 from typing import Optional, Dict, Any, Union
 from web3 import Web3
 from web3.contract import Contract
-import eventlet
+from ..utils.eventlet_patch import manager as eventlet_manager
 
 from ..web3.connection import create_web3_manager, Web3Manager
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Get eventlet instance from manager
+eventlet = eventlet_manager.eventlet
 
 class DashboardWeb3Utils:
     """Web3 utilities for dashboard"""
@@ -29,11 +31,11 @@ class DashboardWeb3Utils:
             contract = self.w3.eth.contract(
                 address=Web3.to_checksum_address(address), abi=abi
             )
-            logger.debug(f"Contract loaded successfully: {address}")
+            logger.debug("Contract loaded successfully: %s", address)
             return contract
 
         except Exception as e:
-            logger.error(f"Error loading contract: {str(e)}")
+            logger.error("Error loading contract: %s", str(e))
             raise
 
     def eth_call(self, transaction: Dict[str, Any]) -> bytes:
@@ -43,7 +45,7 @@ class DashboardWeb3Utils:
             return result
 
         except Exception as e:
-            logger.error(f"Error in eth_call: {str(e)}")
+            logger.error("Error in eth_call: %s", str(e))
             raise
 
     def get_balance(self) -> float:
@@ -56,7 +58,7 @@ class DashboardWeb3Utils:
             balance_eth = self.w3.from_wei(balance_wei, "ether")
             return float(balance_eth)
         except Exception as e:
-            logger.error(f"Error getting ETH balance: {str(e)}")
+            logger.error("Error getting ETH balance: %s", str(e))
             return 0.0
 
     def get_token_balance(
@@ -81,7 +83,7 @@ class DashboardWeb3Utils:
             return balance / (10**token_decimals)
 
         except Exception as e:
-            logger.error(f"Error getting token balance: {str(e)}")
+            logger.error("Error getting token balance: %s", str(e))
             return 0.0
 
 

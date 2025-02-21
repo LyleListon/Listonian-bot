@@ -2,7 +2,6 @@
 
 import logging
 import time
-import eventlet
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from . import MemoryBank
@@ -40,7 +39,7 @@ class MemoryBankManager:
             
             return self.memory_bank.initialize(config)
         except Exception as e:
-            logger.error(f"Failed to initialize memory bank: {e}")
+            logger.error("Failed to initialize memory bank: %s", str(e))
             return False
     
     def store_market_data(self, key: str, data: Any, ttl: Optional[int] = None, version_comment: Optional[str] = None) -> None:
@@ -66,14 +65,14 @@ class MemoryBankManager:
             
             self.memory_bank.store(key, data, category="market_data", ttl=ttl)
         except Exception as e:
-            logger.error(f"Failed to store market data {key}: {e}")
+            logger.error("Failed to store market data %s: %s", key, str(e))
     
     def get_market_data(self, key: str) -> Optional[Any]:
         """Retrieve market data."""
         try:
             return self.memory_bank.retrieve(key, category="market_data")
         except Exception as e:
-            logger.error(f"Failed to retrieve market data {key}: {e}")
+            logger.error("Failed to retrieve market data %s: %s", key, str(e))
             return None
     
     def store_transaction(self, key: str, data: Any) -> None:
@@ -81,14 +80,14 @@ class MemoryBankManager:
         try:
             self.memory_bank.store(key, data, category="transactions")
         except Exception as e:
-            logger.error(f"Failed to store transaction {key}: {e}")
+            logger.error("Failed to store transaction %s: %s", key, str(e))
     
     def get_transaction(self, key: str) -> Optional[Any]:
         """Retrieve transaction data."""
         try:
             return self.memory_bank.retrieve(key, category="transactions")
         except Exception as e:
-            logger.error(f"Failed to retrieve transaction {key}: {e}")
+            logger.error("Failed to retrieve transaction %s: %s", key, str(e))
             return None
     
     def store_analytics(self, key: str, data: Any, ttl: Optional[int] = None, version_comment: Optional[str] = None) -> None:
@@ -128,14 +127,14 @@ class MemoryBankManager:
             
             self.memory_bank.store(key, data, category="analytics", ttl=ttl)
         except Exception as e:
-            logger.error(f"Failed to store analytics {key}: {e}")
+            logger.error("Failed to store analytics %s: %s", key, str(e))
     
     def get_analytics(self, key: str) -> Optional[Any]:
         """Retrieve analytics data."""
         try:
             return self.memory_bank.retrieve(key, category="analytics")
         except Exception as e:
-            logger.error(f"Failed to retrieve analytics {key}: {e}")
+            logger.error("Failed to retrieve analytics %s: %s", key, str(e))
             return None
     
     def store_docs(self, key: str, data: Any) -> None:
@@ -143,14 +142,14 @@ class MemoryBankManager:
         try:
             self.memory_bank.store(key, data, category="docs")
         except Exception as e:
-            logger.error(f"Failed to store docs {key}: {e}")
+            logger.error("Failed to store docs %s: %s", key, str(e))
     
     def get_docs(self, key: str) -> Optional[Any]:
         """Retrieve documentation data."""
         try:
             return self.memory_bank.retrieve(key, category="docs")
         except Exception as e:
-            logger.error(f"Failed to retrieve docs {key}: {e}")
+            logger.error("Failed to retrieve docs %s: %s", key, str(e))
             return None
     
     def store_temp(self, key: str, data: Any, ttl: Optional[int] = None) -> None:
@@ -158,14 +157,14 @@ class MemoryBankManager:
         try:
             self.memory_bank.store(key, data, category="temp", ttl=ttl)
         except Exception as e:
-            logger.error(f"Failed to store temp data {key}: {e}")
+            logger.error("Failed to store temp data %s: %s", key, str(e))
     
     def get_temp(self, key: str) -> Optional[Any]:
         """Retrieve temporary data."""
         try:
             return self.memory_bank.retrieve(key, category="temp")
         except Exception as e:
-            logger.error(f"Failed to retrieve temp data {key}: {e}")
+            logger.error("Failed to retrieve temp data %s: %s", key, str(e))
             return None
     
     def clear_category(self, category: str) -> None:
@@ -176,14 +175,14 @@ class MemoryBankManager:
                 for key in stats.categories[category]:
                     self.memory_bank.clear(key, category)
         except Exception as e:
-            logger.error(f"Failed to clear category {category}: {e}")
+            logger.error("Failed to clear category %s: %s", category, str(e))
     
     def clear_all(self) -> None:
         """Clear all stored data."""
         try:
             self.memory_bank.clear_all()
         except Exception as e:
-            logger.error(f"Failed to clear all data: {e}")
+            logger.error("Failed to clear all data: %s", str(e))
     
     def get_stats(self) -> Dict[str, Any]:
         """Get memory usage statistics."""
@@ -195,7 +194,7 @@ class MemoryBankManager:
                 "compression_stats": {k: v._asdict() for k, v in compression_stats.items()}
             }
         except Exception as e:
-            logger.error(f"Failed to get memory stats: {e}")
+            logger.error("Failed to get memory stats: %s", str(e))
             return {}
     
     def store_opportunities(self, opportunities: List[Opportunity]) -> None:
@@ -203,7 +202,7 @@ class MemoryBankManager:
         try:
             self.memory_bank.store_opportunities(opportunities)
         except Exception as e:
-            logger.error(f"Failed to store opportunities: {e}")
+            logger.error("Failed to store opportunities: %s", str(e))
 
     def get_trade_history(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get trade execution history with optional age filter."""
@@ -226,7 +225,7 @@ class MemoryBankManager:
             return results
             
         except Exception as e:
-            logger.error(f"Failed to get trade history: {e}")
+            logger.error("Failed to get trade history: %s", str(e))
             return []
 
     def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -250,7 +249,7 @@ class MemoryBankManager:
             return opportunities
             
         except Exception as e:
-            logger.error(f"Failed to get recent opportunities: {e}")
+            logger.error("Failed to get recent opportunities: %s", str(e))
             return []
 
     def store_trade_result(
@@ -273,21 +272,21 @@ class MemoryBankManager:
                 error=error
             )
         except Exception as e:
-            logger.error(f"Failed to store trade result: {e}")
+            logger.error("Failed to store trade result: %s", str(e))
     
     def stop(self) -> None:
         """Stop memory bank operations."""
         try:
             self.memory_bank.stop()
         except Exception as e:
-            logger.error(f"Failed to stop memory bank: {e}")
+            logger.error("Failed to stop memory bank: %s", str(e))
 
     def cleanup(self) -> None:
         """Cleanup memory bank resources."""
         try:
             self.memory_bank.cleanup()
         except Exception as e:
-            logger.error(f"Failed to cleanup memory bank: {e}")
+            logger.error("Failed to cleanup memory bank: %s", str(e))
 
 def get_memory_bank(config: Optional[Dict[str, Any]] = None) -> MemoryBankManager:
     """Get the singleton memory bank manager instance."""

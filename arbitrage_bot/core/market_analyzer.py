@@ -58,7 +58,7 @@ class MarketAnalyzer:
 
         return abs(price2 - price1) / price1
 
-    def get_opportunities(self) -> List[Dict[str, Any]]:
+    async def get_opportunities(self) -> List[Dict[str, Any]]:
         """Get current arbitrage opportunities."""
         try:
             opportunities = []
@@ -66,7 +66,7 @@ class MarketAnalyzer:
             # Get all enabled DEXes
             dexes = [
                 dex for dex in self.dex_manager.get_all_dexes()
-                if dex.is_enabled()
+                if await dex.is_enabled()
             ]
             
             if len(dexes) < 2:
@@ -87,7 +87,7 @@ class MarketAnalyzer:
             # Get common tokens across all DEXes
             common_tokens = set()
             for dex in dexes:
-                tokens = dex.get_supported_tokens()
+                tokens = await dex.get_supported_tokens()
                 if not common_tokens:
                     common_tokens = set(tokens)
                 else:
@@ -103,8 +103,8 @@ class MarketAnalyzer:
                 for dex in dexes:
                     try:
                         # Get token price and liquidity
-                        price = dex.get_token_price(token)
-                        pool_liquidity = dex.get_total_liquidity()
+                        price = await dex.get_token_price(token)
+                        pool_liquidity = await dex.get_total_liquidity()
                         
                         if price > 0 and pool_liquidity >= self.min_liquidity:
                             prices[dex.name] = float(price)
@@ -163,13 +163,12 @@ class MarketAnalyzer:
                                     opportunities.append(opportunity)
                                     if profit_usd >= 1.0:  # Only log if profit is $1 or more
                                         logger.debug(
-                                            f"Found opportunity: {dex_from} -> {dex_to}, "
-                                            f"Token: {token}, "
-                                            f"Profit: ${profit_usd:.2f}"
+                                            "Found opportunity: %s -> %s, Token: %s, Profit: $%.2f",
+                                            dex_from, dex_to, token, profit_usd
                                         )
                                 
                         except Exception as e:
-                            logger.error(f"Error calculating opportunity: {e}")
+                            logger.error("Error calculating opportunity: %s", str(e))
                             continue
             
             # Sort opportunities by profit
@@ -177,10 +176,10 @@ class MarketAnalyzer:
             return opportunities
             
         except Exception as e:
-            logger.error(f"Error getting opportunities: {e}")
+            logger.error("Error getting opportunities: %s", str(e))
             return []
 
-    def get_market_condition(self, token: str) -> Dict[str, Any]:
+    async def get_market_condition(self, token: str) -> Dict[str, Any]:
         """Get current market condition for token."""
         try:
             # Get actual market data from DEXes
@@ -190,15 +189,15 @@ class MarketAnalyzer:
             
             for dex in self.dex_manager.get_all_dexes():
                 try:
-                    price = dex.get_token_price(token)
+                    price = await dex.get_token_price(token)
                     if price > 0:
                         prices.append(price)
                     
-                    liquidity = dex.get_total_liquidity()
+                    liquidity = await dex.get_total_liquidity()
                     if liquidity > 0:
                         total_liquidity += liquidity
                         
-                    volume = dex.get_24h_volume(token)
+                    volume = await dex.get_24h_volume(token)
                     if volume > 0:
                         total_volume += volume
                 except Exception:
@@ -218,10 +217,10 @@ class MarketAnalyzer:
                 'trend': 'stable' if volatility < 0.02 else 'volatile'
             }
         except Exception as e:
-            logger.error(f"Error getting market condition: {e}")
+            logger.error("Error getting market condition: %s", str(e))
             return {}
 
-    def get_current_price(self, token: str) -> float:
+    async def get_current_price(self, token: str) -> float:
         """
         Get current price from cache if available and not expired.
 
@@ -241,7 +240,7 @@ class MarketAnalyzer:
         prices = []
         for dex in self.dex_manager.get_all_dexes():
             try:
-                price = dex.get_token_price(token)
+                price = await dex.get_token_price(token)
                 if price > 0:
                     prices.append(price)
             except Exception:

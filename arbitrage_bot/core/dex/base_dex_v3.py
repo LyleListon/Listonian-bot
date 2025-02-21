@@ -19,7 +19,7 @@ class BaseDEXV3(BaseDEX):
         self.fee = config.get('fee', 3000)  # 0.3% default fee
         self.pool_abi = None
         self.quoter_abi = None
-        self.is_enabled = config.get('enabled', False)
+        self._enabled = config.get('enabled', False)
         
         # Checksum addresses
         if self.router_address:
@@ -52,180 +52,215 @@ class BaseDEXV3(BaseDEX):
                 lambda: self.web3_manager.w3.eth.get_code(self.router_address)
             )
             if len(code) <= 2:  # Empty or just '0x'
-                raise ValueError("No contract deployed at router address " + str(self.router_address))
+                raise ValueError("No contract deployed at router address %s", self.router_address)
                 
             code = self._retry_sync(
                 lambda: self.web3_manager.w3.eth.get_code(self.factory_address)
             )
             if len(code) <= 2:
-                raise ValueError("No contract deployed at factory address " + str(self.factory_address))
+                raise ValueError("No contract deployed at factory address %s", self.factory_address)
                 
             if self.quoter_address:
                 code = self._retry_sync(
                     lambda: self.web3_manager.w3.eth.get_code(self.quoter_address)
                 )
                 if len(code) <= 2:
-                    raise ValueError("No contract deployed at quoter address " + str(self.quoter_address))
+                    raise ValueError("No contract deployed at quoter address %s", self.quoter_address)
                 
             self.initialized = True
-            self.logger.info(self.name + " V3 interface initialized")
+            self.logger.info("%s V3 interface initialized", self.name)
             return True
             
         except Exception as e:
             self._handle_error(e, "V3 DEX initialization")
             return False
 
-    def swap_exact_tokens_for_tokens(
-        self,
-        amount_in: int,
-        amount_out_min: int,
-        path: List[str],
-        to: str,  # This parameter is ignored - we always use web3_manager's wallet
-        deadline: int
-    ) -> TxReceipt:
-        """Execute a V3 swap using exactInput."""
+    async def get_token_price(self, token_address: str) -> float:
+        """Get current price for a token."""
         try:
-            # Use provided recipient address
-            recipient = to
-            self.logger.info("Using provided recipient address: " + str(recipient))
+            # Convert addresses to checksum format
+            token_address = Web3.to_checksum_address(token_address)
+            weth_address = Web3.to_checksum_address(self.config.get('weth_address'))
             
-            # Validate inputs
-            self._validate_path(path)
-            self._validate_amounts(amount_in, amount_out_min)
-            
-            # Get initial balances
-            token_in_contract = self.web3_manager.get_token_contract(path[0])
-            token_out_contract = self.web3_manager.get_token_contract(path[-1])
-            
-            balance_in_before = token_in_contract.functions.balanceOf(self.web3_manager.wallet_address).call()
-            balance_out_before = token_out_contract.functions.balanceOf(recipient).call()
-            
-            # Check and approve token spending
-            if not self.check_and_approve_token(path[0], amount_in):
-                self.logger.error(
-                    "Failed to approve token " + str(path[0]) + " for spending"
-                )
-                return None
-            
-            # Prepare swap parameters
-            # Get quote to find best fee tier
-            quote = self.get_quote_with_impact(amount_in, path)
-            if not quote:
-                self.logger.error("Failed to get quote for swap")
-                return None
+            # For V3, use the quoter if available
+            if self.quoter and token_address != weth_address:
+                if not self.config.get('weth_address'):
+                    raise ValueError("WETH address not configured")
                 
-            # Use fee from successful quote
-            params = self._prepare_exact_input_params(
-                amount_in,
-                amount_out_min,
-                path,
-                recipient,  # Use our wallet address
-                deadline
-            )
-            params['path'] = self._encode_path(path, int(quote['fee_rate'] * 1000000))  # Convert fee back to basis points
-            
-            # Build function parameters
-            function_params = (
-                params['path'],
-                params['recipient'],
-                params['deadline'],
-                params['amountIn'],
-                params['amountOutMinimum']
-            )
-            
-            # Execute swap with proper transaction parameters
-            receipt = self.web3_manager.build_and_send_transaction(
-                contract=self.router,
-                method_name='exactInput',
-                *function_params,
-                value=0,  # No ETH value for token swaps
-                gas=int(quote['estimated_gas'] * 1.1),  # Use quote's gas estimate with 10% buffer
-                maxFeePerGas=None,  # Let web3_manager handle EIP-1559 params
-                maxPriorityFeePerGas=None  # Let web3_manager handle EIP-1559 params
-            )
-            
-            if receipt and receipt['status'] == 1:
-                # Get balances after trade
-                balance_in_after = token_in_contract.functions.balanceOf(self.web3_manager.wallet_address).call()
-                balance_out_after = token_out_contract.functions.balanceOf(recipient).call()
-                
-                # Verify balance changes
-                in_diff = balance_in_before - balance_in_after
-                out_diff = balance_out_after - balance_out_before
-                
-                if in_diff <= 0 or out_diff <= 0:
-                    self.logger.error(
-                        "Balance verification failed: in_diff=" + str(in_diff) + 
-                        ", out_diff=" + str(out_diff) + 
-                        ", expected_min_out=" + str(amount_out_min)
-                    )
-                    return None
-                
-                # Log transaction
-                self._log_transaction(
-                    receipt['transactionHash'].hex(),
+                # Get quote for 1 token worth of WETH
+                amount_in = 10**18  # 1 WETH
+                quote = self.get_quote_from_quoter(
                     amount_in,
-                    out_diff,  # Use actual output amount
-                    path
+                    [weth_address, token_address]
                 )
                 
-                return receipt
-            else:
-                self.logger.error("Transaction failed or returned invalid receipt")
-                return None
+                if quote:
+                    return float(quote) / (10**18)
+            
+            return 0.0
             
         except Exception as e:
-            self._handle_error(e, "V3 swap execution")
+            self.logger.error("Failed to get token price: %s", str(e))
+            return 0.0
+
+    async def get_quote_with_impact(self, amount_in: int, path: List[str]) -> Optional[Dict[str, Any]]:
+        """Get quote including price impact and liquidity depth analysis."""
+        try:
+            amount_out = self.get_quote_from_quoter(amount_in, path)
+            if not amount_out:
+                return None
+
+            # Calculate price impact
+            small_amount = 10**6  # Use 1 USDC worth as small amount
+            base_amount_out = self.get_quote_from_quoter(small_amount, path)
+            if not base_amount_out:
+                return None
+
+            # Calculate price impact
+            expected_amount = (amount_in * base_amount_out) / small_amount
+            actual_amount = amount_out
+            price_impact = abs(1 - (actual_amount / expected_amount))
+
+            # Get pool liquidity
+            pool_address = self._retry_sync(
+                lambda: self.factory.functions.getPool(
+                    Web3.to_checksum_address(path[0]),
+                    Web3.to_checksum_address(path[1]),
+                    self.fee
+                ).call()
+            )
+            
+            pool = self.web3_manager.get_contract(
+                address=Web3.to_checksum_address(pool_address),
+                abi_name=self.name.lower() + "_v3_pool"
+            )
+            
+            liquidity = self._retry_sync(
+                lambda: pool.functions.liquidity().call()
+            )
+
+            return {
+                'amount_in': amount_in,
+                'amount_out': amount_out,
+                'price_impact': float(price_impact),
+                'liquidity_depth': float(liquidity),
+                'fee_rate': self.fee / 10000,  # Convert to percentage
+                'estimated_gas': 200000,  # Estimated gas for V3 swap
+                'min_out': int(amount_out * 0.995)  # 0.5% slippage
+            }
+
+        except Exception as e:
+            self.logger.error("Failed to get quote with impact: %s", str(e))
             return None
 
-    def _prepare_exact_input_params(
+    async def swap_exact_tokens_for_tokens(
         self,
         amount_in: int,
         amount_out_min: int,
         path: List[str],
         to: str,
-        deadline: int
-    ) -> Dict[str, Any]:
-        """Prepare parameters for V3 exactInput swap."""
-        # Validate inputs
-        self._validate_path(path)
-        self._validate_amounts(amount_in, amount_out_min)
-        
-        # Encode the path with fees
-        encoded_path = self._encode_path(path)
-        
-        # Build exact input params struct
-        return {
-            'path': encoded_path,
-            'recipient': to,
-            'deadline': deadline,
-            'amountIn': amount_in,
-            'amountOutMinimum': amount_out_min
-        }
+        deadline: int,
+        gas: Optional[int] = None,
+        maxFeePerGas: Optional[int] = None,
+        maxPriorityFeePerGas: Optional[int] = None
+    ) -> TxReceipt:
+        """Execute a token swap."""
+        try:
+            # Validate parameters
+            self._validate_path(path)
+            self._validate_amounts(amount_in, amount_out_min)
+            
+            # Encode path with fees
+            encoded_path = self._encode_path(path)
+            
+            # Build transaction parameters
+            params = {
+                'from': self.web3_manager.wallet_address,
+                'nonce': await self.web3_manager.w3.eth.get_transaction_count(
+                    self.web3_manager.wallet_address
+                )
+            }
+            
+            # Add gas parameters if provided
+            if gas:
+                params['gas'] = gas
+            if maxFeePerGas:
+                params['maxFeePerGas'] = maxFeePerGas
+            if maxPriorityFeePerGas:
+                params['maxPriorityFeePerGas'] = maxPriorityFeePerGas
+            
+            # Build and send transaction
+            tx_hash = await self.web3_manager.build_and_send_transaction(
+                self.router,
+                'exactInput',
+                {
+                    'path': encoded_path,
+                    'recipient': Web3.to_checksum_address(to),
+                    'deadline': deadline,
+                    'amountIn': amount_in,
+                    'amountOutMinimum': amount_out_min
+                },
+                tx_params=params
+            )
+            
+            # Wait for transaction receipt
+            receipt = await self.web3_manager.wait_for_transaction(tx_hash)
+            
+            # Log transaction details
+            self._log_transaction(
+                receipt['transactionHash'].hex(),
+                amount_in,
+                amount_out_min,
+                path,
+                to
+            )
+            
+            return receipt
+            
+        except Exception as e:
+            self._handle_error(e, "V3 swap_exact_tokens_for_tokens")
+            raise
 
     def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
         """Get quote from quoter contract if available."""
         if not self.quoter:
             return None
-            
-        encoded_path = self._encode_path(path)
-        return self._retry_sync(
-            lambda: self.quoter.functions.quoteExactInput(
-                encoded_path,
-                amount_in
-            ).call()
-        )
 
-    def _encode_path(self, path: List[str]) -> bytes:
+        # Only support direct swaps for now
+        if len(path) != 2:
+            self.logger.warning("Multi-hop paths not supported yet")
+            return None
+
+        try:
+            # Use quoteExactInputSingle
+            result = self._retry_sync(
+                lambda: self.quoter.functions.quoteExactInputSingle(
+                    Web3.to_checksum_address(path[0]),  # tokenIn
+                    Web3.to_checksum_address(path[1]),  # tokenOut
+                    self.fee,  # fee
+                    amount_in,  # amountIn
+                    0  # sqrtPriceLimitX96 (0 for no limit)
+                ).call()
+            )
+            # Return just the amount_out from the tuple
+            return result[0] if result else None
+
+        except Exception as e:
+            self.logger.error("Failed to get quote: %s", str(e))
+            return None
+
+    def _encode_path(self, path: List[str], fee: Optional[int] = None) -> bytes:
         """Encode path with fees for V3 swap."""
         encoded = b''
         for i in range(len(path) - 1):
-            encoded += bytes.fromhex(path[i][2:])  # Remove '0x' prefix
-            encoded += self.fee.to_bytes(3, 'big')  # Add fee as 3 bytes
-        encoded += bytes.fromhex(path[-1][2:])  # Add final token
+            # Convert to checksum address and remove '0x' prefix
+            token_addr = Web3.to_checksum_address(path[i])[2:]
+            encoded += bytes.fromhex(token_addr)
+            encoded += (fee if fee is not None else self.fee).to_bytes(3, 'big')  # Add fee as 3 bytes
+        encoded += bytes.fromhex(Web3.to_checksum_address(path[-1])[2:])  # Add final token
         return encoded
 
-    def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
         """Get 24-hour trading volume for a token pair."""
         try:
             # Validate and checksum addresses
@@ -268,10 +303,10 @@ class BaseDEXV3(BaseDEX):
             return volume
             
         except Exception as e:
-            self.logger.error("Failed to get 24h volume: " + str(e))
+            self.logger.error("Failed to get 24h volume: %s", str(e))
             return Decimal(0)
 
-    def get_total_liquidity(self) -> Decimal:
+    async def get_total_liquidity(self) -> Decimal:
         """Get total liquidity across all pairs."""
         try:
             total_liquidity = Decimal(0)
@@ -298,51 +333,11 @@ class BaseDEXV3(BaseDEX):
                     total_liquidity += Decimal(liquidity)
                     
                 except Exception as e:
-                    self.logger.warning("Failed to get liquidity for pool " + str(pool_address) + ": " + str(e))
+                    self.logger.warning("Failed to get liquidity for pool %s: %s", pool_address, str(e))
                     continue
             
             return total_liquidity
             
         except Exception as e:
-            self.logger.error("Failed to get total liquidity: " + str(e))
+            self.logger.error("Failed to get total liquidity: %s", str(e))
             return Decimal(0)
-
-    def _retry_sync(self, func, retries=3, delay=1):
-        """Synchronous retry helper."""
-        last_error = None
-        for attempt in range(retries):
-            try:
-                return func()
-            except Exception as e:
-                last_error = e
-                if attempt < retries - 1:
-                    time.sleep(delay * (2 ** attempt))  # Exponential backoff
-                    continue
-                self.logger.error("Failed after " + str(retries) + " attempts: " + str(e))
-                raise last_error
-        return None
-
-    def get_token_price(self, token_address: str) -> float:
-        """Get current price for a token."""
-        try:
-            # For V3, use the quoter if available
-            if self.quoter and token_address != self.config.get('weth_address'):
-                weth_address = self.config.get('weth_address')
-                if not weth_address:
-                    raise ValueError("WETH address not configured")
-                
-                # Get quote for 1 token worth of WETH
-                amount_in = 10**18  # 1 WETH
-                quote = self.get_quote_from_quoter(
-                    amount_in,
-                    [weth_address, token_address]
-                )
-                
-                if quote:
-                    return float(quote) / (10**18)
-            
-            return 0.0
-            
-        except Exception as e:
-            self.logger.error("Failed to get token price: " + str(e))
-            return 0.0
