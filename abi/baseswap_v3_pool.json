@@ -1,5 +1,18 @@
 [
   {
+    "inputs": [],
+    "name": "liquidity",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
@@ -50,19 +63,6 @@
   },
   {
     "inputs": [],
-    "name": "liquidity",
-    "outputs": [
-      {
-        "internalType": "uint128",
-        "name": "",
-        "type": "uint128"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "slot0",
     "outputs": [
       {
@@ -91,9 +91,9 @@
         "type": "uint16"
       },
       {
-        "internalType": "uint8",
+        "internalType": "uint32",
         "name": "feeProtocol",
-        "type": "uint8"
+        "type": "uint32"
       },
       {
         "internalType": "bool",
@@ -102,50 +102,6 @@
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "recipient",
-        "type": "address"
-      },
-      {
-        "internalType": "bool",
-        "name": "zeroForOne",
-        "type": "bool"
-      },
-      {
-        "internalType": "int256",
-        "name": "amountSpecified",
-        "type": "int256"
-      },
-      {
-        "internalType": "uint160",
-        "name": "sqrtPriceLimitX96",
-        "type": "uint160"
-      },
-      {
-        "internalType": "bytes",
-        "name": "data",
-        "type": "bytes"
-      }
-    ],
-    "name": "swap",
-    "outputs": [
-      {
-        "internalType": "int256",
-        "name": "amount0",
-        "type": "int256"
-      },
-      {
-        "internalType": "int256",
-        "name": "amount1",
-        "type": "int256"
-      }
-    ],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {

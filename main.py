@@ -75,7 +75,7 @@ class ArbitrageBot:
     
     def _validate_environment(self):
         """Validate required environment variables"""
-        required_vars = ['PRIVATE_KEY', 'BASE_RPC_URL']
+        required_vars = ['PRIVATE_KEY', 'BASE_RPC_URL', 'WALLET_ADDRESS']
         missing_vars = []
         for var in required_vars:
             if not os.getenv(var):
@@ -112,9 +112,11 @@ class ArbitrageBot:
             
             # Initialize Web3 manager first
             logger.info("Initializing Web3 manager...")
-            self.web3_manager = create_web3_manager(
+            self.web3_manager = await create_web3_manager(
                 provider_url=os.getenv('BASE_RPC_URL'),
-                chain_id=config['network']['chainId']
+                chain_id=config['network']['chainId'],
+                private_key=os.getenv('PRIVATE_KEY'),
+                wallet_address=os.getenv('WALLET_ADDRESS')
             )
             logger.info("Web3 manager created")
             
@@ -150,6 +152,8 @@ class ArbitrageBot:
             
             # Initialize analytics system
             self.analytics_system = create_analytics_system(config)
+            self.analytics_system.web3_manager = self.web3_manager
+            self.analytics_system.wallet_address = self.web3_manager.wallet_address
             
             # Set dex_manager in analytics system
             self.analytics_system.set_dex_manager(self.dex_manager)
@@ -177,10 +181,10 @@ class ArbitrageBot:
             
             # Initialize alert system
             self.alert_system = await create_alert_system(
-                self.analytics_system,
-                self.tx_monitor,
-                self.market_analyzer,
-                config
+                web3_manager=self.web3_manager,
+                dex_manager=self.dex_manager,
+                analytics_system=self.analytics_system,
+                config=config
             )
 
             # Initialize flash loan manager
@@ -345,7 +349,7 @@ class ArbitrageBot:
         try:
             # Save final performance metrics
             if self.performance_tracker:
-                summary = self.performance_tracker.get_performance_summary()
+                summary = await self.performance_tracker.get_performance_summary()
                 logger.info("Final performance summary: %s", str(summary))
                 
                 # Log final metrics

@@ -4,7 +4,9 @@ import logging
 import math
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
+from web3 import Web3
 from decimal import Decimal
+from ..utils.config_loader import create_config_loader
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,8 @@ class MarketAnalyzer:
             Decimal('0.1'),  # 0.1 ETH
             Decimal('2.0'),  # 2.0 ETH
         ]
+        self.config_loader = create_config_loader()
+        self.config = self.config_loader.get_config()
 
     def validate_price(self, price: float) -> bool:
         """
@@ -94,7 +98,11 @@ class MarketAnalyzer:
                     common_tokens &= set(tokens)
             
             for token in common_tokens:
-                if token == weth_address:
+                # Get token address from config
+                token_data = self.config.get('tokens', {}).get(token, {})
+                if not token_data or 'address' not in token_data:
+                    continue
+                if Web3.to_checksum_address(token_data['address']) == weth_address:
                     continue  # Skip WETH itself
                     
                 prices = {}
@@ -103,7 +111,7 @@ class MarketAnalyzer:
                 for dex in dexes:
                     try:
                         # Get token price and liquidity
-                        price = await dex.get_token_price(token)
+                        price = await dex.get_token_price(Web3.to_checksum_address(token_data['address']))
                         pool_liquidity = await dex.get_total_liquidity()
                         
                         if price > 0 and pool_liquidity >= self.min_liquidity:
@@ -140,8 +148,8 @@ class MarketAnalyzer:
                                     profit_usd = profit * price_to
                                     
                                     # Build token paths for each DEX
-                                    dex_from_path = [weth_address, token]  # WETH -> Token on DEX A
-                                    dex_to_path = [token, weth_address]    # Token -> WETH on DEX B
+                                    dex_from_path = [Web3.to_checksum_address(weth_address), Web3.to_checksum_address(token_data['address'])]  # WETH -> Token on DEX A
+                                    dex_to_path = [Web3.to_checksum_address(token_data['address']), Web3.to_checksum_address(weth_address)]    # Token -> WETH on DEX B
                                     
                                     opportunity = {
                                         'token': token,

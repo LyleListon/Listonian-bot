@@ -1,157 +1,64 @@
-"""Base class for V3 DEX implementations."""
+"""Base DEX V3 abstract class providing common functionality for V3 DEX implementations."""
 
+from abc import abstractmethod
 from typing import Dict, Any, List, Optional
-from web3.types import TxReceipt
 from decimal import Decimal
-import time
 from web3 import Web3
-
+from web3.contract import Contract, AsyncContract
 from .base_dex import BaseDEX
 from ..web3.web3_manager import Web3Manager
 
 class BaseDEXV3(BaseDEX):
-    """Base class implementing V3 DEX-specific functionality."""
+    """Abstract base class for V3 DEX implementations."""
+
+    EVENT_SIGNATURES = {
+        'PoolCreated': 'PoolCreated(address,address,uint24,int24,address)',
+        'Swap': 'Swap(address,address,int256,int256,uint160,uint128,int24)'
+    }
 
     def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
-        """Initialize V3 DEX interface."""
+        """Initialize base V3 DEX functionality."""
         super().__init__(web3_manager, config)
         self.quoter_address = config.get('quoter')
-        self.fee = config.get('fee', 3000)  # 0.3% default fee
-        self.pool_abi = None
-        self.quoter_abi = None
-        self._enabled = config.get('enabled', False)
-        
-        # Checksum addresses
-        if self.router_address:
-            self.router_address = Web3.to_checksum_address(self.router_address)
-        if self.factory_address:
-            self.factory_address = Web3.to_checksum_address(self.factory_address)
-        if self.quoter_address:
-            self.quoter_address = Web3.to_checksum_address(self.quoter_address)
+        self.quoter = None
+        self.fee = config.get('fee', 3000)
+        self.tick_spacing = config.get('tick_spacing', 60)
 
     async def initialize(self) -> bool:
         """Initialize the V3 DEX interface."""
         try:
-            # Initialize contracts with checksummed addresses
-            self.router = self.web3_manager.get_contract(
+            # Initialize router and factory contracts
+            self.router = await self.web3_manager.get_contract(
                 address=self.router_address,
                 abi_name=self.name.lower() + "_v3_router"
             )
-            self.factory = self.web3_manager.get_contract(
+            self.factory = await self.web3_manager.get_contract(
                 address=self.factory_address,
                 abi_name=self.name.lower() + "_v3_factory"
             )
+
+            # Initialize quoter if available
             if self.quoter_address:
-                self.quoter = self.web3_manager.get_contract(
+                self.quoter = await self.web3_manager.get_contract(
                     address=self.quoter_address,
                     abi_name=self.name.lower() + "_v3_quoter"
                 )
-            
-            # Test connection by checking if contracts are deployed
-            code = self._retry_sync(
-                lambda: self.web3_manager.w3.eth.get_code(self.router_address)
-            )
-            if len(code) <= 2:  # Empty or just '0x'
-                raise ValueError("No contract deployed at router address %s", self.router_address)
-                
-            code = self._retry_sync(
-                lambda: self.web3_manager.w3.eth.get_code(self.factory_address)
-            )
-            if len(code) <= 2:
-                raise ValueError("No contract deployed at factory address %s", self.factory_address)
-                
-            if self.quoter_address:
-                code = self._retry_sync(
-                    lambda: self.web3_manager.w3.eth.get_code(self.quoter_address)
-                )
-                if len(code) <= 2:
-                    raise ValueError("No contract deployed at quoter address %s", self.quoter_address)
-                
+
             self.initialized = True
-            self.logger.info("%s V3 interface initialized", self.name)
             return True
-            
+
         except Exception as e:
             self._handle_error(e, "V3 DEX initialization")
             return False
 
-    async def get_token_price(self, token_address: str) -> float:
-        """Get current price for a token."""
-        try:
-            # Convert addresses to checksum format
-            token_address = Web3.to_checksum_address(token_address)
-            weth_address = Web3.to_checksum_address(self.config.get('weth_address'))
-            
-            # For V3, use the quoter if available
-            if self.quoter and token_address != weth_address:
-                if not self.config.get('weth_address'):
-                    raise ValueError("WETH address not configured")
-                
-                # Get quote for 1 token worth of WETH
-                amount_in = 10**18  # 1 WETH
-                quote = self.get_quote_from_quoter(
-                    amount_in,
-                    [weth_address, token_address]
-                )
-                
-                if quote:
-                    return float(quote) / (10**18)
-            
-            return 0.0
-            
-        except Exception as e:
-            self.logger.error("Failed to get token price: %s", str(e))
-            return 0.0
-
-    async def get_quote_with_impact(self, amount_in: int, path: List[str]) -> Optional[Dict[str, Any]]:
-        """Get quote including price impact and liquidity depth analysis."""
-        try:
-            amount_out = self.get_quote_from_quoter(amount_in, path)
-            if not amount_out:
-                return None
-
-            # Calculate price impact
-            small_amount = 10**6  # Use 1 USDC worth as small amount
-            base_amount_out = self.get_quote_from_quoter(small_amount, path)
-            if not base_amount_out:
-                return None
-
-            # Calculate price impact
-            expected_amount = (amount_in * base_amount_out) / small_amount
-            actual_amount = amount_out
-            price_impact = abs(1 - (actual_amount / expected_amount))
-
-            # Get pool liquidity
-            pool_address = self._retry_sync(
-                lambda: self.factory.functions.getPool(
-                    Web3.to_checksum_address(path[0]),
-                    Web3.to_checksum_address(path[1]),
-                    self.fee
-                ).call()
-            )
-            
-            pool = self.web3_manager.get_contract(
-                address=Web3.to_checksum_address(pool_address),
-                abi_name=self.name.lower() + "_v3_pool"
-            )
-            
-            liquidity = self._retry_sync(
-                lambda: pool.functions.liquidity().call()
-            )
-
-            return {
-                'amount_in': amount_in,
-                'amount_out': amount_out,
-                'price_impact': float(price_impact),
-                'liquidity_depth': float(liquidity),
-                'fee_rate': self.fee / 10000,  # Convert to percentage
-                'estimated_gas': 200000,  # Estimated gas for V3 swap
-                'min_out': int(amount_out * 0.995)  # 0.5% slippage
-            }
-
-        except Exception as e:
-            self.logger.error("Failed to get quote with impact: %s", str(e))
-            return None
+    def _encode_path(self, path: List[str]) -> bytes:
+        """Encode path for V3 router."""
+        encoded = b''
+        for i, token in enumerate(path):
+            encoded += Web3.to_bytes(hexstr=token)
+            if i < len(path) - 1:
+                encoded += self.fee.to_bytes(3, 'big')
+        return encoded
 
     async def swap_exact_tokens_for_tokens(
         self,
@@ -163,181 +70,198 @@ class BaseDEXV3(BaseDEX):
         gas: Optional[int] = None,
         maxFeePerGas: Optional[int] = None,
         maxPriorityFeePerGas: Optional[int] = None
-    ) -> TxReceipt:
+    ):
         """Execute a token swap."""
         try:
-            # Validate parameters
+            # Validate inputs
+            self._validate_state()
             self._validate_path(path)
             self._validate_amounts(amount_in, amount_out_min)
-            
-            # Encode path with fees
+
+            # Encode path for V3
             encoded_path = self._encode_path(path)
-            
+
             # Build transaction parameters
             params = {
-                'from': self.web3_manager.wallet_address,
-                'nonce': await self.web3_manager.w3.eth.get_transaction_count(
-                    self.web3_manager.wallet_address
-                )
+                'path': encoded_path,
+                'recipient': Web3.to_checksum_address(to),
+                'deadline': deadline,
+                'amountIn': amount_in,
+                'amountOutMinimum': amount_out_min
             }
-            
+
             # Add gas parameters if provided
-            if gas:
-                params['gas'] = gas
-            if maxFeePerGas:
-                params['maxFeePerGas'] = maxFeePerGas
-            if maxPriorityFeePerGas:
-                params['maxPriorityFeePerGas'] = maxPriorityFeePerGas
-            
-            # Build and send transaction
+            tx_params = {}
+            if gas is not None:
+                tx_params['gas'] = gas
+            if maxFeePerGas is not None:
+                tx_params['maxFeePerGas'] = maxFeePerGas
+            if maxPriorityFeePerGas is not None:
+                tx_params['maxPriorityFeePerGas'] = maxPriorityFeePerGas
+
+            # Send transaction
             tx_hash = await self.web3_manager.build_and_send_transaction(
                 self.router,
                 'exactInput',
-                {
-                    'path': encoded_path,
-                    'recipient': Web3.to_checksum_address(to),
-                    'deadline': deadline,
-                    'amountIn': amount_in,
-                    'amountOutMinimum': amount_out_min
-                },
-                tx_params=params
+                params,
+                tx_params=tx_params
             )
-            
-            # Wait for transaction receipt
             receipt = await self.web3_manager.wait_for_transaction(tx_hash)
-            
-            # Log transaction details
+
+            # Log transaction
             self._log_transaction(
-                receipt['transactionHash'].hex(),
+                tx_hash.hex(),
                 amount_in,
                 amount_out_min,
                 path,
                 to
             )
-            
+
             return receipt
-            
-        except Exception as e:
-            self._handle_error(e, "V3 swap_exact_tokens_for_tokens")
-            raise
 
-    def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
+        except Exception as e:
+            self._handle_error(e, "V3 swap")
+
+    @abstractmethod
+    async def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
         """Get quote from quoter contract if available."""
-        if not self.quoter:
-            return None
+        pass
 
-        # Only support direct swaps for now
-        if len(path) != 2:
-            self.logger.warning("Multi-hop paths not supported yet")
-            return None
+    @abstractmethod
+    async def get_quote_with_impact(self, amount_in: int, path: List[str]) -> Optional[Dict[str, Any]]:
+        """Get quote with price impact calculation."""
+        pass
 
-        try:
-            # Use quoteExactInputSingle
-            result = self._retry_sync(
-                lambda: self.quoter.functions.quoteExactInputSingle(
-                    Web3.to_checksum_address(path[0]),  # tokenIn
-                    Web3.to_checksum_address(path[1]),  # tokenOut
-                    self.fee,  # fee
-                    amount_in,  # amountIn
-                    0  # sqrtPriceLimitX96 (0 for no limit)
-                ).call()
-            )
-            # Return just the amount_out from the tuple
-            return result[0] if result else None
-
-        except Exception as e:
-            self.logger.error("Failed to get quote: %s", str(e))
-            return None
-
-    def _encode_path(self, path: List[str], fee: Optional[int] = None) -> bytes:
-        """Encode path with fees for V3 swap."""
-        encoded = b''
-        for i in range(len(path) - 1):
-            # Convert to checksum address and remove '0x' prefix
-            token_addr = Web3.to_checksum_address(path[i])[2:]
-            encoded += bytes.fromhex(token_addr)
-            encoded += (fee if fee is not None else self.fee).to_bytes(3, 'big')  # Add fee as 3 bytes
-        encoded += bytes.fromhex(Web3.to_checksum_address(path[-1])[2:])  # Add final token
-        return encoded
-
+    @abstractmethod
     async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
         """Get 24-hour trading volume for a token pair."""
-        try:
-            # Validate and checksum addresses
-            token0 = Web3.to_checksum_address(token0)
-            token1 = Web3.to_checksum_address(token1)
-            
-            # Get pool address using V3 factory method
-            pool_address = self._retry_sync(
-                lambda: self.factory.functions.getPool(
-                    token0,
-                    token1,
-                    self.fee
-                ).call()
-            )
-            
-            if pool_address == "0x0000000000000000000000000000000000000000":
-                return Decimal(0)
-            
-            # Get pool contract with checksummed address
-            pool = self.web3_manager.get_contract(
-                address=Web3.to_checksum_address(pool_address),
-                abi_name=self.name.lower() + "_v3_pool"
-            )
-            
-            # Get volume from Swap events in last 24h
-            current_block = self.web3_manager.w3.eth.block_number
-            from_block = current_block - 7200  # ~24h of blocks
-            
-            swap_filter = pool.events.Swap.create_filter(fromBlock=from_block)
-            swap_events = self._retry_sync(
-                lambda: swap_filter.get_all_entries()
-            )
-            
-            volume = Decimal(0)
-            for event in swap_events:
-                amount0 = abs(Decimal(event['args']['amount0']))
-                amount1 = abs(Decimal(event['args']['amount1']))
-                volume += max(amount0, amount1)
-            
-            return volume
-            
-        except Exception as e:
-            self.logger.error("Failed to get 24h volume: %s", str(e))
-            return Decimal(0)
+        pass
 
+    @abstractmethod
     async def get_total_liquidity(self) -> Decimal:
         """Get total liquidity across all pairs."""
+        pass
+
+    @abstractmethod
+    async def get_token_price(self, token_address: str) -> float:
+        """Get current price for a token."""
+        pass
+
+    async def _get_pool_address(self, token0: str, token1: str) -> str:
+        """Get pool address for token pair."""
         try:
-            total_liquidity = Decimal(0)
-            
-            # Get pools from PoolCreated events
-            pool_created_filter = self.factory.events.PoolCreated.create_filter(fromBlock=0)
-            events = self._retry_sync(
-                lambda: pool_created_filter.get_all_entries()
+            contract_func = self.factory.functions.getPool(
+                Web3.to_checksum_address(token0),
+                Web3.to_checksum_address(token1),
+                self.fee
             )
+            pool_address = await self.web3_manager.call_contract_function(contract_func)
+            return Web3.to_checksum_address(pool_address)
+        except Exception as e:
+            self.logger.error("Failed to get pool address: %s", str(e))
+            return "0x0000000000000000000000000000000000000000"
+
+    async def _get_pool_contract(self, pool_address: str) -> Optional[AsyncContract]:
+        """Get pool contract instance."""
+        try:
+            return await self.web3_manager.get_contract(
+                address=pool_address,
+                abi_name=self.name.lower() + "_v3_pool"
+            )
+        except Exception as e:
+            self.logger.error("Failed to get pool contract: %s", str(e))
+            return None
+
+    async def _get_pool_liquidity(self, pool_contract: AsyncContract) -> Decimal:
+        """Get pool liquidity."""
+        try:
+            contract_func = pool_contract.functions.liquidity()
+            liquidity = await self.web3_manager.call_contract_function(contract_func)
+            return Decimal(str(liquidity))  # Convert to string first to avoid float conversion issues
+        except Exception as e:
+            self.logger.error("Failed to get pool liquidity: %s", str(e))
+            return Decimal(0)
+
+    def _get_event_signature(self, event_name: str) -> str:
+        """Get event signature."""
+        if event_name not in self.EVENT_SIGNATURES:
+            msg = "Unknown event: " + event_name
+            raise ValueError(msg)
+        signature = self.EVENT_SIGNATURES[event_name]
+        return Web3.keccak(text=signature).hex()
+
+    async def _process_log(
+        self,
+        event_obj: Any,
+        log_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Process a single event log."""
+        try:
+            # Convert numeric values in log to strings
+            processed_log = {
+                'address': log_dict['address'],
+                'topics': log_dict['topics'],
+                'data': log_dict['data'],
+                'blockNumber': str(log_dict['blockNumber']),
+                'transactionHash': log_dict['transactionHash'].hex() if isinstance(log_dict['transactionHash'], bytes) else log_dict['transactionHash'],
+                'transactionIndex': str(log_dict['transactionIndex']),
+                'blockHash': log_dict['blockHash'].hex() if isinstance(log_dict['blockHash'], bytes) else log_dict['blockHash'],
+                'logIndex': str(log_dict['logIndex']),
+                'removed': log_dict.get('removed', False)
+            }
+
+            # Process log using contract event
+            decoded = event_obj.process_log(processed_log)
+
+            # Convert numeric values in args to strings
+            if 'args' in decoded:
+                decoded['args'] = {
+                    key: str(value) if isinstance(value, (int, float)) else value
+                    for key, value in decoded['args'].items()
+                }
+
+            return decoded
+        except Exception as e:
+            self.logger.warning("Failed to process log: %s", str(e))
+            raise
+
+    async def _get_pool_events(
+        self,
+        pool_contract: AsyncContract,
+        event_name: str,
+        from_block: int,
+        to_block: str = 'latest'
+    ) -> List[Dict[str, Any]]:
+        """Get pool events."""
+        try:
+            # Get event signature
+            event_signature = self._get_event_signature(event_name)
             
-            # Limit to most recent 100 pools for performance
-            for event in events[-100:]:
+            # Get logs using eth_getLogs
+            logs = await self.web3_manager.w3.eth.get_logs({
+                'address': pool_contract.address,
+                'fromBlock': from_block,
+                'toBlock': to_block,
+                'topics': [event_signature]
+            })
+            
+            # Process logs
+            events = []
+            event_obj = pool_contract.events[event_name]()
+            
+            for log in logs:
                 try:
-                    pool_address = Web3.to_checksum_address(event['args']['pool'])
-                    pool = self.web3_manager.get_contract(
-                        address=pool_address,
-                        abi_name=self.name.lower() + "_v3_pool"
-                    )
-                    
-                    # Get liquidity
-                    liquidity = self._retry_sync(
-                        lambda: pool.functions.liquidity().call()
-                    )
-                    total_liquidity += Decimal(liquidity)
-                    
+                    # Convert log to dict for processing
+                    log_dict = dict(log)
+                    # Process log
+                    decoded = await self._process_log(event_obj, log_dict)
+                    events.append(decoded)
                 except Exception as e:
-                    self.logger.warning("Failed to get liquidity for pool %s: %s", pool_address, str(e))
+                    self.logger.warning("Failed to decode log: %s", str(e))
                     continue
             
-            return total_liquidity
+            return events
             
         except Exception as e:
-            self.logger.error("Failed to get total liquidity: %s", str(e))
-            return Decimal(0)
+            self.logger.error("Failed to get pool events: %s", str(e))
+            return []

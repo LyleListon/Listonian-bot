@@ -6,7 +6,7 @@
     },
     "wallet": {
         "wallet_address": "$SECURE:WALLET_ADDRESS",
-        "profit_recipient": "0x257a30645bF0C91BC155bd9C01BD722322050F7b"
+        "profit_recipient": "$SECURE:PROFIT_RECIPIENT"
     },
     "arbitrage": {
         "min_profit_usd": 0.05,

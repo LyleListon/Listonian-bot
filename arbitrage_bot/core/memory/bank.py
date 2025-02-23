@@ -5,21 +5,17 @@ import time
 import os
 import json
 import zlib
-from ...utils.eventlet_patch import manager as eventlet_manager
+import asyncio
 from typing import Dict, List, Any, Optional
 from dataclasses import asdict
 from concurrent.futures import ThreadPoolExecutor
 from collections import namedtuple, defaultdict
 import lru
-import gevent.lock
 
 from ..models.opportunity import Opportunity
 from .file_manager import FileManager
 
 logger = logging.getLogger(__name__)
-
-# Get eventlet instance from manager
-eventlet = eventlet_manager.eventlet
 
 def create_memory_bank(config: Optional[Dict[str, Any]] = None) -> 'MemoryBank':
     """Create and initialize a memory bank instance."""
@@ -74,8 +70,8 @@ class MemoryBank:
         # Locks for thread safety
         self._storage_locks = {}
         for category in self._categories:
-            self._storage_locks[category] = gevent.lock.BoundedSemaphore()
-        self._stats_lock = gevent.lock.BoundedSemaphore()
+            self._storage_locks[category] = asyncio.Lock()
+        self._stats_lock = asyncio.Lock()
         
         # LRU caches for frequently accessed data
         self._data_cache = lru.LRU(CACHE_SIZE)
@@ -184,7 +180,7 @@ class MemoryBank:
                 'timestamp': time.time(),
                 'ttl': ttl
             }
-            with self._storage_locks[category]:
+            async with self._storage_locks[category]:
                 self.storage[category][key] = data_obj
             
             # Store to disk
@@ -206,7 +202,7 @@ class MemoryBank:
             # Check cache first
             cache_key = category + ":" + key
             if cache_key in self._data_cache:
-                with self._stats_lock:
+                async with self._stats_lock:
                     self.stats['cache_hits'] += 1
                     return self._data_cache[cache_key]['data']
 
@@ -214,7 +210,7 @@ class MemoryBank:
                 self.stats['cache_misses'] += 1
 
             # Check memory storage
-            with self._storage_locks[category]:
+            async with self._storage_locks[category]:
                 if key in self.storage[category]:
                     data_obj = self.storage[category][key]
                     
@@ -239,7 +235,7 @@ class MemoryBank:
                         return None
                 
                 # Store in memory and cache
-                with self._storage_locks[category]:
+                async with self._storage_locks[category]:
                     self.storage[category][key] = data_obj
                 self._data_cache[cache_key] = data_obj
                 return data_obj['data']

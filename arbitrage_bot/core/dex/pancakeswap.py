@@ -18,112 +18,185 @@ class PancakeSwap(BaseDEXV3):
         if self.pool_deployer:
             self.pool_deployer = Web3.to_checksum_address(self.pool_deployer)
 
-    def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
+    async def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
         """Get quote from quoter contract if available."""
         if not self.quoter:
             return None
 
-        # Only support direct swaps for now
-        if len(path) != 2:
-            self.logger.warning("Multi-hop paths not supported yet")
-            return None
-
         try:
-            # Use quoteExactInputSingle
-            result = self._retry_sync(
-                lambda: self.quoter.functions.quoteExactInputSingle(
-                    Web3.to_checksum_address(path[0]),  # tokenIn
-                    Web3.to_checksum_address(path[1]),  # tokenOut
-                    self.fee,  # fee
-                    amount_in,  # amountIn
-                    0  # sqrtPriceLimitX96 (0 for no limit)
-                ).call()
+            # First try quoteExactInput
+            encoded_path = self._encode_path(path)
+            contract_func = self.quoter.functions.quoteExactInput(
+                encoded_path,
+                amount_in
             )
-            # Return just the amount_out from the tuple
-            return result[0] if result else None
+            result = await self.web3_manager.call_contract_function(contract_func)
+            if result:
+                return int(result)
+
+            # Fallback to quoteExactInputSingle
+            contract_func = self.quoter.functions.quoteExactInputSingle(
+                Web3.to_checksum_address(path[0]),  # tokenIn
+                Web3.to_checksum_address(path[1]),  # tokenOut
+                self.fee,  # fee
+                amount_in,  # amountIn
+                0  # sqrtPriceLimitX96 (0 for no limit)
+            )
+            result = await self.web3_manager.call_contract_function(contract_func)
+            if result:
+                return int(result)
+
+            return None
 
         except Exception as e:
             self.logger.error("Failed to get quote: %s", str(e))
             return None
 
-    def get_24h_volume(self, token0: str, token1: str) -> Decimal:
+    async def get_quote_with_impact(self, amount_in: int, path: List[str]) -> Optional[Dict[str, Any]]:
+        """Get quote with price impact calculation."""
+        try:
+            # Get quote from quoter
+            amount_out = await self.get_quote_from_quoter(amount_in, path)
+            if not amount_out:
+                return None
+
+            # Calculate price impact
+            # Use a smaller amount to get baseline price
+            small_amount = amount_in // 1000 if amount_in > 1000 else amount_in
+            baseline_out = await self.get_quote_from_quoter(small_amount, path)
+            if not baseline_out:
+                return None
+
+            # Calculate impact and validate
+            try:
+                impact = 1 - (int(amount_out) * small_amount) / (int(baseline_out) * amount_in)
+                if impact < -1 or impact > 1:
+                    self.logger.warning("Invalid price impact calculated: %s", impact)
+                    return None
+            except ZeroDivisionError:
+                self.logger.error("Division by zero when calculating price impact")
+                return None
+
+            # Get gas estimate from quoter
+            try:
+                contract_func = self.quoter.functions.quoteExactInputSingle(
+                    Web3.to_checksum_address(path[0]),  # tokenIn
+                    Web3.to_checksum_address(path[1]),  # tokenOut
+                    self.fee,  # fee
+                    amount_in,  # amountIn
+                    0  # sqrtPriceLimitX96 (0 for no limit)
+                )
+                result = await self.web3_manager.call_contract_function(contract_func)
+                gas_estimate = int(result) if isinstance(result, str) else 250000
+            except Exception as e:
+                self.logger.warning("Failed to get gas estimate: %s", str(e))
+                gas_estimate = 250000  # Use default if estimate fails
+
+            return {
+                'amount_out': str(amount_out),
+                'impact': str(float(impact)),  # Convert to float for JSON serialization
+                'fee_rate': str(float(self.fee) / 1000000),  # Convert to float to avoid decimal division
+                'fee': str(self.fee),  # Include raw fee value
+                'estimated_gas': str(gas_estimate)  # Use actual gas estimate from quoter
+            }
+
+        except Exception as e:
+            self.logger.error("Failed to get quote with impact: %s", str(e))
+            return None
+
+    async def get_token_price(self, token_address: str) -> float:
+        """Get current price for a token."""
+        try:
+            # If token is WETH, return 1.0 since price is in WETH
+            if token_address.lower() == self.weth_address.lower():
+                return 1.0
+
+            # Get quote for 1 token worth of WETH
+            amount_in = 10**18  # 1 WETH
+            quote = await self.get_quote_from_quoter(
+                amount_in,
+                [self.weth_address, token_address]
+            )
+
+            if quote:
+                # Convert quote to float after ensuring it's a number
+                return float(str(quote)) / (10**18)
+
+            return 0.0
+
+        except Exception as e:
+            self.logger.error("Failed to get token price: %s", str(e))
+            return 0.0
+
+    async def get_24h_volume(self, token0: str, token1: str) -> Decimal:
         """Get 24-hour trading volume for a token pair."""
         try:
-            # Validate and checksum addresses
-            token0 = Web3.to_checksum_address(token0)
-            token1 = Web3.to_checksum_address(token1)
-            
-            # Get pool address using V3 factory method
-            pool_address = self._retry_sync(
-                lambda: self.factory.functions.getPool(
-                    token0,
-                    token1,
-                    self.fee
-                ).call()
-            )
-            
+            # Get pool address
+            pool_address = await self._get_pool_address(token0, token1)
             if pool_address == "0x0000000000000000000000000000000000000000":
                 return Decimal(0)
-            
-            # Get pool contract with checksummed address
-            pool = self.web3_manager.get_contract(
-                address=Web3.to_checksum_address(pool_address),
-                abi_name=self.name.lower() + "_v3_pool"
-            )
-            
+
+            # Get pool contract
+            pool = await self._get_pool_contract(pool_address)
+            if not pool:
+                return Decimal(0)
+
             # Get volume from Swap events in last 24h
-            current_block = self.web3_manager.w3.eth.block_number
+            current_block = await self.web3_manager.w3.eth.block_number
             from_block = current_block - 7200  # ~24h of blocks
-            
-            swap_filter = pool.events.Swap.create_filter(fromBlock=from_block)
-            swap_events = self._retry_sync(
-                lambda: swap_filter.get_all_entries()
-            )
-            
+
+            # Get events
+            events = await self._get_pool_events(pool, 'Swap', from_block)
+
+            # Calculate volume
             volume = Decimal(0)
-            for event in swap_events:
+            for event in events:
                 amount0 = abs(Decimal(event['args']['amount0']))
                 amount1 = abs(Decimal(event['args']['amount1']))
                 volume += max(amount0, amount1)
-            
+
             return volume
-            
+
         except Exception as e:
             self.logger.error("Failed to get 24h volume: %s", str(e))
             return Decimal(0)
 
-    def get_total_liquidity(self) -> Decimal:
+    async def get_total_liquidity(self) -> Decimal:
         """Get total liquidity across all pairs."""
         try:
             total_liquidity = Decimal(0)
+
+            # Get event signature
+            event_signature = self._get_event_signature('PoolCreated')
             
-            # Get pools from PoolCreated events
-            pool_created_filter = self.factory.events.PoolCreated.create_filter(fromBlock=0)
-            events = self._retry_sync(
-                lambda: pool_created_filter.get_all_entries()
-            )
-            
+            # Get logs using eth_getLogs
+            logs = await self.web3_manager.w3.eth.get_logs({
+                'address': self.factory_address,
+                'fromBlock': 0,
+                'toBlock': 'latest',
+                'topics': [event_signature]
+            })
+
             # Limit to most recent 100 pools for performance
-            for event in events[-100:]:
+            for log in logs[-100:]:
                 try:
-                    pool_address = Web3.to_checksum_address(event['args']['pool'])
-                    pool = self.web3_manager.get_contract(
-                        address=pool_address,
-                        abi_name=self.name.lower() + "_v3_pool"
+                    # Process log using contract event
+                    decoded = await self._process_log(
+                        self.factory.events.PoolCreated(),
+                        dict(log)
                     )
-                    
-                    # Get liquidity
-                    liquidity = self._retry_sync(
-                        lambda: pool.functions.liquidity().call()
-                    )
-                    total_liquidity += Decimal(liquidity)
-                    
+                    pool_address = Web3.to_checksum_address(decoded['args']['pool'])
+                    pool = await self._get_pool_contract(pool_address)
+                    if pool:
+                        liquidity = await self._get_pool_liquidity(pool)
+                        total_liquidity += liquidity
+
                 except Exception as e:
                     self.logger.warning("Failed to get liquidity for pool %s: %s", pool_address, str(e))
                     continue
-            
+
             return total_liquidity
-            
+
         except Exception as e:
             self.logger.error("Failed to get total liquidity: %s", str(e))
             return Decimal(0)
@@ -137,15 +210,13 @@ class PancakeSwap(BaseDEXV3):
 
             # Initialize pool deployer if available
             if self.pool_deployer:
-                self.pool_deployer_contract = self.web3_manager.get_contract(
+                self.pool_deployer_contract = await self.web3_manager.get_contract(
                     address=self.pool_deployer,
                     abi_name=self.name.lower() + "_v3_pool_deployer"
                 )
                 
                 # Test connection by checking if contract is deployed
-                code = self._retry_sync(
-                    lambda: self.web3_manager.w3.eth.get_code(self.pool_deployer)
-                )
+                code = await self.web3_manager.w3.eth.get_code(self.pool_deployer)
                 if len(code) <= 2:  # Empty or just '0x'
                     raise ValueError("No contract deployed at pool deployer address %s", self.pool_deployer)
 

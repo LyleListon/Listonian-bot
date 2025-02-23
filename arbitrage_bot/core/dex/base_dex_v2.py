@@ -27,16 +27,16 @@ class BaseDEXV2(BaseDEX):
         """Initialize the V2 DEX interface."""
         try:
             # Load contract ABIs
-            self.router_abi = self.web3_manager.load_abi(self.name.lower() + "_router")
-            self.factory_abi = self.web3_manager.load_abi(self.name.lower() + "_factory")
-            self.pair_abi = self.web3_manager.load_abi(self.name.lower() + "_pair")
+            self.router_abi = await self.web3_manager._load_abi(self.name.lower() + "_router")
+            self.factory_abi = await self.web3_manager._load_abi(self.name.lower() + "_factory")
+            self.pair_abi = await self.web3_manager._load_abi(self.name.lower() + "_pair")
             
             # Initialize contracts with checksummed addresses
-            self.router = self.web3_manager.get_contract(
+            self.router = await self.web3_manager.get_contract(
                 address=self.router_address,
                 abi_name=self.name.lower() + "_router"
             )
-            self.factory = self.web3_manager.get_contract(
+            self.factory = await self.web3_manager.get_contract(
                 address=self.factory_address,
                 abi_name=self.name.lower() + "_factory"
             )
@@ -74,7 +74,7 @@ class BaseDEXV2(BaseDEX):
                 return None
                 
             # Get pair contract
-            pair = self.web3_manager.get_contract(
+            pair = await self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
                 abi_name=self.name.lower() + "_pair"
             )
@@ -95,11 +95,15 @@ class BaseDEXV2(BaseDEX):
             
             # Determine which reserve corresponds to which token
             if path[0].lower() == token0.lower():
-                reserve_in = reserves[0]
-                reserve_out = reserves[1]
+                reserve_in = int(str(reserves[0]
+))
+                reserve_out = int(str(reserves[1]
+))
             else:
-                reserve_in = reserves[1]
-                reserve_out = reserves[0]
+                reserve_in = int(str(reserves[1]
+))
+                reserve_out = int(str(reserves[0]
+))
             
             if reserve_in == 0 or reserve_out == 0:
                 return None
@@ -155,8 +159,8 @@ class BaseDEXV2(BaseDEX):
             self._validate_amounts(amount_in, amount_out_min)
             
             # Get initial balances
-            token_in_contract = self.web3_manager.get_token_contract(path[0])
-            token_out_contract = self.web3_manager.get_token_contract(path[-1])
+            token_in_contract = await self.web3_manager.get_token_contract(path[0])
+            token_out_contract = await self.web3_manager.get_token_contract(path[-1])
             
             balance_in_before = await self.web3_manager.call_contract_function(
                 token_in_contract.functions.balanceOf,
@@ -178,10 +182,10 @@ class BaseDEXV2(BaseDEX):
             
             # Get gas parameters if not provided
             if not all([maxFeePerGas, maxPriorityFeePerGas]):
-                block = await self.web3_manager.get_block('latest')
+                block = await self.web3_manager.w3.eth.get_block('latest')
                 maxFeePerGas = maxFeePerGas or block['baseFeePerGas'] * 2
-                maxPriorityFeePerGas = maxPriorityFeePerGas or await self.web3_manager.get_max_priority_fee()
-            
+                maxPriorityFeePerGas = maxPriorityFeePerGas or await self.web3_manager.w3.eth.max_priority_fee
+
             receipt = await self.web3_manager.build_and_send_transaction(
                 self.router,
                 'swapExactTokensForTokens',
@@ -262,13 +266,14 @@ class BaseDEXV2(BaseDEX):
         """Calculate price impact percentage for V2 pools."""
         try:
             # Calculate price before trade
-            price_before = reserve_out / reserve_in
+            price_before = Decimal(str(reserve_out)) / Decimal(str(reserve_in
+))
             
             # Calculate expected output without impact
-            expected_out = amount_in * price_before
+            expected_out = Decimal(str(amount_in)) * price_before
             
             # Calculate actual price impact
-            impact = (expected_out - amount_out) / expected_out
+            impact = (expected_out - Decimal(str(amount_out))) / expected_out
             
             # Adjust impact based on liquidity depth
             liquidity_factor = min(1, amount_in / reserve_in)
@@ -296,7 +301,7 @@ class BaseDEXV2(BaseDEX):
                 return Decimal('0')
                 
             # Get pair contract
-            pair = self.web3_manager.get_contract(
+            pair = await self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
                 abi_name=self.name.lower() + "_pair"
             )
@@ -309,7 +314,7 @@ class BaseDEXV2(BaseDEX):
             )
             
             # Calculate volume (simplified - actual implementation would track events)
-            volume = Decimal(str(reserves[0] + reserves[1]))
+            volume = Decimal(str(reserves[0])) + Decimal(str(reserves[1]))
             return volume
             
         except Exception as e:
@@ -347,7 +352,7 @@ class BaseDEXV2(BaseDEX):
                 return 0.0
                 
             # Get pair contract
-            pair = self.web3_manager.get_contract(
+            pair = await self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
                 abi_name=self.name.lower() + "_pair"
             )
@@ -368,17 +373,22 @@ class BaseDEXV2(BaseDEX):
             
             # Determine which reserve corresponds to which token
             if token_address.lower() == token0.lower():
-                token_reserve = reserves[0]
-                weth_reserve = reserves[1]
+                token_reserve = Decimal(str(reserves[0]
+))
+                weth_reserve = Decimal(str(reserves[1]
+))
             else:
-                token_reserve = reserves[1]
-                weth_reserve = reserves[0]
+                token_reserve = Decimal(str(reserves[1]
+))
+                weth_reserve = Decimal(str(reserves[0]
+))
             
             if token_reserve == 0 or weth_reserve == 0:
                 return 0.0
                 
             # Calculate price in WETH
-            price = weth_reserve / token_reserve
+            price = float(weth_reserve / token_reserve
+)
             return float(price)
             
         except Exception as e:

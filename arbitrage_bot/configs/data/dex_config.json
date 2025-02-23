@@ -53,7 +53,7 @@
             "version": "v3",
             "factory": "0x8c1A3cF8f83074169FE5D7aD50B978e1cD6b37c7",
             "router": "0x1b81D678ffb9C0263b24A97847620C99d213eB14",
-            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+            "quoter": "0x2f686751b19a9d91cc3d57d90150Bc767f050066",
             "fee": 500,
             "enabled": true,
             "min_liquidity_usd": 10000,

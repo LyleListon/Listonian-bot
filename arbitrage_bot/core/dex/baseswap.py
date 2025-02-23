@@ -25,11 +25,11 @@ class BaseSwap(BaseDEXV2):
         """Initialize the BaseSwap interface."""
         try:
             # Initialize contracts with checksummed addresses
-            self.router = self.web3_manager.get_contract(
+            self.router = await self.web3_manager.get_contract(
                 address=self.router_address,
                 abi_name="baseswap_router"
             )
-            self.factory = self.web3_manager.get_contract(
+            self.factory = await self.web3_manager.get_contract(
                 address=self.factory_address,
                 abi_name="baseswap_factory"
             )
@@ -80,8 +80,8 @@ class BaseSwap(BaseDEXV2):
             recipient = self.web3_manager.wallet_address
             
             # Get initial balances
-            token_in = self.web3_manager.get_token_contract(path[0])
-            token_out = self.web3_manager.get_token_contract(path[-1])
+            token_in = await self.web3_manager.get_token_contract(path[0])
+            token_out = await self.web3_manager.get_token_contract(path[-1])
             balance_in_before = await self.web3_manager.call_contract_function(
                 token_in.functions.balanceOf, recipient
             )
@@ -98,7 +98,7 @@ class BaseSwap(BaseDEXV2):
             
             if allowance < amount_in:
                 self.logger.info("Approving %s for router %s", path[0], self.router_address)
-                approve_tx = self.web3_manager.build_and_send_transaction(
+                approve_tx = await self.web3_manager.build_and_send_transaction(
                     token_in,
                     'approve',
                     self.router_address,
@@ -117,9 +117,9 @@ class BaseSwap(BaseDEXV2):
             
             # Get gas parameters if not provided
             if not all([maxFeePerGas, maxPriorityFeePerGas]):
-                block = await self.web3_manager.get_block('latest')
+                block = await self.web3_manager.w3.eth.get_block('latest')
                 maxFeePerGas = maxFeePerGas or block['baseFeePerGas'] * 2
-                maxPriorityFeePerGas = maxPriorityFeePerGas or await self.web3_manager.get_max_priority_fee()
+                maxPriorityFeePerGas = maxPriorityFeePerGas or await self.web3_manager.w3.eth.max_priority_fee
             
             # Execute swap
             receipt = await self.web3_manager.build_and_send_transaction(
@@ -193,7 +193,7 @@ class BaseSwap(BaseDEXV2):
                 return 0.0
                 
             # Get pair contract
-            pair = self.web3_manager.get_contract(
+            pair = await self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
                 abi_name="baseswap_pair"
             )
@@ -214,17 +214,17 @@ class BaseSwap(BaseDEXV2):
             
             # Determine which reserve corresponds to which token
             if token_address.lower() == token0.lower():
-                token_reserve = reserves[0]
-                weth_reserve = reserves[1]
+                token_reserve = Decimal(str(reserves[0]))
+                weth_reserve = Decimal(str(reserves[1]))
             else:
-                token_reserve = reserves[1]
-                weth_reserve = reserves[0]
+                token_reserve = Decimal(str(reserves[1]))
+                weth_reserve = Decimal(str(reserves[0]))
             
             if token_reserve == 0 or weth_reserve == 0:
                 return 0.0
                 
             # Calculate price in WETH
-            price = weth_reserve / token_reserve
+            price = float(weth_reserve / token_reserve)
             return float(price)
             
         except Exception as e:
@@ -247,7 +247,7 @@ class BaseSwap(BaseDEXV2):
                 return Decimal('0')
                 
             # Get pair contract
-            pair = self.web3_manager.get_contract(
+            pair = await self.web3_manager.get_contract(
                 address=Web3.to_checksum_address(pair_address),
                 abi_name="baseswap_pair"
             )
@@ -280,7 +280,7 @@ class BaseSwap(BaseDEXV2):
             total_liquidity = Decimal('0')
             
             # Sample first 100 pairs for efficiency
-            sample_size = min(100, pair_count)
+            sample_size = min(100, int(pair_count))
             for i in range(sample_size):
                 try:
                     # Get pair address
@@ -292,7 +292,7 @@ class BaseSwap(BaseDEXV2):
                     )
                     
                     # Get pair contract
-                    pair = self.web3_manager.get_contract(
+                    pair = await self.web3_manager.get_contract(
                         address=Web3.to_checksum_address(pair_address),
                         abi_name="baseswap_pair"
                     )
@@ -305,7 +305,7 @@ class BaseSwap(BaseDEXV2):
                     )
                     
                     # Add to total (simplified - actual implementation would convert to common currency)
-                    total_liquidity += Decimal(str(reserves[0] + reserves[1]))
+                    total_liquidity += Decimal(str(reserves[0])) + Decimal(str(reserves[1]))
                     
                 except Exception as e:
                     self.logger.debug("Error getting liquidity for pair %s: %s", i, str(e))
@@ -313,7 +313,7 @@ class BaseSwap(BaseDEXV2):
             
             # Extrapolate total based on sample
             if sample_size < pair_count:
-                total_liquidity = total_liquidity * Decimal(str(pair_count / sample_size))
+                total_liquidity = total_liquidity * Decimal(str(int(pair_count) / sample_size))
             
             return total_liquidity
             

@@ -38,7 +38,7 @@ logger.setLevel(logging.INFO)
 
 INIT_WAIT = 2  # Wait 2 seconds between component initializations
 
-def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
+async def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
     """Create Flask application."""
     try:
         # Initialize eventlet synchronously
@@ -73,11 +73,10 @@ def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
         logger.info("Resolved secure values in config")
 
         # Initialize components with delays between each
-        web3_manager = create_web3_manager(
+        web3_manager = await create_web3_manager(
             provider_url=os.getenv('BASE_RPC_URL'),
             chain_id=config['network']['chainId']
         )
-        web3_manager.connect()  # Ensure web3_manager is connected
         eventlet.sleep(INIT_WAIT)
 
         # Use provided memory_bank or create new one
@@ -141,19 +140,19 @@ def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
         eventlet.sleep(INIT_WAIT)
         
         # Initialize gas optimizer
-        gas_optimizer = create_gas_optimizer(
+        gas_optimizer = await create_gas_optimizer(
             dex_manager=None,  # Not needed for dashboard
             web3_manager=web3_manager
         )
         logger.info("Initializing gas optimizer...")
-        gas_optimizer.initialize()
+        await gas_optimizer.initialize()
         eventlet.sleep(INIT_WAIT)
 
         # Initialize SocketIO with eventlet
         socketio = SocketIO(
             app,
             cors_allowed_origins="*",
-            async_mode='eventlet',
+            async_mode='aiohttp',  # Use aiohttp instead of eventlet
             ping_timeout=60,
             ping_interval=25,
             max_http_buffer_size=1000000,

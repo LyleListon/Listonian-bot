@@ -1,4 +1,10 @@
-// WebSocket client for dashboard
+bject has no attribute 'config'
+2025-02-21 15:32:50,400 - arbitrage_bot.core.market_analyzer - ERROR - Error getting opportunities: 'BaseSwap' object has no attribute 'config'
+2025-02-21 15:32:50,507 - arbitrage_bot.core.market_analyzer - ERROR - Error getting opportunities: 'BaseSwap' object has no attribute 'config'
+2025-02-21 15:32:50,507 - arbitrage_bot.core.market_analyzer - ERROR - Error getting opportunities: 'BaseSwap' object has no attribute 'config'
+2025-02-21 15:32:50,617 - arbitrage_bot.core.market_analyzer - ERROR - Error getting opportunities: 'BaseSwap' object has no attribute 'config'
+2025-02-21 15:32:50,617 - arbitrage_bot.core.market_analyzer - ERROR - Error getting opportunities: 'BaseSwap' object has no attribute 'config'
+2025-02-21 15:32:50,725 - arbitrage_bot.core.market_analyzer - ERROR - Error getting opportunities: 'BaseSwap' o// WebSocket client for dashboard
 const socket = io({
     path: '/socket.io/'
 });

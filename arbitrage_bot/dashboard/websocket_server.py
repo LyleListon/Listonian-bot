@@ -2,16 +2,13 @@
 
 import logging
 import json
-from ..utils.eventlet_patch import manager as eventlet_manager
+import asyncio
 from typing import Dict, Any, Optional
 from flask_socketio import SocketIO, emit
 from decimal import Decimal
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
-
-# Get eventlet instance from manager
-eventlet = eventlet_manager.eventlet
 
 class WebSocketServer:
     """WebSocket server for real-time dashboard updates."""
@@ -70,7 +67,7 @@ class WebSocketServer:
         """Start WebSocket server."""
         try:
             self.is_running = True
-            eventlet.spawn(self._update_loop)
+            asyncio.create_task(self._update_loop())
             logger.debug("WebSocket server started")
 
         except Exception as e:
@@ -121,7 +118,7 @@ class WebSocketServer:
             except Exception as e:
                 logger.error("Error handling update request: %s", str(e))
 
-    def _update_loop(self):
+    async def _update_loop(self):
         """Main update loop for pushing data to clients."""
         while self.is_running:
             try:
@@ -132,10 +129,10 @@ class WebSocketServer:
                 self._send_distribution_data()
                 self._send_execution_data()
                 self._send_gas_data()
-                eventlet.sleep(self.update_interval)
+                await asyncio.sleep(self.update_interval)
             except Exception as e:
                 logger.error("Error in update loop: %s", str(e))
-                eventlet.sleep(1)  # Brief delay before retry
+                await asyncio.sleep(1)  # Brief delay before retry
 
     def _send_initial_data(self):
         """Send initial data to newly connected client."""

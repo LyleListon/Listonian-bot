@@ -24,6 +24,8 @@ class AnalyticsSystem:
         """Initialize analytics system."""
         self.config = config
         self.dex_manager = None
+        self.web3_manager = None
+        self.wallet_address = None
         self.trade_metrics = {}
         self.gas_metrics = {}
         self.performance_metrics = {}
@@ -34,6 +36,10 @@ class AnalyticsSystem:
     def set_dex_manager(self, dex_manager: Any):
         """Set the DEX manager instance."""
         self.dex_manager = dex_manager
+        # Get web3_manager from dex_manager
+        if hasattr(dex_manager, 'web3_manager'):
+            self.web3_manager = dex_manager.web3_manager
+            self.wallet_address = self.web3_manager.wallet_address
         logger.debug("DEX manager set in analytics system")
 
     def _initialize_metrics(self):

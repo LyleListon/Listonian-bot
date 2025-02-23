@@ -125,14 +125,18 @@ class BalanceManager:
 
                 try:
                     token_address = Web3.to_checksum_address(token_data['address'])
-                    token_contract = self.web3_manager.get_token_contract(token_address)
+                    token_contract = await self.web3_manager.get_token_contract(token_address)
                     
                     if token_contract:
-                        balance = await self.web3_manager.call_contract_function(
-                            token_contract.functions.balanceOf,
-                            self.web3_manager.wallet_address
-                        )
-                        self.balances[token_symbol] = balance
+                        try:
+                            balance = await self.web3_manager.call_contract_function(
+                                token_contract.functions.balanceOf, self.web3_manager.wallet_address
+                            )
+                            self.balances[token_symbol] = balance
+                        except Exception as e:
+                            logger.error("Failed to call balanceOf for %s: %s", token_symbol, str(e))
+                    else:
+                        logger.warning("Failed to get contract for token %s", token_symbol)
 
                 except Exception as e:
                     logger.error("Failed to update balance for %s: %s", token_symbol, str(e))

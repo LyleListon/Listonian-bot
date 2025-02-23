@@ -106,79 +106,21 @@ Write-Host "Creating required directories..."
 # Set timestamp for log files
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 
-# Function to check if a process has started successfully
-function Wait-ForProcessStart {
-    param (
-        [string]$LogFile,
-        [string]$ProcessName,
-        [int]$TimeoutSeconds = 30
-    )
-    
-    $startTime = Get-Date
-    $timeout = New-TimeSpan -Seconds $TimeoutSeconds
-    
-    while ((Get-Date) - $startTime -lt $timeout) {
-        if (Test-Path $LogFile) {
-            $content = Get-Content $LogFile -Tail 20 -ErrorAction SilentlyContinue
-            
-            # Check for success indicators
-            if ($content -match "initialized|started|running") {
-                return $true
-            }
-            
-            # Check for failure indicators
-            if ($content -match "error|exception|failed") {
-                Write-Host "Error found in $ProcessName log:"
-                $content | Where-Object { $_ -match "error|exception|failed" } | ForEach-Object {
-                    Write-Host "  $_"
-                }
-                return $false
-            }
-        }
-        
-        Write-Host "." -NoNewline
-        Start-Sleep -Seconds 1
-    }
-    
-    Write-Host "`nTimeout waiting for $ProcessName to start"
-    return $false
-}
-
 # Start main arbitrage bot
 Write-Host "Starting main arbitrage bot..."
 $botLogFile = "logs/bot_$timestamp.log"
 $botErrorLog = "logs/bot_$timestamp.error.log"
 
-# Start the bot process
-Start-Process py -ArgumentList "-3.12 run_bot.py" -NoNewWindow
-
-# Wait for bot to initialize
-Write-Host "Waiting for bot initialization..."
-$botStarted = Wait-ForProcessStart -LogFile $botLogFile -ProcessName "Bot" -TimeoutSeconds 60
-if (-not $botStarted) {
-    Write-Error "Bot failed to start properly. Check logs for details."
-    exit 1
-}
-
-Write-Host "`nBot started successfully!"
+# Start the bot process with output
+py -3.12 run_bot.py
 
 # Start dashboard
 Write-Host "Starting minimal dashboard..."
 $dashboardLogFile = "logs/dashboard_$timestamp.log"
 $dashboardErrorLog = "logs/dashboard_$timestamp.error.log"
 
-# Start the dashboard process
-Start-Process py -ArgumentList "-3.12 minimal_dashboard.py" -NoNewWindow
-
-# Wait for dashboard to initialize
-Write-Host "Waiting for dashboard initialization..."
-$dashboardStarted = Wait-ForProcessStart -LogFile $dashboardLogFile -ProcessName "Dashboard" -TimeoutSeconds 30
-if (-not $dashboardStarted) {
-    Write-Error "Dashboard failed to start properly. Check logs for details."
-    exit 1
-}
-
-Write-Host "`nDashboard started successfully!"
+# Start the dashboard process with output
+py -3.12 minimal_dashboard.py
 
 # Display status
 Write-Host ""
@@ -198,28 +140,3 @@ Write-Host "Access dashboard at: http://localhost:5000"
 Write-Host ""
 Write-Host "Press Ctrl+C to stop all processes."
 Write-Host ""
-
-# Monitor processes
-while ($true) {
-    try {
-        # Check if processes are still running
-        $botProcess = Get-Process | Where-Object { $_.ProcessName -eq "python" -and $_.MainWindowTitle -match "run_bot" }
-        $dashboardProcess = Get-Process | Where-Object { $_.ProcessName -eq "python" -and $_.MainWindowTitle -match "minimal_dashboard" }
-        
-        if (-not $botProcess) {
-            Write-Warning "Bot process not found. Restarting..."
-            Start-Process py -ArgumentList "-3.12 run_bot.py" -NoNewWindow
-        }
-        
-        if (-not $dashboardProcess) {
-            Write-Warning "Dashboard process not found. Restarting..."
-            Start-Process py -ArgumentList "-3.12 minimal_dashboard.py" -NoNewWindow
-        }
-        
-        Start-Sleep -Seconds 30
-    }
-    catch {
-        Write-Error "Error monitoring processes: $_"
-        Start-Sleep -Seconds 30
-    }
-}

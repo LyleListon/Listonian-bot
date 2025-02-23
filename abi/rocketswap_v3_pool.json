@@ -1,6 +1,68 @@
 [
   {
     "inputs": [],
+    "name": "liquidity",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "int256",
+        "name": "amount0",
+        "type": "int256"
+      },
+      {
+        "indexed": false,
+        "internalType": "int256",
+        "name": "amount1",
+        "type": "int256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint160",
+        "name": "sqrtPriceX96",
+        "type": "uint160"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint128",
+        "name": "liquidity",
+        "type": "uint128"
+      },
+      {
+        "indexed": false,
+        "internalType": "int24",
+        "name": "tick",
+        "type": "int24"
+      }
+    ],
+    "name": "Swap",
+    "type": "event"
+  },
+  {
+    "inputs": [],
     "name": "slot0",
     "outputs": [
       {
@@ -29,27 +91,14 @@
         "type": "uint16"
       },
       {
-        "internalType": "uint8",
+        "internalType": "uint32",
         "name": "feeProtocol",
-        "type": "uint8"
+        "type": "uint32"
       },
       {
         "internalType": "bool",
         "name": "unlocked",
         "type": "bool"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "liquidity",
-    "outputs": [
-      {
-        "internalType": "uint128",
-        "name": "",
-        "type": "uint128"
       }
     ],
     "stateMutability": "view",
@@ -95,70 +144,31 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "tickSpacing",
-    "outputs": [
-      {
-        "internalType": "int24",
-        "name": "",
-        "type": "int24"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "int24",
-        "name": "tick",
-        "type": "int24"
-      }
-    ],
-    "name": "ticks",
-    "outputs": [
-      {
-        "internalType": "uint128",
-        "name": "liquidityGross",
-        "type": "uint128"
-      },
-      {
-        "internalType": "int128",
-        "name": "liquidityNet",
-        "type": "int128"
-      },
-      {
         "internalType": "uint256",
-        "name": "feeGrowthOutside0X128",
+        "name": "amount0Out",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "feeGrowthOutside1X128",
+        "name": "amount1Out",
         "type": "uint256"
       },
       {
-        "internalType": "int56",
-        "name": "tickCumulativeOutside",
-        "type": "int56"
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
       },
       {
-        "internalType": "uint160",
-        "name": "secondsPerLiquidityOutsideX128",
-        "type": "uint160"
-      },
-      {
-        "internalType": "uint32",
-        "name": "secondsOutside",
-        "type": "uint32"
-      },
-      {
-        "internalType": "bool",
-        "name": "initialized",
-        "type": "bool"
+        "internalType": "bytes",
+        "name": "data",
+        "type": "bytes"
       }
     ],
-    "stateMutability": "view",
+    "name": "swap",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]

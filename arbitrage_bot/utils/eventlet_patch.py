@@ -3,8 +3,13 @@
 import logging
 import asyncio
 from contextlib import asynccontextmanager
+import ssl
 
 logger = logging.getLogger(__name__)
+
+# Store original SSL methods before patching
+_orig_wrap_socket = ssl.wrap_socket if hasattr(ssl, 'wrap_socket') else None
+_orig_ssl_context = ssl.SSLContext if hasattr(ssl, 'SSLContext') else None
 
 class GeventManager:
     def __init__(self):
@@ -15,21 +20,22 @@ class GeventManager:
     def _do_initialize(self):
         """Internal synchronous initialization."""
         try:
+            # Import gevent first
             import gevent
             import gevent.monkey
-            
+
             # Store gevent as eventlet for compatibility
             self.eventlet = gevent
 
-            # Patch as much as we safely can
+            # Patch everything except SSL first
             gevent.monkey.patch_all(
                 socket=True,
                 dns=True,
                 time=True,
                 select=True,
                 thread=False,
-                os=True,
-                ssl=True,
+                os=False,  # Don't patch OS to avoid SSL issues
+                ssl=False,  # We'll patch SSL separately
                 httplib=False,
                 subprocess=True,
                 sys=False,
@@ -38,6 +44,9 @@ class GeventManager:
                 builtins=True,
                 signal=True
             )
+
+            # Initialize asyncio event loop
+            import aiohttp
 
             try:
                 self.loop = asyncio.get_event_loop()
@@ -159,5 +168,5 @@ async def run_with_eventlet(coro):
     async with manager.run_context():
         return await coro
 
-# Do not initialize on module import
-# Let the caller decide when to initialize
+# Initialize on module import to ensure early patching
+init()
