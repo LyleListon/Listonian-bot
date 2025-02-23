@@ -17,10 +17,10 @@ from .file_manager import FileManager
 
 logger = logging.getLogger(__name__)
 
-def create_memory_bank(config: Optional[Dict[str, Any]] = None) -> 'MemoryBank':
+async def create_memory_bank(config: Optional[Dict[str, Any]] = None) -> 'MemoryBank':
     """Create and initialize a memory bank instance."""
     memory_bank = MemoryBank()
-    success = memory_bank.initialize(config)
+    success = await memory_bank.initialize(config)
     if not success:
         raise RuntimeError("Failed to initialize memory bank")
     return memory_bank
@@ -89,7 +89,7 @@ class MemoryBank:
         
         logger.debug("Memory bank instance created with base path: %s", self.base_path)
 
-    def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
+    async def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """Initialize memory bank with configuration."""
         try:
             if self.initialized:
@@ -103,12 +103,12 @@ class MemoryBank:
             
             # Create category directories
             for category in self._categories:
-                if not self.file_manager.ensure_directory(category):
+                if not await self.file_manager.ensure_directory(category):
                     logger.error("Failed to create directory for category: %s", category)
                     return False
             
             # Load historical data
-            self._load_historical_data()
+            await self._load_historical_data()
             
             self.initialized = True
             logger.debug("Memory bank initialization complete")
@@ -118,17 +118,17 @@ class MemoryBank:
             logger.error("Failed to initialize memory bank: %s", str(e), exc_info=True)
             return False
 
-    def _load_historical_data(self) -> None:
+    async def _load_historical_data(self) -> None:
         """Load historical data from disk."""
         try:
             # Load opportunities
-            opportunities = self.file_manager.read_json(os.path.join('market_data', 'opportunities.json'))
+            opportunities = await self.file_manager.read_json(os.path.join('market_data', 'opportunities.json'))
             if opportunities:
                 self.opportunities = opportunities
                 logger.debug("Loaded %d historical opportunities", len(self.opportunities))
 
             # Load trade results
-            trade_results = self.file_manager.read_json(os.path.join('transactions', 'trade_results.json'))
+            trade_results = await self.file_manager.read_json(os.path.join('transactions', 'trade_results.json'))
             if trade_results:
                 self.trade_results = trade_results
                 logger.debug("Loaded %d historical trade results", len(self.trade_results))
@@ -143,16 +143,16 @@ class MemoryBank:
                                 key = filename[:-5]  # Remove .json extension
                                 file_path = os.path.join(category, filename)
                                 try:
-                                    data_obj = self.file_manager.read_json(file_path)
+                                    data_obj = await self.file_manager.read_json(file_path)
                                     if data_obj:
                                         # Check TTL
                                         if 'ttl' in data_obj and data_obj['ttl'] is not None:
                                             if time.time() - data_obj['timestamp'] > data_obj['ttl']:
-                                                self.file_manager.delete_file(file_path)
+                                                await self.file_manager.delete_file(file_path)
                                                 continue
                                         
                                         # Store in memory
-                                        with self._storage_locks[category]:
+                                        async with self._storage_locks[category]:
                                             self.storage[category][key] = data_obj
                                 except Exception as e:
                                     logger.error("Failed to load %s: %s", file_path, str(e))
@@ -163,7 +163,7 @@ class MemoryBank:
         except Exception as e:
             logger.error("Failed to load historical data: %s", str(e))
 
-    def store(self, key: str, data: Any, category: str, ttl: Optional[int] = None) -> None:
+    async def store(self, key: str, data: Any, category: str, ttl: Optional[int] = None) -> None:
         """Store data in specified category."""
         if not self.initialized:
             logger.warning("Memory bank not initialized")
@@ -185,14 +185,14 @@ class MemoryBank:
             
             # Store to disk
             file_path = os.path.join(category, key + ".json")
-            if not self.file_manager.write_json(file_path, data_obj):
+            if not await self.file_manager.write_json(file_path, data_obj):
                 logger.error("Failed to write data to %s", file_path)
                 
         except Exception as e:
             logger.error("Error storing data: %s", str(e))
             raise
 
-    def retrieve(self, key: str, category: str) -> Optional[Any]:
+    async def retrieve(self, key: str, category: str) -> Optional[Any]:
         """Retrieve data from specified category."""
         if not self.initialized:
             logger.warning("Memory bank not initialized")
@@ -206,7 +206,7 @@ class MemoryBank:
                     self.stats['cache_hits'] += 1
                     return self._data_cache[cache_key]['data']
 
-            with self._stats_lock:
+            async with self._stats_lock:
                 self.stats['cache_misses'] += 1
 
             # Check memory storage
@@ -226,12 +226,12 @@ class MemoryBank:
 
             # If not in memory, try to load from disk
             file_path = os.path.join(category, key + ".json")
-            data_obj = self.file_manager.read_json(file_path)
+            data_obj = await self.file_manager.read_json(file_path)
             if data_obj:
                 # Check TTL
                 if 'ttl' in data_obj and data_obj['ttl'] is not None:
                     if time.time() - data_obj['timestamp'] > data_obj['ttl']:
-                        self.file_manager.delete_file(file_path)
+                        await self.file_manager.delete_file(file_path)
                         return None
                 
                 # Store in memory and cache
@@ -246,7 +246,7 @@ class MemoryBank:
             logger.error("Error retrieving data: %s", str(e))
             return None
 
-    def store_opportunities(self, opportunities: List[Opportunity]) -> None:
+    async def store_opportunities(self, opportunities: List[Opportunity]) -> None:
         """Store arbitrage opportunities."""
         if not self.initialized:
             logger.warning("Memory bank not initialized")
@@ -271,13 +271,13 @@ class MemoryBank:
             
             # Store to disk
             file_path = os.path.join('market_data', 'opportunities.json')
-            if not self.file_manager.write_json(file_path, self.opportunities):
+            if not await self.file_manager.write_json(file_path, self.opportunities):
                 logger.error("Failed to write opportunities to disk")
             
         except Exception as e:
             logger.error("Error storing opportunities: %s", str(e), exc_info=True)
 
-    def store_trade_result(
+    async def store_trade_result(
         self,
         opportunity: Dict[str, Any],
         success: bool,
@@ -306,13 +306,13 @@ class MemoryBank:
             
             # Store to disk
             file_path = os.path.join('transactions', 'trade_results.json')
-            if not self.file_manager.write_json(file_path, self.trade_results):
+            if not await self.file_manager.write_json(file_path, self.trade_results):
                 logger.error("Failed to write trade results to disk")
             
         except Exception as e:
             logger.error("Error storing trade result: %s", str(e))
 
-    def get_trade_history(self, limit: Optional[int] = None, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def get_trade_history(self, limit: Optional[int] = None, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get trade execution history."""
         if not self.initialized:
             logger.warning("Memory bank not initialized")
@@ -339,7 +339,7 @@ class MemoryBank:
             logger.error("Error getting trade history: %s", str(e))
             return []
 
-    def get_compression_stats(self) -> Dict[str, Any]:
+    async def get_compression_stats(self) -> Dict[str, Any]:
         """Get compression statistics."""
         try:
             total_size = 0
@@ -373,7 +373,7 @@ class MemoryBank:
                 'compression_savings': 0
             }
 
-    def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get recent arbitrage opportunities."""
         try:
             current_time = time.time()
@@ -391,7 +391,7 @@ class MemoryBank:
             logger.error("Error getting recent opportunities: %s", str(e))
             return []
 
-    def get_memory_stats(self) -> MemoryStats:
+    async def get_memory_stats(self) -> MemoryStats:
         """Get memory usage statistics."""
         try:
             total_size = 0

@@ -1,14 +1,14 @@
 # Startup Guide
-Last Updated: February 20, 2025 02:19 EST
+Last Updated: February 23, 2025 06:17 EST
 
 ## Prerequisites
-1. Python 3.8 or higher
+1. Python 3.12 or higher (required for improved async support)
 2. Node.js 14 or higher
 3. Git
 4. PowerShell 7.0+ (Windows) or Bash (Linux/Mac)
 5. Minimum System Requirements:
-   - RAM: 4GB minimum, 8GB recommended
-   - CPU: 2 cores minimum, 4 cores recommended
+   - RAM: 8GB minimum, 16GB recommended (for async operations)
+   - CPU: 4 cores minimum, 8 cores recommended (for concurrent processing)
    - Storage: 10GB free space
    - Network: Stable internet connection, minimum 10Mbps
    - Ports: 5000 (Dashboard), 8545 (RPC)
@@ -69,22 +69,6 @@ Expected Output:
    - configs/wallet_config.json.bak created as backup
    - configs/config.json updated with $SECURE: references
 
-Verification Steps:
-1. Check secure/ directory exists
-2. Verify success message displayed
-3. Confirm config files updated:
-   - config.json should show $SECURE: references
-   - wallet_config.json should show $SECURE: references
-4. Verify backup file exists:
-   - configs/wallet_config.json.bak should contain original values
-
-Common Error Messages:
-- "Missing .env.production": Copy template and fill values
-- "Missing config.json": Ensure config file exists
-- "Missing wallet_config.json": Create wallet config
-- Invalid wallet address format: Check address format
-- Invalid private key format: Ensure key format correct
-
 ### 3. Install Dependencies
 ```bash
 # Install Python dependencies
@@ -96,6 +80,29 @@ npm install
 # Initialize memory system
 python init_memory.py
 ```
+
+## System Requirements
+
+### 1. Async Support
+- Python 3.12+ required for improved async features
+- Proper async/await implementation
+- Thread safety mechanisms
+- Resource management
+- Error handling patterns
+
+### 2. Thread Safety
+- Lock management for shared resources
+- Concurrent access control
+- State consistency protection
+- Resource protection
+- Atomic operations
+
+### 3. Resource Management
+- Async resource initialization
+- Proper cleanup procedures
+- Resource monitoring
+- Error recovery
+- Performance tracking
 
 ## Starting the System
 
@@ -117,7 +124,7 @@ The startup script performs these steps automatically:
    - Loads environment variables from .env.production
 
 2. Dependency Checks:
-   - Verifies Python installation (3.8+ required)
+   - Verifies Python installation (3.12+ required)
    - Installs required packages from requirements.txt
    - Validates config file presence
    - Checks secure environment initialization
@@ -162,17 +169,6 @@ Access dashboard at: http://localhost:5000
 Press Ctrl+C to stop all processes.
 ```
 
-Log Files Created:
-- logs/bot_[timestamp].error.log
-- logs/dashboard_[timestamp].error.log
-
-Required Directories:
-- logs/
-- data/memory/
-- data/storage/
-- minimal_dashboard/static/
-- minimal_dashboard/templates/
-
 ### 2. Individual Component Start (Advanced)
 Only use this method if you need to run components separately for debugging.
 
@@ -188,15 +184,17 @@ The dashboard startup:
    - PYTHONASYNCIODEBUG=1
    - PYTHONUNBUFFERED=1
 
-2. Performs eventlet patching:
-   - Patches socket operations
-   - Patches threading
-   - Patches time functions
+2. Configures async environment:
+   - Initializes asyncio event loop
+   - Sets up thread safety mechanisms
+   - Configures resource management
+   - Enables proper error handling
 
-3. Verifies patching success:
-   - Checks socket patching
-   - Validates threading patches
-   - Confirms time function patches
+3. Verifies async setup:
+   - Checks event loop
+   - Validates thread safety
+   - Confirms resource management
+   - Tests error handling
 
 4. Configures logging:
    - Sets INFO level logging
@@ -205,20 +203,13 @@ The dashboard startup:
 
 Expected Output:
 ```
-Starting dashboard with eventlet patching...
-INFO - Socket patched: True
-INFO - Threading patched: True
-INFO - Time patched: True
-INFO - Eventlet patching verified
+Starting dashboard with async support...
+INFO - Event loop initialized
+INFO - Thread safety enabled
+INFO - Resource management active
+INFO - Error handling configured
 Running dashboard...
 ```
-
-Common Dashboard Issues:
-- "Failed to verify eventlet patching": Restart with clean Python environment
-- "Address already in use": Check for running dashboard instances
-- "Import error: eventlet": Install missing dependencies
-- "Permission denied": Check file access rights
-- "Logging initialization failed": Verify logs directory permissions
 
 #### Bot:
 ```bash
@@ -239,241 +230,64 @@ The bot startup:
    - production.py
    - arbitrage_bot/dashboard/run.py
 
-3. Loads environment variables from .env.production
+3. Initializes async environment:
+   - Sets up event loop
+   - Configures thread safety
+   - Initializes resource management
+   - Enables error handling
 
 4. Starts processes:
    - Main bot process (production.py)
    - Dashboard process (arbitrage_bot.dashboard.run)
 
-Expected Output:
-```
-Starting Arbitrage Bot and Dashboard in LIVE MODE...
-Starting bot process...
-Starting dashboard process...
-Bot and dashboard started in LIVE MODE.
-Bot logs:
-  Output: logs/bot_YYYYMMDD_HHMMSS.log
-  Errors: logs/bot_YYYYMMDD_HHMMSS.err
-Dashboard logs:
-  Output: logs/dashboard_YYYYMMDD_HHMMSS.log
-  Errors: logs/dashboard_YYYYMMDD_HHMMSS.err
-```
-
-Common Bot Issues:
-- "Python 3.8 or higher is required": Update Python installation
-- ".env.production file not found": Copy template and configure
-- "production_config.json not found": Check configs directory
-- "Required file not found": Verify all component files present
-- Process termination: Check log files for errors
-
-Common Startup Issues:
-1. Port 5000 in use:
-   - Script will attempt to free the port
-   - If unsuccessful, manually check running processes
-   - Use `netstat -ano | findstr :5000` to identify process
-
-2. Python Process Conflicts:
-   - Script automatically stops existing Python processes
-   - If issues persist, manually end processes
-   - Use Task Manager or `taskkill /F /IM python.exe`
-
-3. Directory Permission Issues:
-   - Ensure write access to logs/ directory
-   - Check permissions on data/ directories
-   - Verify minimal_dashboard/ access
-
-4. Environment Variable Problems:
-   - Verify .env.production loaded correctly
-   - Check PYTHONPATH setting
-   - Confirm DASHBOARD_PORT availability
-
-## Dashboard Access
-1. Main interface: http://localhost:5000
-2. Features:
-   - Real-time market opportunities
-   - Gas price monitoring
-   - Monthly gas usage statistics
-   - Transfer tracking
-   - Memory statistics
-   - Trade history
-
 ## System Verification
 
-### 1. Dashboard Verification
-- Dashboard accessible at http://localhost:5000
-- WebSocket connection established (check browser console)
-- Gas prices updating
-- Market opportunities visible
-- Memory stats showing
+### 1. Async Implementation
+- Event loop running properly
+- Thread safety mechanisms active
+- Resource management working
+- Error handling functioning
+- Performance monitoring active
 
-### 2. Log Verification
-Check these log files for proper operation:
-```
-logs/
-├── bot.log (Main bot operations)
-├── dashboard.log (Dashboard activity)
-├── monitoring/
-│   ├── monitoring_[timestamp].json (Periodic monitoring data)
-│   ├── competitor_patterns.json (Detected trading patterns)
-│   ├── block_reorgs.json (Chain reorganization events)
-│   └── metrics.json (System performance metrics)
-├── gas/
-│   ├── YYYYMM.json (Monthly gas stats)
-│   └── current.log (Real-time tracking)
-├── gas_usage.log (Gas tracking)
-├── memory.log (Memory operations)
-└── monitoring.log (System monitoring)
-```
+### 2. Thread Safety
+- Lock management working
+- Resource protection active
+- Data consistency maintained
+- Concurrent access controlled
+- State consistency protected
 
-### 3. System Monitoring
-The system tracks:
-- Gas costs per transaction
-- Monthly usage statistics
-- Transfer patterns
-- Network congestion
-- Block reorganizations
-- Competitor trading patterns
-- System performance metrics
-- Price trends
-- Memory usage
-- Transaction success rates
-- Execution times
-
-Monitoring Features:
-1. Transaction Analysis
-   - Real-time mempool monitoring
-   - Transaction pattern detection
-   - Gas price optimization
-   - Success rate tracking
-
-2. Competitor Tracking
-   - Trading pattern analysis
-   - Performance metrics
-   - Success rate monitoring
-   - Gas usage patterns
-
-3. Network Monitoring
-   - Block reorganization detection
-   - Chain stability metrics
-   - Network congestion analysis
-   - Gas price trends
-
-4. System Health
-   - Memory usage tracking
-   - Cache efficiency
-   - Process performance
-   - Resource utilization
+### 3. Resource Management
+- Initialization successful
+- Cleanup procedures working
+- Resource monitoring active
+- Error recovery functioning
+- Performance tracking enabled
 
 ## Troubleshooting
 
-### 1. Common Issues
-- Dashboard not starting:
-  * Verify init_secure.py was run
-  * Check port 5000 is available
-  * Verify WebSocket ports open
-  * Check system resources
-  * Verify network connectivity
-- Bot not connecting:
-  * Check RPC URL is valid
-  * Verify wallet has funds
-  * Check gas settings in config
-  * Test network connectivity
-  * Verify API key validity
-- Gas tracking issues:
-  * Verify logs/gas directory exists
-  * Check write permissions
-  * Validate gas configuration
-  * Monitor disk space
-  * Check log rotation settings
+### 1. Async Issues
+- Event loop not starting:
+  * Check Python version (3.12+ required)
+  * Verify async implementation
+  * Check resource availability
+  * Monitor thread safety
+  * Review error logs
 
-### 2. Configuration Verification
-- Check .env.production has all required values
-- Verify config.json uses $SECURE: references
-- Validate gas settings in config.json
-- Check memory configuration
-- Verify profit recipient address
+### 2. Thread Safety Issues
+- Lock contention:
+  * Monitor lock usage
+  * Check deadlock prevention
+  * Verify resource sharing
+  * Review concurrent access
+  * Check state consistency
 
-Configuration Backup:
-1. Regular backups of config files
-2. Secure storage of encryption keys
-3. Version control of configurations
-4. Documentation of changes
-
-### 3. Log Analysis
-Key log locations:
-```
-logs/
-├── bot.log (Main operations)
-├── dashboard.log (UI activity)
-├── gas/
-│   ├── YYYYMM.json (Monthly gas stats)
-│   └── current.log (Real-time tracking)
-├── memory.log (Memory operations)
-└── monitoring.log (System status)
-```
-
-Log Rotation:
-- Logs rotated daily
-- Compressed after 7 days
-- Archived after 30 days
-- Deleted after 90 days
-
-## Security Notes
-
-### 1. Sensitive Data
-- Never commit .env.production
-- Always use $SECURE: references
-- Keep private keys secure
-- Regularly rotate API keys
-- Use strong encryption
-- Monitor access logs
-- Regular security audits
-
-### 2. Wallet Security
-- Use dedicated trading wallet
-- Maintain minimum required balance
-- Monitor gas reserves
-- Keep emergency ETH buffer
-- Regular balance checks
-- Transaction monitoring
-- Alert system setup
-
-## Maintenance
-
-### 1. Regular Tasks
-- Monitor gas usage patterns
-- Review profit distribution
-- Check log rotations
-- Verify memory cleanup
-- Update dependencies
-- Security audits
-- Performance monitoring
-
-### 2. Updates
-- Check for new releases
-- Update dependencies
-- Backup configurations
-- Test after updates
-- Document changes
-- Monitor performance
-- Verify security
-
-### 3. Backup Procedures
-- Daily configuration backups
-- Weekly state snapshots
-- Monthly system backups
-- Secure key storage
-- Recovery testing
-- Documentation updates
-
-## Support
-- Check logs/ directory for detailed error messages
-- Review documentation in docs/
-- Monitor system metrics
-- Track gas usage patterns
-- Performance monitoring
-- Resource utilization
-- Network connectivity
+### 3. Resource Management Issues
+- Resource leaks:
+  * Monitor cleanup procedures
+  * Check initialization
+  * Verify error recovery
+  * Track resource usage
+  * Review performance metrics
 
 Remember: 
 - Always maintain sufficient ETH for gas fees
@@ -481,3 +295,6 @@ Remember:
 - Monitor system resources
 - Keep security measures updated
 - Document all changes
+- Check async implementation
+- Verify thread safety
+- Monitor resource usage

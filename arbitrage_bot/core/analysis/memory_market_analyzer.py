@@ -1,6 +1,7 @@
 """Memory-based market analyzer for efficient market analysis."""
 
 import logging
+import asyncio
 from typing import Dict, Any, Optional, List, Set, Tuple, Union
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -17,53 +18,73 @@ class MemoryMarketAnalyzer:
         self.web3_manager = web3_manager
         self.config = config
         self.dex_manager = None
-        self._price_cache = {}
+        self._price_cache = {}  # type: Dict[str, Tuple[datetime, float]]
         self._cache_duration = timedelta(seconds=30)
         self.market_conditions = {}
+        self._cache_lock = asyncio.Lock()
+        self._market_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
         self.initialized = False
         logger.debug("Memory market analyzer initialized")
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Initialize the market analyzer."""
-        try:
-            # Initialize market conditions
-            self.market_conditions = {
-                'prices': {},
-                'trends': {},
-                'volumes': {},
-                'liquidity': {},
-                'volatility': {},
-                'last_update': datetime.now()
-            }
-
-            self.initialized = True
-            logger.debug("Memory market analyzer initialized successfully")
+        if self.initialized:
             return True
 
-        except Exception as e:
-            logger.error("Failed to initialize memory market analyzer: %s", str(e))
-            return False
+        async with self._init_lock:
+            if self.initialized:  # Double-check under lock
+                return True
+                
+            try:
+                async with self._market_lock:
+                    # Initialize market conditions
+                    self.market_conditions = {
+                        'prices': {},
+                        'trends': {},
+                        'volumes': {},
+                        'liquidity': {},
+                        'volatility': {},
+                        'last_update': datetime.now()
+                    }
 
-    def set_dex_manager(self, dex_manager: Any):
+                self.initialized = True
+                logger.debug("Memory market analyzer initialized successfully")
+                return True
+
+            except Exception as e:
+                logger.error("Failed to initialize memory market analyzer: %s", str(e))
+                return False
+
+    def set_dex_manager(self, dex_manager: Any) -> None:
         """Set the DEX manager instance."""
         self.dex_manager = dex_manager
         logger.debug("DEX manager set in market analyzer")
 
-    def get_market_condition(self, token: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def get_market_condition(self, token: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Get current market condition for token."""
         try:
+            if not self.initialized and not await self.initialize():
+                return None
+
             # If token is a string (symbol), get token data from config
             if isinstance(token, str):
                 token_data = self.config.get('tokens', {}).get(token)
                 if not token_data:
-                    raise ValueError("Token %s not found in config" % token)
+                    logger.error("Token %s not found in config", token)
+                    return None
             else:
                 token_data = token
 
             # Get real price data
             if not token_data or 'address' not in token_data:
-                raise ValueError("Invalid token data: %s" % str(token_data))
-            price = self._fetch_real_price(token_data)
+                logger.error("Invalid token data: %s", str(token_data))
+                return None
+
+            price = await self._fetch_real_price(token_data)
+            if price is None:
+                return None
+
             price_decimal = Decimal(str(price))
 
             # Create market condition
@@ -89,9 +110,17 @@ class MemoryMarketAnalyzer:
             logger.error("Failed to get market condition: %s", str(e))
             return None
 
-    def _fetch_real_price(self, token: Dict[str, Any]) -> float:
+    async def _fetch_real_price(self, token: Dict[str, Any]) -> Optional[float]:
         """Fetch real price data from all enabled DEXes."""
         try:
+            # Check cache first
+            async with self._cache_lock:
+                cache_entry = self._price_cache.get(token['address'])
+                if cache_entry:
+                    timestamp, price = cache_entry
+                    if datetime.now() - timestamp < self._cache_duration:
+                        return price
+
             # Ensure token address is valid
             address = token['address']
             if not address or not self.web3_manager.w3.is_address(address):
@@ -119,11 +148,11 @@ class MemoryMarketAnalyzer:
 
                     # Ensure DEX is initialized
                     if not dex.initialized:
-                        if not dex.initialize():
+                        if not await dex.initialize():
                             logger.debug("Failed to initialize %s", dex_name)
                             continue
 
-                    price = dex.get_token_price(address)
+                    price = await dex.get_token_price(address)
                     if self._validate_price(price):
                         prices.append(price)
                     else:
@@ -137,7 +166,8 @@ class MemoryMarketAnalyzer:
                 error_msg = "Failed to get valid price from any DEX"
                 if errors:
                     error_msg += ". Errors: %s" % "; ".join(errors)
-                raise ValueError(error_msg)
+                logger.error(error_msg)
+                return None
 
             # Sort prices and calculate median
             prices.sort()
@@ -145,37 +175,47 @@ class MemoryMarketAnalyzer:
             
             # Calculate median price
             if len(prices) % 2 == 0 and len(prices) > 0:
-                return (prices[mid - 1] + prices[mid]) / 2
+                median_price = (prices[mid - 1] + prices[mid]) / 2
             else:
-                return prices[mid]
+                median_price = prices[mid]
+
+            # Update cache
+            async with self._cache_lock:
+                self._price_cache[address] = (datetime.now(), median_price)
+
+            return median_price
 
         except Exception as e:
             logger.error("Error fetching real price: %s", str(e))
-            raise
+            return None
 
     def _validate_price(self, price: float) -> bool:
         """Validate if a price is valid."""
-        if not isinstance(price, (int, float)):
+        if not isinstance(price, (int, float, Decimal)):
             return False
-        return price > 0 and not (price == float('inf') or price != price)  # Check for inf and nan
+        try:
+            float_price = float(price)
+            return float_price > 0 and not (float_price == float('inf') or float_price != float_price)  # Check for inf and nan
+        except (ValueError, TypeError):
+            return False
 
-    def get_market_summary(self) -> Dict[str, Any]:
+    async def get_market_summary(self) -> Dict[str, Any]:
         """Get current market summary."""
         try:
-            return {
-                'conditions': self.market_conditions,
-                'timestamp': datetime.now().timestamp()
-            }
+            async with self._market_lock:
+                return {
+                    'conditions': self.market_conditions.copy(),
+                    'timestamp': datetime.now().timestamp()
+                }
         except Exception as e:
             logger.error("Failed to get market summary: %s", str(e))
             return {}
 
-
-def create_memory_market_analyzer(web3_manager: Web3Manager, config: Dict[str, Any]) -> MemoryMarketAnalyzer:
+async def create_memory_market_analyzer(web3_manager: Web3Manager, config: Dict[str, Any]) -> MemoryMarketAnalyzer:
     """Create and initialize memory market analyzer."""
     try:
         analyzer = MemoryMarketAnalyzer(web3_manager, config)
-        if not analyzer.initialize():
+        if not await analyzer.initialize():
             raise RuntimeError("Failed to initialize memory market analyzer")
         logger.debug("Created memory market analyzer")
         return analyzer

@@ -3,13 +3,12 @@
 import logging
 import time
 import json
-import os
+import asyncio
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple, Any
 from web3 import Web3
 from web3.contract import Contract
 from pathlib import Path
-from ..utils.eventlet_patch import manager as eventlet_manager
 
 from .web3_utils import get_web3_utils
 from ..dex.interfaces.dex_interface import create_dex_interface
@@ -17,54 +16,70 @@ from ..dex.interfaces.dex_interface import create_dex_interface
 logger = logging.getLogger("TradeExecutor")
 logger.setLevel(logging.INFO)
 
-# Get eventlet instance from manager
-eventlet = eventlet_manager.eventlet
-
 class TradeExecutor:
     """Trade executor class"""
 
     _instance = None
     _initialized = False
+    _lock = asyncio.Lock()
+    _contract_lock = asyncio.Lock()
+    _nonce_lock = asyncio.Lock()
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(TradeExecutor, cls).__new__(cls)
+            cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
         if self._initialized:
             return
 
-        self.web3_utils = get_web3_utils()
-        self.dex_interface = create_dex_interface()
+        self.web3_utils = None
+        self.dex_interface = None
         self.token_contracts = {}
         self.router_contracts = {}
         self.last_nonce = None
+        self.transaction_timeout = 300  # 5 minutes
+        self._initialized = False
 
-        # Load DEX config from root directory
-        root_dir = Path(__file__).parent.parent.parent
-        with open(root_dir / "config.json", "r") as f:
-            config = json.load(f)
-            self.dex_config = {
-                "dexes": config.get("dexes", {}),
-                "tokens": config.get("tokens", {}),
-                "pairs": config.get("pairs", []),
-            }
+    async def initialize(self) -> bool:
+        """Initialize the trade executor."""
+        if self._initialized:
+            return True
 
-        self._initialized = True
-        logger.info("TradeExecutor initialized with config")
-        logger.info("Loaded %d DEXes", len(self.dex_config['dexes']))
-        logger.info("Loaded %d tokens", len(self.dex_config['tokens']))
-        logger.info("Loaded %d pairs", len(self.dex_config['pairs']))
+        async with self._lock:
+            if self._initialized:  # Double-check under lock
+                return True
 
-    def calculate_amount_out(
-        self,
-        amount_in: int,
-        reserve_in: int,
-        reserve_out: int,
-        decimals_in: int,
-        decimals_out: int,
-    ) -> int:
+            try:
+                # Initialize web3 utils
+                self.web3_utils = await get_web3_utils()
+                self.dex_interface = await create_dex_interface()
+
+                # Load DEX config from root directory
+                root_dir = Path(__file__).parent.parent.parent
+                async with asyncio.Lock():
+                    with open(root_dir / "config.json", "r") as f:
+                        config = json.load(f)
+                        self.dex_config = {
+                            "dexes": config.get("dexes", {}),
+                            "tokens": config.get("tokens", {}),
+                            "pairs": config.get("pairs", []),
+                        }
+
+                self._initialized = True
+                logger.info("TradeExecutor initialized with config")
+                logger.info("Loaded {} DEXes".format(len(self.dex_config['dexes'])))
+                logger.info("Loaded {} tokens".format(len(self.dex_config['tokens'])))
+                logger.info("Loaded {} pairs".format(len(self.dex_config['pairs'])))
+                return True
+
+            except Exception as e:
+                logger.error("Failed to initialize trade executor: {}".format(e))
+                return False
+
+    def calculate_amount_out(self, amount_in, reserve_in, reserve_out, decimals_in, decimals_out):
         """Calculate output amount using constant product formula"""
         # Adjust reserves to same decimal places
         if decimals_in > decimals_out:
@@ -85,35 +100,37 @@ class TradeExecutor:
 
         return result
 
-    def load_abi(self, filename: str) -> Optional[list]:
+    async def load_abi(self, filename):
         """Load contract ABI from file"""
         try:
             root_dir = Path(__file__).parent.parent.parent
             abi_path = root_dir / "abi" / filename
-            with open(abi_path, "r") as f:
-                return json.load(f)
+            async with asyncio.Lock():
+                with open(abi_path, "r") as f:
+                    return json.load(f)
         except Exception as e:
-            logger.error("Error loading ABI from %s: %s", filename, str(e))
+            logger.error("Error loading ABI from {}: {}".format(filename, str(e)))
             return None
 
-    def execute_arbitrage_trade(
-        self, opportunity: Dict[str, Any], wallet_address: str, private_key: str
-    ) -> Dict[str, Any]:
+    async def execute_arbitrage_trade(self, opportunity, wallet_address, private_key):
         """Execute arbitrage trade"""
         try:
-            logger.info("Executing arbitrage trade: %s", opportunity)
+            if not self._initialized and not await self.initialize():
+                return {"success": False, "error": "Trade executor not initialized"}
+
+            logger.info("Executing arbitrage trade: {}".format(opportunity))
 
             # Get router contracts
-            base_router = self.get_router_contract(opportunity["base_dex"])
-            quote_router = self.get_router_contract(opportunity["quote_dex"])
+            base_router = await self.get_router_contract(opportunity["base_dex"])
+            quote_router = await self.get_router_contract(opportunity["quote_dex"])
 
             if not base_router or not quote_router:
                 return {"success": False, "error": "Failed to get router contracts"}
 
             # Get token contracts
             tokens = opportunity["pair_name"].split("/")
-            token0_contract = self.get_token_contract(tokens[0])
-            token1_contract = self.get_token_contract(tokens[1])
+            token0_contract = await self.get_token_contract(tokens[0])
+            token1_contract = await self.get_token_contract(tokens[1])
 
             if not token0_contract or not token1_contract:
                 return {"success": False, "error": "Failed to get token contracts"}
@@ -122,215 +139,234 @@ class TradeExecutor:
             amount_in = Web3.to_wei(Decimal(opportunity["trade_amount"]), "ether")
 
             # Execute trade
-            result = self.execute_direct_trade(
+            result = await self.execute_direct_trade(
                 opportunity,
                 base_router,
                 quote_router,
                 token0_contract,
                 token1_contract,
                 amount_in,
-                wallet_address,
+                wallet_address
             )
 
             return result
 
         except Exception as e:
-            logger.error("Error executing arbitrage trade: %s", str(e))
+            logger.error("Error executing arbitrage trade: {}".format(e))
             return {"success": False, "error": str(e)}
 
-    def get_router_contract(self, dex_name: str) -> Optional[Contract]:
+    async def get_router_contract(self, dex_name):
         """Get router contract for DEX"""
         try:
-            if dex_name in self.router_contracts:
-                return self.router_contracts[dex_name]
+            async with self._contract_lock:
+                if dex_name in self.router_contracts:
+                    return self.router_contracts[dex_name]
 
-            if dex_name not in self.dex_config["dexes"]:
-                logger.error("DEX %s not found in config", dex_name)
-                return None
+                if dex_name not in self.dex_config["dexes"]:
+                    logger.error("DEX {} not found in config".format(dex_name))
+                    return None
 
-            dex_info = self.dex_config["dexes"][dex_name]
-            router_address = dex_info["router"]
+                dex_info = self.dex_config["dexes"][dex_name]
+                router_address = dex_info["router"]
 
-            # Load router ABI based on DEX version
-            if dex_info.get("version") == "v3":
-                if dex_name == "baseswap":
-                    router_abi = self.load_abi("baseswap_router.json")
+                # Load router ABI based on DEX version
+                if dex_info.get("version") == "v3":
+                    if dex_name == "baseswap":
+                        router_abi = await self.load_abi("baseswap_router.json")
+                    else:
+                        router_abi = await self.load_abi("pancakeswap_router.json")
                 else:
-                    router_abi = self.load_abi("pancakeswap_router.json")
-            else:
-                router_abi = self.load_abi("IUniswapV2Router.json")
+                    router_abi = await self.load_abi("IUniswapV2Router.json")
 
-            if not router_abi:
-                logger.error("Failed to load router ABI for %s", dex_name)
-                return None
+                if not router_abi:
+                    logger.error("Failed to load router ABI for {}".format(dex_name))
+                    return None
 
-            # Create contract
-            router = self.web3_utils.get_contract(router_address, router_abi)
-            self.router_contracts[dex_name] = router
+                # Create contract
+                router = await self.web3_utils.get_contract(router_address, router_abi)
+                self.router_contracts[dex_name] = router
 
-            # Log router info
-            logger.info("Router contract loaded for %s at %s", dex_name, router_address)
+                # Log router info
+                logger.info("Router contract loaded for {} at {}".format(dex_name, router_address))
 
-            # Test router connection
-            try:
-                factory = router.functions.factory().call()
-                logger.info("Router factory address: %s", factory)
-            except Exception as e:
-                logger.error("Failed to get factory from router: %s", str(e))
+                # Test router connection
+                try:
+                    factory = await router.functions.factory().call()
+                    logger.info("Router factory address: {}".format(factory))
+                except Exception as e:
+                    logger.error("Failed to get factory from router: {}".format(e))
 
-            return router
+                return router
 
         except Exception as e:
-            logger.error("Error getting router contract: %s", str(e))
+            logger.error("Error getting router contract: {}".format(e))
             return None
 
-    def get_token_contract(self, token_symbol: str) -> Optional[Contract]:
+    async def get_token_contract(self, token_symbol):
         """Get token contract"""
         try:
-            if token_symbol in self.token_contracts:
-                return self.token_contracts[token_symbol]
+            async with self._contract_lock:
+                if token_symbol in self.token_contracts:
+                    return self.token_contracts[token_symbol]
 
-            if token_symbol not in self.dex_config["tokens"]:
-                logger.error("Token %s not found in config", token_symbol)
-                return None
+                if token_symbol not in self.dex_config["tokens"]:
+                    logger.error("Token {} not found in config".format(token_symbol))
+                    return None
 
-            token_info = self.dex_config["tokens"][token_symbol]
-            token_address = token_info["address"]
+                token_info = self.dex_config["tokens"][token_symbol]
+                token_address = token_info["address"]
 
-            # Load token ABI
-            token_abi = self.load_abi("ERC20.json")
-            if not token_abi:
-                logger.error("Failed to load ERC20 ABI")
-                return None
+                # Load token ABI
+                token_abi = await self.load_abi("ERC20.json")
+                if not token_abi:
+                    logger.error("Failed to load ERC20 ABI")
+                    return None
 
-            # Create contract
-            token = self.web3_utils.get_contract(token_address, token_abi)
-            self.token_contracts[token_symbol] = token
-            return token
+                # Create contract
+                token = await self.web3_utils.get_contract(token_address, token_abi)
+                self.token_contracts[token_symbol] = token
+                return token
 
         except Exception as e:
-            logger.error("Error getting token contract: %s", str(e))
+            logger.error("Error getting token contract: {}".format(e))
             return None
 
-    def execute_direct_trade(
-        self,
-        opportunity: Dict[str, Any],
-        base_router: Contract,
-        quote_router: Contract,
-        token0_contract: Contract,
-        token1_contract: Contract,
-        amount_in: int,
-        wallet_address: str,
-    ) -> Dict[str, Any]:
+    async def execute_direct_trade(self, opportunity, base_router, quote_router,
+                                 token0_contract, token1_contract, amount_in, wallet_address):
         """Execute direct trade"""
         try:
             # Get deadline
-            deadline = int(time.time()) + 300  # 5 minutes
+            deadline = int(time.time()) + self.transaction_timeout
 
             # Get nonce and gas price
-            nonce = self.web3_utils.w3.eth.get_transaction_count(wallet_address)
-            gas_price = self.web3_utils.w3.eth.gas_price
+            async with self._nonce_lock:
+                nonce = await self.web3_utils.get_transaction_count(wallet_address)
+                gas_price = await self.web3_utils.w3.eth.gas_price
 
-            # Ensure minimum gas price
-            min_gas_price = Web3.to_wei(0.1, "gwei")  # 0.1 gwei minimum
-            gas_price = max(
-                gas_price * 5, min_gas_price
-            )  # Use at least 5x current gas price
+                # Ensure minimum gas price
+                min_gas_price = Web3.to_wei(0.1, "gwei")  # 0.1 gwei minimum
+                gas_price = max(gas_price * 5, min_gas_price)  # Use at least 5x current gas price
 
             # Get WETH address from router
-            weth_address = base_router.functions.WETH().call()
-            logger.info("WETH address: %s", weth_address)
-            logger.info("USDC address: %s", token1_contract.address)
+            weth_address = await base_router.functions.WETH().call()
+            logger.info("WETH address: {}".format(weth_address))
+            logger.info("USDC address: {}".format(token1_contract.address))
 
             # Get DEX info
             dex_info = self.dex_config["dexes"][opportunity["base_dex"]]
 
             # Build transaction based on DEX version
             if dex_info.get("version") == "v3":
-                # For PancakeSwap v3
-                params = {
-                    "tokenIn": weth_address,
-                    "tokenOut": token1_contract.address,
-                    "fee": dex_info.get(
-                        "fee", 2500
-                    ),  # Default to 0.25% if not specified
-                    "recipient": wallet_address,
-                    "amountIn": amount_in,
-                    "amountOutMinimum": 0,  # Will be set after quote
-                    "sqrtPriceLimitX96": 0,  # No price limit
-                }
-
-                # Get quote
-                try:
-                    amount_out = base_router.functions.exactInputSingle(
-                        params
-                    ).call()
-                    amount_out_min = int(amount_out * 0.995)  # 0.5% slippage
-                    params["amountOutMinimum"] = amount_out_min
-                    logger.info("Quote received: %d wei", amount_out)
-                    logger.info("Minimum output: %d wei", amount_out_min)
-                except Exception as e:
-                    logger.error("Failed to get quote: %s", str(e))
-                    return {"success": False, "error": "Failed to get quote: %s" % str(e)}
-
-                # Build transaction
-                tx_params = {
-                    "from": wallet_address,
-                    "value": amount_in,  # Send ETH directly
-                    "gas": 500000,  # High gas limit for testing
-                    "nonce": nonce,
-                    "gasPrice": gas_price,
-                }
-
-                # Build swap transaction
-                swap_tx = base_router.functions.exactInputSingle(
-                    params
-                ).build_transaction(tx_params)
-
+                return await self._execute_v3_trade(
+                    opportunity, base_router, weth_address, token1_contract,
+                    amount_in, wallet_address, nonce, gas_price
+                )
             else:
-                # For BaseSwap v2
-                path = [weth_address, token1_contract.address]
+                return await self._execute_v2_trade(
+                    opportunity, base_router, weth_address, token1_contract,
+                    amount_in, wallet_address, nonce, gas_price, deadline
+                )
 
-                # Get quote
-                try:
-                    amounts = base_router.functions.getAmountsOut(
-                        amount_in, path
-                    ).call()
-                    amount_out = amounts[1]
-                    amount_out_min = int(amount_out * 0.995)  # 0.5% slippage
-                    logger.info("Quote received: %d wei", amount_out)
-                    logger.info("Minimum output: %d wei", amount_out_min)
-                except Exception as e:
-                    logger.error("Failed to get quote: %s", str(e))
-                    return {"success": False, "error": "Failed to get quote: %s" % str(e)}
+        except Exception as e:
+            logger.error("Direct trade execution error: {}".format(e))
+            return {"success": False, "error": str(e)}
 
-                # Build transaction
-                tx_params = {
-                    "from": wallet_address,
-                    "value": amount_in,  # Send ETH directly
-                    "gas": 500000,  # High gas limit for testing
-                    "nonce": nonce,
-                    "gasPrice": gas_price,
-                }
+    async def _execute_v3_trade(self, opportunity, router, weth_address, token_out,
+                              amount_in, wallet_address, nonce, gas_price):
+        """Execute v3 trade"""
+        try:
+            params = {
+                "tokenIn": weth_address,
+                "tokenOut": token_out.address,
+                "fee": opportunity.get("fee", 2500),  # Default to 0.25%
+                "recipient": wallet_address,
+                "amountIn": amount_in,
+                "amountOutMinimum": 0,  # Will be set after quote
+                "sqrtPriceLimitX96": 0  # No price limit
+            }
 
-                # Build swap transaction
-                swap_tx = base_router.functions.swapExactETHForTokens(
-                    amount_out_min,  # amountOutMin
-                    path,  # path
-                    wallet_address,  # to
-                    deadline,  # deadline
-                ).build_transaction(tx_params)
+            # Get quote
+            try:
+                amount_out = await router.functions.exactInputSingle(params).call()
+                amount_out_min = int(amount_out * 0.995)  # 0.5% slippage
+                params["amountOutMinimum"] = amount_out_min
+                logger.info("Quote received: {} wei".format(amount_out))
+                logger.info("Minimum output: {} wei".format(amount_out_min))
+            except Exception as e:
+                logger.error("Failed to get quote: {}".format(e))
+                return {"success": False, "error": "Failed to get quote: {}".format(e)}
 
-            # Log transaction details
-            logger.info("Transaction parameters: %s", tx_params)
+            # Build transaction
+            tx_params = {
+                "from": wallet_address,
+                "value": amount_in,
+                "gas": 500000,
+                "nonce": nonce,
+                "gasPrice": gas_price
+            }
 
+            swap_tx = await router.functions.exactInputSingle(params).build_transaction(tx_params)
+            return await self._send_and_wait_transaction(swap_tx)
+
+        except Exception as e:
+            logger.error("V3 trade execution error: {}".format(e))
+            return {"success": False, "error": str(e)}
+
+    async def _execute_v2_trade(self, opportunity, router, weth_address, token_out,
+                              amount_in, wallet_address, nonce, gas_price, deadline):
+        """Execute v2 trade"""
+        try:
+            path = [weth_address, token_out.address]
+
+            # Get quote
+            try:
+                amounts = await router.functions.getAmountsOut(amount_in, path).call()
+                amount_out = amounts[1]
+                amount_out_min = int(amount_out * 0.995)  # 0.5% slippage
+                logger.info("Quote received: {} wei".format(amount_out))
+                logger.info("Minimum output: {} wei".format(amount_out_min))
+            except Exception as e:
+                logger.error("Failed to get quote: {}".format(e))
+                return {"success": False, "error": "Failed to get quote: {}".format(e)}
+
+            # Build transaction
+            tx_params = {
+                "from": wallet_address,
+                "value": amount_in,
+                "gas": 500000,
+                "nonce": nonce,
+                "gasPrice": gas_price
+            }
+
+            swap_tx = await router.functions.swapExactETHForTokens(
+                amount_out_min,
+                path,
+                wallet_address,
+                deadline
+            ).build_transaction(tx_params)
+            return await self._send_and_wait_transaction(swap_tx)
+
+        except Exception as e:
+            logger.error("V2 trade execution error: {}".format(e))
+            return {"success": False, "error": str(e)}
+
+    async def _send_and_wait_transaction(self, transaction):
+        """Send transaction and wait for confirmation"""
+        try:
             # Send transaction
-            tx_hash = self.web3_utils.eth_call(swap_tx)
+            tx_hash = await self.web3_utils.eth_call(transaction)
             if not tx_hash:
                 return {"success": False, "error": "Failed to send swap transaction"}
 
-            # Wait for confirmation
-            receipt = self.web3_utils.w3.eth.wait_for_transaction_receipt(tx_hash)
+            # Wait for confirmation with timeout
+            try:
+                receipt = await self.web3_utils.wait_for_transaction_receipt(
+                    tx_hash,
+                    timeout=self.transaction_timeout
+                )
+            except asyncio.TimeoutError:
+                return {"success": False, "error": "Transaction confirmation timeout"}
+
             if not receipt["status"]:
                 return {"success": False, "error": "Swap transaction failed"}
 
@@ -338,14 +374,16 @@ class TradeExecutor:
                 "success": True,
                 "tx_hash": tx_hash.hex(),
                 "gas_used": receipt["gasUsed"],
-                "used_flash_loan": False,
+                "used_flash_loan": False
             }
 
         except Exception as e:
-            logger.error("Direct trade execution error: %s", str(e))
+            logger.error("Transaction execution error: {}".format(e))
             return {"success": False, "error": str(e)}
 
-
-def get_trade_executor() -> TradeExecutor:
+async def get_trade_executor():
     """Get trade executor instance"""
-    return TradeExecutor()
+    executor = TradeExecutor()
+    if not executor._initialized:
+        await executor.initialize()
+    return executor

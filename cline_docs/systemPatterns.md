@@ -49,11 +49,72 @@ BaseDEX (abstract)
 5. Validation for quoter responses
 
 ### Async Implementation
-1. All DEX methods are async
-2. Event handling is async
-3. Price updates are async
-4. Contract calls use retry with backoff
-5. Performance monitoring configurable
+1. Core Components:
+   - All DEX methods are async/await
+   - Event handling is async
+   - Price updates are async
+   - Contract calls use async retry with backoff
+   - File operations are async
+   - Resource initialization is async
+   - Cleanup operations are async
+
+2. Web3 Integration:
+   - Contract interactions are async
+   - Transaction handling is async
+   - Gas estimation is async
+   - Event listening is async
+   - Network calls are async
+
+3. Memory Management:
+   - Cache operations are async
+   - State updates are async
+   - Resource cleanup is async
+   - Initialization sequence is async
+   - Error recovery is async
+
+### Thread Safety Pattern
+1. Lock Management:
+   - Initialization locks
+   - Contract access locks
+   - Cache access locks
+   - Resource locks
+   - Transaction nonce locks
+
+2. Resource Protection:
+   - Double-checked locking pattern
+   - Atomic operations
+   - Safe resource sharing
+   - Concurrent access control
+   - State consistency protection
+
+3. Data Consistency:
+   - Cache consistency
+   - State consistency
+   - Contract state consistency
+   - Configuration consistency
+   - Transaction ordering
+
+### Resource Management Pattern
+1. Initialization:
+   - Async resource initialization
+   - Proper error handling
+   - Resource validation
+   - State verification
+   - Dependency management
+
+2. Cleanup:
+   - Async resource cleanup
+   - Proper error recovery
+   - Resource deallocation
+   - State cleanup
+   - Connection cleanup
+
+3. Monitoring:
+   - Resource usage tracking
+   - Performance monitoring
+   - Error tracking
+   - State monitoring
+   - Health checks
 
 ## Web3 Integration
 
@@ -156,3 +217,10 @@ BaseDEX (abstract)
 3. Sample configurations
 4. Transaction scenarios
 5. Performance benchmarks
+
+### Async Testing
+1. Async test cases
+2. Concurrent operation testing
+3. Resource cleanup verification
+4. Lock management testing
+5. Error recovery testing

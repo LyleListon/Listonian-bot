@@ -17,20 +17,20 @@ logger = logging.getLogger(__name__)
 async def init_and_run():
     """Initialize and run the bot with proper async handling."""
     try:
-        # Import eventlet patch first
-        from arbitrage_bot.utils.eventlet_patch import manager, run_with_eventlet, async_init
+        # Import async manager first
+        from arbitrage_bot.utils.async_manager import manager, run_with_async_context, async_init
         
-        # Initialize eventlet with proper error handling
+        # Initialize async manager with proper error handling
         try:
             await async_init()
             if not manager._initialized:
-                raise RuntimeError("Failed to initialize eventlet manager")
-            logger.info("Successfully initialized eventlet")
+                raise RuntimeError("Failed to initialize async manager")
+            logger.info("Successfully initialized async event loop")
         except Exception as e:
-            logger.error("Failed to initialize eventlet: %s", str(e), exc_info=True)
+            logger.error("Failed to initialize async manager: %s", str(e), exc_info=True)
             raise
 
-        # Import main after eventlet setup
+        # Import main after async setup
         try:
             import main
             logger.info("Successfully imported main module")
@@ -42,7 +42,7 @@ async def init_and_run():
         try:
             if hasattr(main, 'async_main'):
                 logger.info("Running async main")
-                await run_with_eventlet(main.async_main())
+                await run_with_async_context(main.async_main())
             else:
                 # Fallback to running sync main in executor
                 logger.info("Running sync main in executor")
@@ -59,9 +59,9 @@ async def init_and_run():
         if 'manager' in locals() and manager is not None:
             try:
                 await manager.async_cleanup()
-                logger.info("Successfully cleaned up eventlet manager")
+                logger.info("Successfully cleaned up async manager")
             except Exception as e:
-                logger.error("Failed to cleanup eventlet manager: %s", str(e), exc_info=True)
+                logger.error("Failed to cleanup async manager: %s", str(e), exc_info=True)
 
 def main():
     """Entry point that sets up and runs the async loop."""

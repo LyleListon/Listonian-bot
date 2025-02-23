@@ -1,7 +1,7 @@
 """Memory bank manager for the arbitrage bot."""
 
 import logging
-import time
+import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from . import MemoryBank
@@ -13,6 +13,7 @@ class MemoryBankManager:
     """Manages memory bank operations and provides a centralized interface."""
     
     _instance = None
+    _lock = asyncio.Lock()
     
     def __new__(cls):
         """Ensure singleton pattern."""
@@ -27,22 +28,24 @@ class MemoryBankManager:
             return
             
         self.memory_bank = MemoryBank()
+        self._data_lock = asyncio.Lock()
         self._initialized = True
         logger.info("Memory bank manager initialized")
 
-    def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
+    async def initialize(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """Initialize the memory bank with configuration."""
         try:
             if not self._initialized:
                 logger.warning("Memory bank manager not initialized")
                 return False
             
-            return self.memory_bank.initialize(config)
+            async with self._lock:
+                return await self.memory_bank.initialize(config)
         except Exception as e:
             logger.error("Failed to initialize memory bank: %s", str(e))
             return False
     
-    def store_market_data(self, key: str, data: Any, ttl: Optional[int] = None, version_comment: Optional[str] = None) -> None:
+    async def store_market_data(self, key: str, data: Any, ttl: Optional[int] = None, version_comment: Optional[str] = None) -> None:
         """Store market data with optional TTL."""
         try:
             # Handle market analyzer data
@@ -63,34 +66,38 @@ class MemoryBankManager:
                     "last_updated": float(data.get("last_updated", 0))
                 }
             
-            self.memory_bank.store(key, data, category="market_data", ttl=ttl)
+            async with self._data_lock:
+                await self.memory_bank.store(key, data, category="market_data", ttl=ttl)
         except Exception as e:
             logger.error("Failed to store market data %s: %s", key, str(e))
     
-    def get_market_data(self, key: str) -> Optional[Any]:
+    async def get_market_data(self, key: str) -> Optional[Any]:
         """Retrieve market data."""
         try:
-            return self.memory_bank.retrieve(key, category="market_data")
+            async with self._data_lock:
+                return await self.memory_bank.retrieve(key, category="market_data")
         except Exception as e:
             logger.error("Failed to retrieve market data %s: %s", key, str(e))
             return None
     
-    def store_transaction(self, key: str, data: Any) -> None:
+    async def store_transaction(self, key: str, data: Any) -> None:
         """Store transaction data."""
         try:
-            self.memory_bank.store(key, data, category="transactions")
+            async with self._data_lock:
+                await self.memory_bank.store(key, data, category="transactions")
         except Exception as e:
             logger.error("Failed to store transaction %s: %s", key, str(e))
     
-    def get_transaction(self, key: str) -> Optional[Any]:
+    async def get_transaction(self, key: str) -> Optional[Any]:
         """Retrieve transaction data."""
         try:
-            return self.memory_bank.retrieve(key, category="transactions")
+            async with self._data_lock:
+                return await self.memory_bank.retrieve(key, category="transactions")
         except Exception as e:
             logger.error("Failed to retrieve transaction %s: %s", key, str(e))
             return None
     
-    def store_analytics(self, key: str, data: Any, ttl: Optional[int] = None, version_comment: Optional[str] = None) -> None:
+    async def store_analytics(self, key: str, data: Any, ttl: Optional[int] = None, version_comment: Optional[str] = None) -> None:
         """Store analytics data."""
         try:
             # Handle gas optimizer data
@@ -125,134 +132,146 @@ class MemoryBankManager:
                     "last_updated": float(datetime.now().timestamp())
                 }
             
-            self.memory_bank.store(key, data, category="analytics", ttl=ttl)
+            async with self._data_lock:
+                await self.memory_bank.store(key, data, category="analytics", ttl=ttl)
         except Exception as e:
             logger.error("Failed to store analytics %s: %s", key, str(e))
     
-    def get_analytics(self, key: str) -> Optional[Any]:
+    async def get_analytics(self, key: str) -> Optional[Any]:
         """Retrieve analytics data."""
         try:
-            return self.memory_bank.retrieve(key, category="analytics")
+            async with self._data_lock:
+                return await self.memory_bank.retrieve(key, category="analytics")
         except Exception as e:
             logger.error("Failed to retrieve analytics %s: %s", key, str(e))
             return None
     
-    def store_docs(self, key: str, data: Any) -> None:
+    async def store_docs(self, key: str, data: Any) -> None:
         """Store documentation data."""
         try:
-            self.memory_bank.store(key, data, category="docs")
+            async with self._data_lock:
+                await self.memory_bank.store(key, data, category="docs")
         except Exception as e:
             logger.error("Failed to store docs %s: %s", key, str(e))
     
-    def get_docs(self, key: str) -> Optional[Any]:
+    async def get_docs(self, key: str) -> Optional[Any]:
         """Retrieve documentation data."""
         try:
-            return self.memory_bank.retrieve(key, category="docs")
+            async with self._data_lock:
+                return await self.memory_bank.retrieve(key, category="docs")
         except Exception as e:
             logger.error("Failed to retrieve docs %s: %s", key, str(e))
             return None
     
-    def store_temp(self, key: str, data: Any, ttl: Optional[int] = None) -> None:
+    async def store_temp(self, key: str, data: Any, ttl: Optional[int] = None) -> None:
         """Store temporary data with optional TTL."""
         try:
-            self.memory_bank.store(key, data, category="temp", ttl=ttl)
+            async with self._data_lock:
+                await self.memory_bank.store(key, data, category="temp", ttl=ttl)
         except Exception as e:
             logger.error("Failed to store temp data %s: %s", key, str(e))
     
-    def get_temp(self, key: str) -> Optional[Any]:
+    async def get_temp(self, key: str) -> Optional[Any]:
         """Retrieve temporary data."""
         try:
-            return self.memory_bank.retrieve(key, category="temp")
+            async with self._data_lock:
+                return await self.memory_bank.retrieve(key, category="temp")
         except Exception as e:
             logger.error("Failed to retrieve temp data %s: %s", key, str(e))
             return None
     
-    def clear_category(self, category: str) -> None:
+    async def clear_category(self, category: str) -> None:
         """Clear all data in a category."""
         try:
-            stats = self.memory_bank.get_memory_stats()
-            if category in stats.categories:
-                for key in stats.categories[category]:
-                    self.memory_bank.clear(key, category)
+            async with self._data_lock:
+                stats = await self.memory_bank.get_memory_stats()
+                if category in stats.categories:
+                    for key in stats.categories[category]:
+                        await self.memory_bank.clear(key, category)
         except Exception as e:
             logger.error("Failed to clear category %s: %s", category, str(e))
     
-    def clear_all(self) -> None:
+    async def clear_all(self) -> None:
         """Clear all stored data."""
         try:
-            self.memory_bank.clear_all()
+            async with self._data_lock:
+                await self.memory_bank.clear_all()
         except Exception as e:
             logger.error("Failed to clear all data: %s", str(e))
     
-    def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get memory usage statistics."""
         try:
-            stats = self.memory_bank.get_memory_stats()
-            compression_stats = self.memory_bank.get_compression_stats()
-            return {
-                "memory_stats": stats._asdict(),
-                "compression_stats": {k: v._asdict() for k, v in compression_stats.items()}
-            }
+            async with self._data_lock:
+                stats = await self.memory_bank.get_memory_stats()
+                compression_stats = await self.memory_bank.get_compression_stats()
+                return {
+                    "memory_stats": stats._asdict(),
+                    "compression_stats": {k: v._asdict() for k, v in compression_stats.items()}
+                }
         except Exception as e:
             logger.error("Failed to get memory stats: %s", str(e))
             return {}
     
-    def store_opportunities(self, opportunities: List[Opportunity]) -> None:
+    async def store_opportunities(self, opportunities: List[Opportunity]) -> None:
         """Store arbitrage opportunities."""
         try:
-            self.memory_bank.store_opportunities(opportunities)
+            async with self._data_lock:
+                await self.memory_bank.store_opportunities(opportunities)
         except Exception as e:
             logger.error("Failed to store opportunities: %s", str(e))
 
-    def get_trade_history(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def get_trade_history(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get trade execution history with optional age filter."""
         try:
             if not self._initialized:
                 logger.warning("Memory bank manager not initialized")
                 return []
             
-            # Get all trade results
-            results = self.memory_bank.trade_results
-            
-            # Filter by age if specified
-            if max_age is not None:
-                current_time = datetime.now().timestamp()
-                results = [
-                    trade for trade in results
-                    if current_time - trade.get('timestamp', 0) <= max_age
-                ]
-            
-            return results
-            
+            async with self._data_lock:
+                # Get all trade results
+                results = await self.memory_bank.get_trade_results()
+                
+                # Filter by age if specified
+                if max_age is not None:
+                    current_time = datetime.now().timestamp()
+                    results = [
+                        trade for trade in results
+                        if current_time - trade.get('timestamp', 0) <= max_age
+                    ]
+                
+                return results
+                
         except Exception as e:
             logger.error("Failed to get trade history: %s", str(e))
             return []
 
-    def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def get_recent_opportunities(self, max_age: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get recent arbitrage opportunities with optional age filter."""
         try:
             if not self._initialized:
                 logger.warning("Memory bank manager not initialized")
                 return []
             
-            # Get all opportunities
-            opportunities = self.memory_bank.opportunities
-            
-            # Filter by age if specified
-            if max_age is not None:
-                current_time = datetime.now().timestamp()
-                opportunities = [
-                    opp for opp in opportunities
-                    if current_time - opp.get('timestamp', 0) <= max_age
-                ]
-            
-            return opportunities
-            
+            async with self._data_lock:
+                # Get all opportunities
+                opportunities = await self.memory_bank.get_opportunities()
+                
+                # Filter by age if specified
+                if max_age is not None:
+                    current_time = datetime.now().timestamp()
+                    opportunities = [
+                        opp for opp in opportunities
+                        if current_time - opp.get('timestamp', 0) <= max_age
+                    ]
+                
+                return opportunities
+                
         except Exception as e:
             logger.error("Failed to get recent opportunities: %s", str(e))
             return []
 
-    def store_trade_result(
+    async def store_trade_result(
         self,
         opportunity: Dict[str, Any],
         success: bool,
@@ -263,36 +282,39 @@ class MemoryBankManager:
     ) -> None:
         """Store trade execution result."""
         try:
-            self.memory_bank.store_trade_result(
-                opportunity=opportunity,
-                success=success,
-                net_profit=net_profit,
-                gas_cost=gas_cost,
-                tx_hash=tx_hash,
-                error=error
-            )
+            async with self._data_lock:
+                await self.memory_bank.store_trade_result(
+                    opportunity=opportunity,
+                    success=success,
+                    net_profit=net_profit,
+                    gas_cost=gas_cost,
+                    tx_hash=tx_hash,
+                    error=error
+                )
         except Exception as e:
             logger.error("Failed to store trade result: %s", str(e))
     
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Stop memory bank operations."""
         try:
-            self.memory_bank.stop()
+            async with self._data_lock:
+                await self.memory_bank.stop()
         except Exception as e:
             logger.error("Failed to stop memory bank: %s", str(e))
 
-    def cleanup(self) -> None:
+    async def cleanup(self) -> None:
         """Cleanup memory bank resources."""
         try:
-            self.memory_bank.cleanup()
+            async with self._data_lock:
+                await self.memory_bank.cleanup()
         except Exception as e:
             logger.error("Failed to cleanup memory bank: %s", str(e))
 
-def get_memory_bank(config: Optional[Dict[str, Any]] = None) -> MemoryBankManager:
+async def get_memory_bank(config: Optional[Dict[str, Any]] = None) -> MemoryBankManager:
     """Get the singleton memory bank manager instance."""
     manager = MemoryBankManager()
     if not manager.memory_bank.initialized:
-        success = manager.initialize(config or {})
+        success = await manager.initialize(config or {})
         if not success:
             logger.error("Failed to initialize memory bank")
             raise RuntimeError("Memory bank initialization failed")

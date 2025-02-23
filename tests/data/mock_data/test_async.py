@@ -3,9 +3,6 @@
 import logging
 import asyncio
 import time
-import socket
-import threading
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +21,8 @@ async def test_async():
         start = time.time()
         await asyncio.sleep(0.1)
         duration = time.time() - start
-        logger.info(f"Sleep duration: {duration:.3f}s")
-        assert 0.09 <= duration <= 0.15, f"Sleep duration {duration} outside expected range"
+        logger.info("Sleep duration: {:.3f}s".format(duration))
+        assert 0.09 <= duration <= 0.15, "Sleep duration {} outside expected range".format(duration)
         logger.info("✓ Async sleep working")
 
         # Test async task
@@ -43,7 +40,7 @@ async def test_async():
         logger.info("Testing concurrent tasks...")
         async def concurrent_test(i):
             await asyncio.sleep(0.1)
-            return f"Task {i} completed"
+            return "Task {} completed".format(i)
 
         tasks = [asyncio.create_task(concurrent_test(i)) for i in range(3)]
         results = await asyncio.gather(*tasks)
@@ -68,12 +65,12 @@ async def test_async():
         return True
 
     except Exception as e:
-        logger.error(f"Async test failed: {e}")
+        logger.error("Async test failed: {}".format(e))
         return False
 
 if __name__ == "__main__":
     try:
         asyncio.run(test_async())
     except Exception as e:
-        logger.error(f"Test error: {e}")
+        logger.error("Test error: {}".format(e))
         raise

@@ -1,4 +1,4 @@
-"""Initialize gevent with Python 3.12+ asyncio support and proper monkey patching."""
+"""Async event loop management with Python 3.12+ asyncio support."""
 
 import logging
 import asyncio
@@ -7,47 +7,15 @@ import ssl
 
 logger = logging.getLogger(__name__)
 
-# Store original SSL methods before patching
-_orig_wrap_socket = ssl.wrap_socket if hasattr(ssl, 'wrap_socket') else None
-_orig_ssl_context = ssl.SSLContext if hasattr(ssl, 'SSLContext') else None
-
-class GeventManager:
+class AsyncManager:
     def __init__(self):
         self.loop = None
-        self.eventlet = None  # For compatibility with existing code
         self._initialized = False
 
     def _do_initialize(self):
         """Internal synchronous initialization."""
         try:
-            # Import gevent first
-            import gevent
-            import gevent.monkey
-
-            # Store gevent as eventlet for compatibility
-            self.eventlet = gevent
-
-            # Patch everything except SSL first
-            gevent.monkey.patch_all(
-                socket=True,
-                dns=True,
-                time=True,
-                select=True,
-                thread=False,
-                os=False,  # Don't patch OS to avoid SSL issues
-                ssl=False,  # We'll patch SSL separately
-                httplib=False,
-                subprocess=True,
-                sys=False,
-                aggressive=True,
-                Event=False,
-                builtins=True,
-                signal=True
-            )
-
             # Initialize asyncio event loop
-            import aiohttp
-
             try:
                 self.loop = asyncio.get_event_loop()
             except RuntimeError:
@@ -57,29 +25,25 @@ class GeventManager:
             if logger.getEffectiveLevel() <= logging.DEBUG:
                 self.loop.set_debug(True)
 
-            # Add gevent sleep as eventlet sleep for compatibility
-            self.eventlet.sleep = gevent.sleep
-
             logger.info("✓ Event loop initialized")
-            logger.info("✓ Gevent patches applied")
 
             self._initialized = True
-            return self.eventlet
+            return True
 
         except Exception as e:
-            logger.error("Failed to initialize gevent: %s", str(e))
+            logger.error("Failed to initialize event loop: %s", str(e))
             raise
 
     def initialize(self):
-        """Initialize gevent synchronously."""
+        """Initialize event loop synchronously."""
         if self._initialized:
-            return self.eventlet
+            return True
         return self._do_initialize()
 
     async def async_initialize(self):
-        """Initialize gevent asynchronously."""
+        """Initialize event loop asynchronously."""
         if self._initialized:
-            return self.eventlet
+            return True
         
         # If we're in an event loop, use sync initialization
         try:
@@ -120,11 +84,11 @@ class GeventManager:
         self._initialized = False
 
     def cleanup(self):
-        """Clean up gevent resources synchronously."""
+        """Clean up event loop resources synchronously."""
         return self._do_cleanup()
 
     async def async_cleanup(self):
-        """Clean up gevent resources asynchronously."""
+        """Clean up event loop resources asynchronously."""
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
@@ -136,7 +100,7 @@ class GeventManager:
 
     @asynccontextmanager
     async def run_context(self):
-        """Context manager for running with gevent."""
+        """Context manager for running with event loop."""
         if not self._initialized:
             await self.async_initialize()
         try:
@@ -145,28 +109,28 @@ class GeventManager:
             await self.async_cleanup()
 
 # Create global manager instance
-manager = GeventManager()
+manager = AsyncManager()
 
 def init():
-    """Initialize gevent and event loop synchronously."""
+    """Initialize event loop synchronously."""
     try:
         return manager.initialize()
     except Exception as e:
-        logger.error("Failed to initialize gevent: %s", str(e))
+        logger.error("Failed to initialize event loop: %s", str(e))
         raise
 
 async def async_init():
-    """Initialize gevent and event loop asynchronously."""
+    """Initialize event loop asynchronously."""
     try:
         return await manager.async_initialize()
     except Exception as e:
-        logger.error("Failed to initialize gevent: %s", str(e), exc_info=True)
+        logger.error("Failed to initialize event loop: %s", str(e), exc_info=True)
         raise
 
-async def run_with_eventlet(coro):
-    """Run a coroutine with gevent context."""
+async def run_with_async_context(coro):
+    """Run a coroutine with event loop context."""
     async with manager.run_context():
         return await coro
 
-# Initialize on module import to ensure early patching
+# Initialize on module import to ensure early setup
 init()

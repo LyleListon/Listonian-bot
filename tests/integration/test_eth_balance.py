@@ -1,9 +1,10 @@
 import os
 import json
-import eventlet
+import asyncio
+import aiohttp
 from arbitrage_bot.utils.secure_env import init_secure_environment
 
-def get_eth_balance(wallet_address):
+async def get_eth_balance(wallet_address):
     try:
         # Initialize secure environment
         secure_env = init_secure_environment()
@@ -19,35 +20,43 @@ def get_eth_balance(wallet_address):
             if not wallet_address:
                 raise ValueError("No wallet address provided and failed to load from secure environment")
         
-        http = eventlet.import_patched('eventlet.green.urllib.request')
-        data = json.dumps({
+        data = {
             "id": 1,
             "jsonrpc": "2.0",
             "method": "eth_getBalance",
             "params": [wallet_address, "latest"]
-        }).encode('utf-8')
+        }
         
-        req = http.Request(
-            f"https://base-mainnet.g.alchemy.com/v2/{api_key}",
-            data=data,
-            headers={'Content-Type': 'application/json'}
-        )
-        response = http.urlopen(req, timeout=5).read()
+        url = "https://base-mainnet.g.alchemy.com/v2/{}".format(api_key)
+        headers = {'Content-Type': 'application/json'}
         
-        result = json.loads(response)
-        if 'error' in result:
-            raise ValueError(f"API error: {result['error']['message']}")
-        
-        eth_balance = int(result['result'], 16)  # Convert hex to int
-        eth_balance_in_eth = eth_balance / 1e18  # Convert wei to ETH
-        print(f"Wallet Address: {wallet_address}")
-        print(f"ETH Balance: {eth_balance_in_eth:.6f} ETH")
-        return eth_balance
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=data, headers=headers, timeout=5) as response:
+                result = await response.json()
+                
+                if 'error' in result:
+                    raise ValueError("API error: {}".format(result['error']['message']))
+                
+                eth_balance = int(result['result'], 16)  # Convert hex to int
+                eth_balance_in_eth = eth_balance / 1e18  # Convert wei to ETH
+                print("Wallet Address: {}".format(wallet_address))
+                print("ETH Balance: {:.6f} ETH".format(eth_balance_in_eth))
+                return eth_balance
         
     except Exception as e:
-        print(f"Error: {e}")
+        print("Error: {}".format(e))
         return 0
 
-if __name__ == '__main__':
+async def main():
+    """Main entry point."""
     # Use None to get wallet from secure environment
-    get_eth_balance(None)
+    await get_eth_balance(None)
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Test stopped by user")
+    except Exception as e:
+        print("Test error: {}".format(e))
+        raise

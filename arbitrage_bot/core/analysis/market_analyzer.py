@@ -7,10 +7,11 @@ __all__ = [
 
 import logging
 import math
-import time
-from typing import Dict, Any, List, Optional
+import asyncio
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 from decimal import Decimal
+
 from ..web3.web3_manager import Web3Manager
 from ..models.opportunity import Opportunity
 from ..models.market_models import MarketCondition, MarketTrend, PricePoint
@@ -25,53 +26,81 @@ class MarketAnalyzer:
         self.web3_manager = web3_manager
         self.w3 = web3_manager.w3
         self.config = config
-        self._price_cache = {}
+        # Type hint as comment to maintain compatibility
+        self._price_cache = {}  # type: Dict[str, Tuple[datetime, float]]
         self._cache_duration = timedelta(seconds=30)  # Cache prices for 30 seconds
         self.market_conditions = {}  # Store market conditions for each token
         self.dex_instances = {}  # Store DEX instances
         self.dex_manager = None  # Will be set by DEX manager
+        self._init_lock = asyncio.Lock()
+        self._cache_lock = asyncio.Lock()
         self.initialized = False
         logger.debug("Market analyzer initialized")
 
-    def set_dex_manager(self, dex_manager: Any):
+    def set_dex_manager(self, dex_manager: Any) -> None:
         """Set the DEX manager instance."""
         self.dex_manager = dex_manager
         logger.debug("DEX manager set in market analyzer")
 
     async def initialize(self) -> bool:
         """Initialize the market analyzer."""
-        try:
+        if self.initialized:
+            return True
+            
+        async with self._init_lock:
+            # Double-check under lock
+            if self.initialized:
+                return True
+                
             if not self.dex_manager:
                 logger.error("DEX manager not set")
                 return False
             
-            self.initialized = True
-            return True
-        except Exception as e:
-            logger.error("Failed to initialize market analyzer: %s", str(e))
+            try:
+                # Verify DEX manager is ready
+                if not self.dex_manager.is_ready():
+                    logger.error("DEX manager not ready")
+                    return False
+                
+                self.initialized = True
+                return True
+            except Exception as e:
+                logger.error("Failed to initialize market analyzer: %s", str(e))
+                return False
+
+    def _validate_token_data(self, token_data: Optional[Dict[str, Any]]) -> bool:
+        """Validate token data structure."""
+        if not token_data or not isinstance(token_data, dict):
             return False
+        if 'address' not in token_data:
+            return False
+        if not self.w3.is_address(token_data['address']):
+            return False
+        return True
 
     async def get_market_condition(self, token: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Get current market condition for token."""
         try:
-            if not self.initialized:
-                await self.initialize()
+            if not self.initialized and not await self.initialize():
+                return None
 
             # If token is a string (symbol), get token data from config
             if isinstance(token, str):
                 token_data = self.config.get('tokens', {}).get(token)
-                if not token_data:
+                if not self._validate_token_data(token_data):
                     logger.error("Token %s not found in config", token)
                     return None
             else:
                 token_data = token
 
-            # Get real price data
-            if not token_data or 'address' not in token_data:
+            if not self._validate_token_data(token_data):
                 logger.error("Invalid token data: %s", str(token_data))
                 return None
 
             price = await self._fetch_real_price(token_data)
+            if price is None:
+                return None
+                
             price_decimal = Decimal(str(price))
 
             # Create market condition
@@ -103,11 +132,11 @@ class MarketAnalyzer:
             raise ValueError("DEX manager not set")
         return self.dex_manager.get_dex(dex_name)
 
-    async def _fetch_real_price(self, token: Dict[str, Any]) -> float:
+    async def _fetch_real_price(self, token: Dict[str, Any]) -> Optional[float]:
         """Fetch real price data from all enabled DEXes."""
         try:
-            if not self.initialized:
-                await self.initialize()
+            if not self.initialized and not await self.initialize():
+                return None
 
             # Ensure token address is valid
             address = token['address']
@@ -117,7 +146,8 @@ class MarketAnalyzer:
             # Get prices from enabled DEXes
             prices = await self.dex_manager.get_token_price(address)
             if not prices:
-                raise ValueError("No valid prices found")
+                logger.error("No valid prices found for token %s", address)
+                return None
 
             # Calculate median price to filter out outliers
             price_list = list(prices.values())
@@ -129,55 +159,64 @@ class MarketAnalyzer:
                 return float(price_list[mid])
 
         except Exception as e:
-            logger.error("Error fetching real price: %s", str(e))
-            raise
+            logger.error("Error fetching real price for %s: %s", token.get('address', 'unknown'), str(e))
+            return None
 
     def validate_price(self, price: float) -> bool:
         """Validate if a price is valid."""
-        if not isinstance(price, (int, float)):
+        if not isinstance(price, (int, float, Decimal)):
             return False
-        return price > 0 and not math.isinf(price) and not math.isnan(price)
+        try:
+            float_price = float(price)
+            return float_price > 0 and not math.isinf(float_price) and not math.isnan(float_price)
+        except (ValueError, TypeError):
+            return False
 
-    def get_cached_price(self, token: str) -> Optional[float]:
+    async def get_cached_price(self, token: str) -> Optional[float]:
         """Get price from cache if available and not expired."""
-        cache_entry = self._price_cache.get(token)
-        if cache_entry:
-            timestamp, price = cache_entry
-            if datetime.now() - timestamp < self._cache_duration:
-                return price
-        return None
+        async with self._cache_lock:
+            cache_entry = self._price_cache.get(token)
+            if cache_entry:
+                timestamp, price = cache_entry
+                if datetime.now() - timestamp < self._cache_duration:
+                    return price
+            return None
 
     async def get_current_price(self, token: str) -> float:
         """Get current price, using cache if available."""
-        if not self.initialized:
-            await self.initialize()
+        if not self.initialized and not await self.initialize():
+            raise RuntimeError("Market analyzer not initialized")
 
-        cached_price = self.get_cached_price(token)
+        cached_price = await self.get_cached_price(token)
         if cached_price is not None:
             return cached_price
 
         token_data = self.config.get('tokens', {}).get(token)
-        if not token_data:
-            raise ValueError("Token %s not found in config", token)
+        if not self._validate_token_data(token_data):
+            raise ValueError("Token {} not found in config".format(token))
 
         price = await self._fetch_real_price(token_data)
+        if price is None:
+            raise ValueError("Could not fetch price for token {}".format(token))
+            
         if not self.validate_price(price):
-            raise ValueError("Invalid price received for %s: %s", token, str(price))
+            raise ValueError("Invalid price received for {}: {}".format(token, price))
 
-        self._price_cache[token] = (datetime.now(), price)
-        return price
+        async with self._cache_lock:
+            self._price_cache[token] = (datetime.now(), price)
+            return price
 
     def calculate_price_difference(self, price1: float, price2: float) -> float:
         """Calculate percentage difference between two prices."""
         if not (self.validate_price(price1) and self.validate_price(price2)):
             raise ValueError("Invalid prices provided")
-        return abs(price2 - price1) / price1
+        return abs(float(price2) - float(price1)) / float(price1)
 
     async def get_opportunities(self) -> List[Opportunity]:
         """Get current arbitrage opportunities."""
         try:
-            if not self.initialized:
-                await self.initialize()
+            if not self.initialized and not await self.initialize():
+                return []
 
             opportunities = []
             tokens = self.config.get("tokens", {})
@@ -189,7 +228,10 @@ class MarketAnalyzer:
 
                 # Get prices from enabled DEXes
                 prices = await self.dex_manager.get_token_price(token_data['address'])
-                
+                if not prices:
+                    logger.debug("No prices found for token %s", token_id)
+                    continue
+                    
                 # Find arbitrage opportunities
                 if len(prices) >= 2:
                     min_price = min(prices.values())
@@ -234,7 +276,6 @@ class MarketAnalyzer:
         except Exception as e:
             logger.error("Failed to get performance metrics: %s", str(e))
             return {}
-
 
 async def create_market_analyzer(
     web3_manager: Optional[Web3Manager] = None,

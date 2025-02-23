@@ -1,8 +1,7 @@
 """Flask application for arbitrage bot dashboard."""
 
-# Import eventlet patch first to ensure monkey patching is done before any other imports
 import asyncio
-from ..utils.eventlet_patch import manager as eventlet_manager, init
+from ..utils.async_manager import manager, async_init
 
 import os
 import json
@@ -10,9 +9,11 @@ import logging
 import time
 from datetime import datetime
 from typing import Any, Optional, Tuple
-from flask import Flask, render_template, send_from_directory, request
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
+from aiohttp import web
+import aiohttp_cors
+from aiohttp_sse import sse_response
+import aiohttp_jinja2
+import jinja2
 from ..core.memory.bank import create_memory_bank
 from ..core.storage.factory import create_storage_hub
 from ..core.distribution.manager import DistributionManager
@@ -29,38 +30,44 @@ from .websocket_server import WebSocketServer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logging.getLogger('werkzeug').setLevel(logging.ERROR)
-logging.getLogger('socketio').setLevel(logging.ERROR)
-logging.getLogger('engineio').setLevel(logging.ERROR)
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 INIT_WAIT = 2  # Wait 2 seconds between component initializations
 
-async def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketIO]:
-    """Create Flask application."""
+async def create_app(memory_bank=None, storage_hub=None) -> Tuple[web.Application, WebSocketServer]:
+    """Create aiohttp application."""
     try:
-        # Initialize eventlet synchronously
+        # Initialize async manager
         try:
-            eventlet = eventlet_manager.eventlet or init()
+            await async_init()
+            if not manager._initialized:
+                raise RuntimeError("Failed to initialize async manager")
+            logger.info("Successfully initialized async event loop")
         except Exception as e:
-            logger.error("Failed to initialize eventlet: " + str(e))
+            logger.error("Failed to initialize async manager: %s", str(e))
             raise
         
-        # Initialize Flask app with absolute paths
+        # Initialize aiohttp app with absolute paths
         dashboard_dir = os.path.dirname(os.path.abspath(__file__))
-        app = Flask(__name__, 
-            template_folder=os.path.join(dashboard_dir, 'templates'),
-            static_folder=os.path.join(dashboard_dir, 'static'),
-            static_url_path='/static'
+        app = web.Application()
+        
+        # Set up jinja2 templates
+        aiohttp_jinja2.setup(
+            app,
+            loader=jinja2.FileSystemLoader(os.path.join(dashboard_dir, 'templates'))
         )
-        app.config['SECRET_KEY'] = os.urandom(24)
+        
+        # Set up static files
+        app.router.add_static('/static', os.path.join(dashboard_dir, 'static'))
         
         # Configure CORS
-        CORS(app, resources={
-            r"/*": {"origins": "*"},
-            r"/socket.io/*": {"origins": "*"}
+        cors = aiohttp_cors.setup(app, defaults={
+            "*": aiohttp_cors.ResourceOptions(
+                allow_credentials=True,
+                expose_headers="*",
+                allow_headers="*"
+            )
         })
 
         # Load config
@@ -77,29 +84,29 @@ async def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketI
             provider_url=os.getenv('BASE_RPC_URL'),
             chain_id=config['network']['chainId']
         )
-        eventlet.sleep(INIT_WAIT)
+        await asyncio.sleep(INIT_WAIT)
 
         # Use provided memory_bank or create new one
         if memory_bank is None:
-            memory_bank = create_memory_bank()
-        eventlet.sleep(INIT_WAIT)
+            memory_bank = await create_memory_bank()
+        await asyncio.sleep(INIT_WAIT)
 
         # Use provided storage_hub or create new one
         if storage_hub is None:
             storage_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'storage')
             os.makedirs(storage_path, exist_ok=True)
-            storage_hub = create_storage_hub(base_path=storage_path, memory_bank=memory_bank)
-        eventlet.sleep(INIT_WAIT)
+            storage_hub = await create_storage_hub(base_path=storage_path, memory_bank=memory_bank)
+        await asyncio.sleep(INIT_WAIT)
 
-        market_analyzer = create_memory_market_analyzer(web3_manager, config)
-        eventlet.sleep(INIT_WAIT)
+        market_analyzer = await create_memory_market_analyzer(web3_manager, config)
+        await asyncio.sleep(INIT_WAIT)
 
-        portfolio_tracker = create_portfolio_tracker(
+        portfolio_tracker = await create_portfolio_tracker(
             web3_manager=web3_manager,
             wallet_address=web3_manager.wallet_address,
             config=config
         )
-        eventlet.sleep(INIT_WAIT)
+        await asyncio.sleep(INIT_WAIT)
 
         # Initialize distribution manager
         distribution_config = DistributionConfig(
@@ -115,10 +122,10 @@ async def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketI
         distribution_manager = DistributionManager(
             config=distribution_config,
             memory_bank=memory_bank,
-            storage_hub=storage_hub  # Pass the storage_hub here
+            storage_hub=storage_hub
         )
-        distribution_manager.initialize()
-        eventlet.sleep(INIT_WAIT)
+        await distribution_manager.initialize()
+        await asyncio.sleep(INIT_WAIT)
         
         # Initialize execution manager
         execution_config = ExecutionConfig(
@@ -136,8 +143,8 @@ async def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketI
             distribution_manager=distribution_manager,
             memory_bank=memory_bank
         )
-        execution_manager.initialize()
-        eventlet.sleep(INIT_WAIT)
+        await execution_manager.initialize()
+        await asyncio.sleep(INIT_WAIT)
         
         # Initialize gas optimizer
         gas_optimizer = await create_gas_optimizer(
@@ -146,79 +153,74 @@ async def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketI
         )
         logger.info("Initializing gas optimizer...")
         await gas_optimizer.initialize()
-        eventlet.sleep(INIT_WAIT)
-
-        # Initialize SocketIO with eventlet
-        socketio = SocketIO(
-            app,
-            cors_allowed_origins="*",
-            async_mode='aiohttp',  # Use aiohttp instead of eventlet
-            ping_timeout=60,
-            ping_interval=25,
-            max_http_buffer_size=1000000,
-            transport=['websocket', 'polling'],
-            path='/socket.io/'
-        )
+        await asyncio.sleep(INIT_WAIT)
 
         # Routes
-        @app.route('/')
-        def index():
+        @aiohttp_jinja2.template('index.html')
+        async def index(request):
             """Render dashboard index page."""
-            return render_template('index.html')
+            return {}
 
-        @app.route('/static/<path:path>')
-        def send_static(path):
-            """Serve static files."""
-            return send_from_directory(os.path.join(dashboard_dir, 'static'), path)
-
-        @app.route('/metrics')
-        def metrics():
+        @aiohttp_jinja2.template('metrics.html')
+        async def metrics(request):
             """Render metrics dashboard page."""
-            return render_template('metrics.html')
+            return {}
 
-        @app.route('/opportunities')
-        def opportunities():
+        @aiohttp_jinja2.template('opportunities.html')
+        async def opportunities(request):
             """Render opportunities page."""
-            return render_template('opportunities.html')
+            return {}
 
-        @app.route('/history')
-        def history():
+        @aiohttp_jinja2.template('history.html')
+        async def history(request):
             """Render history page."""
-            return render_template('history.html')
+            return {}
 
-        @app.route('/analytics')
-        def analytics():
+        @aiohttp_jinja2.template('analytics.html')
+        async def analytics(request):
             """Render analytics page."""
-            return render_template('analytics.html')
+            return {}
 
-        @app.route('/memory')
-        def memory():
+        @aiohttp_jinja2.template('memory.html')
+        async def memory(request):
             """Render memory page."""
-            return render_template('memory.html')
+            return {}
 
-        @app.route('/storage')
-        def storage():
+        @aiohttp_jinja2.template('storage.html')
+        async def storage(request):
             """Render storage page."""
-            return render_template('storage.html')
+            return {}
 
-        @app.route('/distribution')
-        def distribution():
+        @aiohttp_jinja2.template('distribution.html')
+        async def distribution(request):
             """Render distribution page."""
-            return render_template('distribution.html')
+            return {}
 
-        @app.route('/execution')
-        def execution():
+        @aiohttp_jinja2.template('execution.html')
+        async def execution(request):
             """Render execution page."""
-            return render_template('execution.html')
+            return {}
 
-        @app.route('/settings')
-        def settings():
+        @aiohttp_jinja2.template('settings.html')
+        async def settings(request):
             """Render settings page."""
-            return render_template('settings.html')
+            return {}
+
+        # Add routes
+        app.router.add_get('/', index)
+        app.router.add_get('/metrics', metrics)
+        app.router.add_get('/opportunities', opportunities)
+        app.router.add_get('/history', history)
+        app.router.add_get('/analytics', analytics)
+        app.router.add_get('/memory', memory)
+        app.router.add_get('/storage', storage)
+        app.router.add_get('/distribution', distribution)
+        app.router.add_get('/execution', execution)
+        app.router.add_get('/settings', settings)
 
         # Initialize WebSocket server
         ws_server = WebSocketServer(
-            socketio=socketio,
+            app=app,
             market_analyzer=market_analyzer,
             portfolio_tracker=portfolio_tracker,
             memory_bank=memory_bank,
@@ -227,15 +229,15 @@ async def create_app(memory_bank=None, storage_hub=None) -> Tuple[Flask, SocketI
             execution_manager=execution_manager,
             gas_optimizer=gas_optimizer
         )
-        ws_server.initialize()
-        eventlet.sleep(INIT_WAIT)
+        await ws_server.initialize()
+        await asyncio.sleep(INIT_WAIT)
 
         # Start WebSocket server
-        ws_server.start()
+        await ws_server.start()
         logger.info("WebSocket server started")
 
-        return app, socketio
+        return app, ws_server
 
     except Exception as e:
-        logger.error("Failed to create application: " + str(e))
+        logger.error("Failed to create application: %s", str(e))
         raise

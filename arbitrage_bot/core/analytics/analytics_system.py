@@ -1,7 +1,8 @@
 """Analytics system for tracking and analyzing trading performance."""
 
 import logging
-from ...utils.eventlet_patch import manager as eventlet_manager
+import asyncio
+from ...utils.async_manager import manager
 from typing import Dict, Any, Optional, List, Tuple, Set
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -13,9 +14,6 @@ from ..models.analytics_models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Get eventlet instance from manager
-eventlet = eventlet_manager.eventlet
 
 class AnalyticsSystem:
     """Manages analytics and performance tracking."""
@@ -30,8 +28,26 @@ class AnalyticsSystem:
         self.gas_metrics = {}
         self.performance_metrics = {}
         self.market_metrics = {}
-        self._initialize_metrics()
-        logger.debug("Analytics system initialized")
+        
+        # Initialize locks for thread safety
+        self._trade_lock = asyncio.Lock()
+        self._gas_lock = asyncio.Lock()
+        self._performance_lock = asyncio.Lock()
+        self._market_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
+        self._initialized = False
+        
+        logger.debug("Analytics system created")
+
+    async def initialize(self):
+        """Initialize analytics system."""
+        async with self._init_lock:
+            if self._initialized:
+                return
+            
+            self._initialize_metrics()
+            self._initialized = True
+            logger.debug("Analytics system initialized")
 
     def set_dex_manager(self, dex_manager: Any):
         """Set the DEX manager instance."""
@@ -104,305 +120,315 @@ class AnalyticsSystem:
             'last_update': datetime.now()
         }
 
-    def update_trade_metrics(self, trade_data: Dict[str, Any]):
+    async def update_trade_metrics(self, trade_data: Dict[str, Any]):
         """Update trade-related metrics."""
         try:
-            # Extract trade data
-            success = trade_data.get('success', False)
-            volume = Decimal(str(trade_data.get('volume', 0)))
-            profit = Decimal(str(trade_data.get('profit', 0)))
-            pair = trade_data.get('pair')
-            dex = trade_data.get('dex')
+            async with self._trade_lock:
+                # Extract trade data
+                success = trade_data.get('success', False)
+                volume = Decimal(str(trade_data.get('volume', 0)))
+                profit = Decimal(str(trade_data.get('profit', 0)))
+                pair = trade_data.get('pair')
+                dex = trade_data.get('dex')
 
-            # Update total metrics
-            self.trade_metrics['total_trades'] += 1
-            if success:
-                self.trade_metrics['successful_trades'] += 1
-            else:
-                self.trade_metrics['failed_trades'] += 1
+                # Update total metrics
+                self.trade_metrics['total_trades'] += 1
+                if success:
+                    self.trade_metrics['successful_trades'] += 1
+                else:
+                    self.trade_metrics['failed_trades'] += 1
 
-            self.trade_metrics['total_volume'] += volume
-            self.trade_metrics['total_profit'] += profit
+                self.trade_metrics['total_volume'] += volume
+                self.trade_metrics['total_profit'] += profit
 
-            # Update success rate
-            total = self.trade_metrics['total_trades']
-            if total > 0:
-                self.trade_metrics['success_rate'] = (
-                    self.trade_metrics['successful_trades'] / total * 100
-                )
+                # Update success rate
+                total = self.trade_metrics['total_trades']
+                if total > 0:
+                    self.trade_metrics['success_rate'] = (
+                        self.trade_metrics['successful_trades'] / total * 100
+                    )
 
-            # Update average profit
-            if self.trade_metrics['successful_trades'] > 0:
-                self.trade_metrics['average_profit_per_trade'] = (
-                    self.trade_metrics['total_profit'] /
-                    self.trade_metrics['successful_trades']
-                )
+                # Update average profit
+                if self.trade_metrics['successful_trades'] > 0:
+                    self.trade_metrics['average_profit_per_trade'] = (
+                        self.trade_metrics['total_profit'] /
+                        self.trade_metrics['successful_trades']
+                    )
 
-            # Update pair metrics
-            if pair:
-                if pair not in self.trade_metrics['trades_by_pair']:
-                    self.trade_metrics['trades_by_pair'][pair] = 0
-                    self.trade_metrics['profit_by_pair'][pair] = Decimal('0')
-                self.trade_metrics['trades_by_pair'][pair] += 1
-                self.trade_metrics['profit_by_pair'][pair] += profit
+                # Update pair metrics
+                if pair:
+                    if pair not in self.trade_metrics['trades_by_pair']:
+                        self.trade_metrics['trades_by_pair'][pair] = 0
+                        self.trade_metrics['profit_by_pair'][pair] = Decimal('0')
+                    self.trade_metrics['trades_by_pair'][pair] += 1
+                    self.trade_metrics['profit_by_pair'][pair] += profit
 
-            # Update DEX metrics
-            if dex:
-                if dex not in self.trade_metrics['trades_by_dex']:
-                    self.trade_metrics['trades_by_dex'][dex] = 0
-                    self.trade_metrics['profit_by_dex'][dex] = Decimal('0')
-                self.trade_metrics['trades_by_dex'][dex] += 1
-                self.trade_metrics['profit_by_dex'][dex] += profit
+                # Update DEX metrics
+                if dex:
+                    if dex not in self.trade_metrics['trades_by_dex']:
+                        self.trade_metrics['trades_by_dex'][dex] = 0
+                        self.trade_metrics['profit_by_dex'][dex] = Decimal('0')
+                    self.trade_metrics['trades_by_dex'][dex] += 1
+                    self.trade_metrics['profit_by_dex'][dex] += profit
 
-            # Update 24h metrics
-            self.trade_metrics['last_24h']['trades'] += 1
-            self.trade_metrics['last_24h']['volume'] += volume
-            self.trade_metrics['last_24h']['profit'] += profit
+                # Update 24h metrics
+                self.trade_metrics['last_24h']['trades'] += 1
+                self.trade_metrics['last_24h']['volume'] += volume
+                self.trade_metrics['last_24h']['profit'] += profit
 
-            logger.debug("Updated trade metrics: %s", trade_data)
+                logger.debug("Updated trade metrics: %s", trade_data)
 
         except Exception as e:
             logger.error("Failed to update trade metrics: %s", str(e))
 
-    def update_gas_metrics(self, gas_data: Dict[str, Any]):
+    async def update_gas_metrics(self, gas_data: Dict[str, Any]):
         """Update gas-related metrics."""
         try:
-            # Extract gas data
-            gas_used = int(gas_data.get('gas_used', 0))
-            gas_cost = Decimal(str(gas_data.get('gas_cost', 0)))
-            dex = gas_data.get('dex')
-            pair = gas_data.get('pair')
+            async with self._gas_lock:
+                # Extract gas data
+                gas_used = int(gas_data.get('gas_used', 0))
+                gas_cost = Decimal(str(gas_data.get('gas_cost', 0)))
+                dex = gas_data.get('dex')
+                pair = gas_data.get('pair')
 
-            # Update total metrics
-            self.gas_metrics['total_gas_used'] += gas_used
-            self.gas_metrics['total_gas_cost'] += gas_cost
+                # Update total metrics
+                self.gas_metrics['total_gas_used'] += gas_used
+                self.gas_metrics['total_gas_cost'] += gas_cost
 
-            # Update average metrics
-            total_trades = self.trade_metrics['total_trades']
-            if total_trades > 0:
-                self.gas_metrics['average_gas_per_trade'] = (
-                    self.gas_metrics['total_gas_used'] / total_trades
-                )
-                self.gas_metrics['average_gas_cost'] = (
-                    self.gas_metrics['total_gas_cost'] / total_trades
-                )
+                # Update average metrics
+                total_trades = self.trade_metrics['total_trades']
+                if total_trades > 0:
+                    self.gas_metrics['average_gas_per_trade'] = (
+                        self.gas_metrics['total_gas_used'] / total_trades
+                    )
+                    self.gas_metrics['average_gas_cost'] = (
+                        self.gas_metrics['total_gas_cost'] / total_trades
+                    )
 
-            # Update DEX metrics
-            if dex:
-                if dex not in self.gas_metrics['gas_by_dex']:
-                    self.gas_metrics['gas_by_dex'][dex] = {
-                        'total_gas': 0,
-                        'total_cost': Decimal('0')
-                    }
-                self.gas_metrics['gas_by_dex'][dex]['total_gas'] += gas_used
-                self.gas_metrics['gas_by_dex'][dex]['total_cost'] += gas_cost
+                # Update DEX metrics
+                if dex:
+                    if dex not in self.gas_metrics['gas_by_dex']:
+                        self.gas_metrics['gas_by_dex'][dex] = {
+                            'total_gas': 0,
+                            'total_cost': Decimal('0')
+                        }
+                    self.gas_metrics['gas_by_dex'][dex]['total_gas'] += gas_used
+                    self.gas_metrics['gas_by_dex'][dex]['total_cost'] += gas_cost
 
-            # Update pair metrics
-            if pair:
-                if pair not in self.gas_metrics['gas_by_pair']:
-                    self.gas_metrics['gas_by_pair'][pair] = {
-                        'total_gas': 0,
-                        'total_cost': Decimal('0')
-                    }
-                self.gas_metrics['gas_by_pair'][pair]['total_gas'] += gas_used
-                self.gas_metrics['gas_by_pair'][pair]['total_cost'] += gas_cost
+                # Update pair metrics
+                if pair:
+                    if pair not in self.gas_metrics['gas_by_pair']:
+                        self.gas_metrics['gas_by_pair'][pair] = {
+                            'total_gas': 0,
+                            'total_cost': Decimal('0')
+                        }
+                    self.gas_metrics['gas_by_pair'][pair]['total_gas'] += gas_used
+                    self.gas_metrics['gas_by_pair'][pair]['total_cost'] += gas_cost
 
-            # Update 24h metrics
-            self.gas_metrics['last_24h']['gas_used'] += gas_used
-            self.gas_metrics['last_24h']['gas_cost'] += gas_cost
+                # Update 24h metrics
+                self.gas_metrics['last_24h']['gas_used'] += gas_used
+                self.gas_metrics['last_24h']['gas_cost'] += gas_cost
 
-            logger.debug("Updated gas metrics: %s", gas_data)
+                logger.debug("Updated gas metrics: %s", gas_data)
 
         except Exception as e:
             logger.error("Failed to update gas metrics: %s", str(e))
 
-    def update_performance_metrics(self, performance_data: Dict[str, Any]):
+    async def update_performance_metrics(self, performance_data: Dict[str, Any]):
         """Update performance-related metrics."""
         try:
-            # Extract performance data
-            opportunities = performance_data.get('opportunities', 0)
-            executions = performance_data.get('executions', 0)
-            response_time = performance_data.get('response_time', 0.0)
-            error = performance_data.get('error')
+            async with self._performance_lock:
+                # Extract performance data
+                opportunities = performance_data.get('opportunities', 0)
+                executions = performance_data.get('executions', 0)
+                response_time = performance_data.get('response_time', 0.0)
+                error = performance_data.get('error')
 
-            # Update total metrics
-            self.performance_metrics['total_opportunities'] += opportunities
-            self.performance_metrics['executed_opportunities'] += executions
-            self.performance_metrics['missed_opportunities'] += (
-                opportunities - executions
-            )
-
-            # Update execution success rate
-            if self.performance_metrics['total_opportunities'] > 0:
-                self.performance_metrics['execution_success_rate'] = (
-                    self.performance_metrics['executed_opportunities'] /
-                    self.performance_metrics['total_opportunities'] * 100
+                # Update total metrics
+                self.performance_metrics['total_opportunities'] += opportunities
+                self.performance_metrics['executed_opportunities'] += executions
+                self.performance_metrics['missed_opportunities'] += (
+                    opportunities - executions
                 )
 
-            # Update response time
-            current_avg = self.performance_metrics['average_response_time']
-            total_ops = self.performance_metrics['executed_opportunities']
-            if total_ops > 0:
-                self.performance_metrics['average_response_time'] = (
-                    (current_avg * (total_ops - 1) + response_time) / total_ops
-                )
-
-            # Update error metrics
-            if error:
-                error_type = error.get('type', 'unknown')
-                if error_type not in self.performance_metrics['errors_by_type']:
-                    self.performance_metrics['errors_by_type'][error_type] = 0
-                self.performance_metrics['errors_by_type'][error_type] += 1
-
-                total_ops = self.performance_metrics['total_opportunities']
-                total_errors = sum(
-                    self.performance_metrics['errors_by_type'].values()
-                )
-                if total_ops > 0:
-                    self.performance_metrics['error_rate'] = (
-                        total_errors / total_ops * 100
+                # Update execution success rate
+                if self.performance_metrics['total_opportunities'] > 0:
+                    self.performance_metrics['execution_success_rate'] = (
+                        self.performance_metrics['executed_opportunities'] /
+                        self.performance_metrics['total_opportunities'] * 100
                     )
 
-            # Update 24h metrics
-            self.performance_metrics['last_24h']['opportunities'] += opportunities
-            self.performance_metrics['last_24h']['executions'] += executions
-            if error:
-                self.performance_metrics['last_24h']['errors'] += 1
+                # Update response time
+                current_avg = self.performance_metrics['average_response_time']
+                total_ops = self.performance_metrics['executed_opportunities']
+                if total_ops > 0:
+                    self.performance_metrics['average_response_time'] = (
+                        (current_avg * (total_ops - 1) + response_time) / total_ops
+                    )
 
-            logger.debug("Updated performance metrics: %s", performance_data)
+                # Update error metrics
+                if error:
+                    error_type = error.get('type', 'unknown')
+                    if error_type not in self.performance_metrics['errors_by_type']:
+                        self.performance_metrics['errors_by_type'][error_type] = 0
+                    self.performance_metrics['errors_by_type'][error_type] += 1
+
+                    total_ops = self.performance_metrics['total_opportunities']
+                    total_errors = sum(
+                        self.performance_metrics['errors_by_type'].values()
+                    )
+                    if total_ops > 0:
+                        self.performance_metrics['error_rate'] = (
+                            total_errors / total_ops * 100
+                        )
+
+                # Update 24h metrics
+                self.performance_metrics['last_24h']['opportunities'] += opportunities
+                self.performance_metrics['last_24h']['executions'] += executions
+                if error:
+                    self.performance_metrics['last_24h']['errors'] += 1
+
+                logger.debug("Updated performance metrics: %s", performance_data)
 
         except Exception as e:
             logger.error("Failed to update performance metrics: %s", str(e))
 
-    def update_market_metrics(self, market_data: Dict[str, Any]):
+    async def update_market_metrics(self, market_data: Dict[str, Any]):
         """Update market-related metrics."""
         try:
-            # Extract market data
-            pair = market_data.get('pair')
-            liquidity = Decimal(str(market_data.get('liquidity', 0)))
-            volume = Decimal(str(market_data.get('volume', 0)))
-            volatility = float(market_data.get('volatility', 0))
-            spread = Decimal(str(market_data.get('spread', 0)))
+            async with self._market_lock:
+                # Extract market data
+                pair = market_data.get('pair')
+                liquidity = Decimal(str(market_data.get('liquidity', 0)))
+                volume = Decimal(str(market_data.get('volume', 0)))
+                volatility = float(market_data.get('volatility', 0))
+                spread = Decimal(str(market_data.get('spread', 0)))
 
-            if pair:
-                # Update liquidity
-                self.market_metrics['total_liquidity'][pair] = liquidity
+                if pair:
+                    # Update liquidity
+                    self.market_metrics['total_liquidity'][pair] = liquidity
 
-                # Update volume
-                self.market_metrics['volume_24h'][pair] = volume
+                    # Update volume
+                    self.market_metrics['volume_24h'][pair] = volume
 
-                # Update volatility
-                self.market_metrics['price_volatility'][pair] = volatility
+                    # Update volatility
+                    self.market_metrics['price_volatility'][pair] = volatility
 
-                # Update spread
-                self.market_metrics['spread_by_pair'][pair] = spread
+                    # Update spread
+                    self.market_metrics['spread_by_pair'][pair] = spread
 
-            self.market_metrics['last_update'] = datetime.now()
+                self.market_metrics['last_update'] = datetime.now()
 
-            logger.debug("Updated market metrics: %s", market_data)
+                logger.debug("Updated market metrics: %s", market_data)
 
         except Exception as e:
             logger.error("Failed to update market metrics: %s", str(e))
 
-    def get_analytics_summary(self) -> Dict[str, Any]:
+    async def get_analytics_summary(self) -> Dict[str, Any]:
         """Get a summary of all analytics metrics."""
         try:
-            return {
-                'trade_metrics': self.trade_metrics,
-                'gas_metrics': self.gas_metrics,
-                'performance_metrics': self.performance_metrics,
-                'market_metrics': self.market_metrics,
-                'timestamp': datetime.now().timestamp()
-            }
+            async with self._trade_lock, self._gas_lock, self._performance_lock, self._market_lock:
+                return {
+                    'trade_metrics': self.trade_metrics,
+                    'gas_metrics': self.gas_metrics,
+                    'performance_metrics': self.performance_metrics,
+                    'market_metrics': self.market_metrics,
+                    'timestamp': datetime.now().timestamp()
+                }
         except Exception as e:
             logger.error("Failed to get analytics summary: %s", str(e))
             return {}
 
-    def get_profit_analysis(self) -> Dict[str, Any]:
+    async def get_profit_analysis(self) -> Dict[str, Any]:
         """Get detailed profit analysis."""
         try:
-            return {
-                'total_profit': self.trade_metrics['total_profit'],
-                'profit_by_pair': self.trade_metrics['profit_by_pair'],
-                'profit_by_dex': self.trade_metrics['profit_by_dex'],
-                'average_profit': self.trade_metrics['average_profit_per_trade'],
-                'gas_impact': self.gas_metrics['total_gas_cost'],
-                'net_profit': (
-                    self.trade_metrics['total_profit'] -
-                    self.gas_metrics['total_gas_cost']
-                ),
-                'timestamp': datetime.now().timestamp()
-            }
+            async with self._trade_lock, self._gas_lock:
+                return {
+                    'total_profit': self.trade_metrics['total_profit'],
+                    'profit_by_pair': self.trade_metrics['profit_by_pair'],
+                    'profit_by_dex': self.trade_metrics['profit_by_dex'],
+                    'average_profit': self.trade_metrics['average_profit_per_trade'],
+                    'gas_impact': self.gas_metrics['total_gas_cost'],
+                    'net_profit': (
+                        self.trade_metrics['total_profit'] -
+                        self.gas_metrics['total_gas_cost']
+                    ),
+                    'timestamp': datetime.now().timestamp()
+                }
         except Exception as e:
             logger.error("Failed to get profit analysis: %s", str(e))
             return {}
 
-    def get_performance_analysis(self) -> Dict[str, Any]:
+    async def get_performance_analysis(self) -> Dict[str, Any]:
         """Get detailed performance analysis."""
         try:
-            return {
-                'success_rate': self.trade_metrics['success_rate'],
-                'execution_rate': self.performance_metrics['execution_success_rate'],
-                'error_rate': self.performance_metrics['error_rate'],
-                'response_time': self.performance_metrics['average_response_time'],
-                'gas_efficiency': {
-                    'average_gas': self.gas_metrics['average_gas_per_trade'],
-                    'average_cost': self.gas_metrics['average_gas_cost']
-                },
-                'timestamp': datetime.now().timestamp()
-            }
+            async with self._trade_lock, self._performance_lock, self._gas_lock:
+                return {
+                    'success_rate': self.trade_metrics['success_rate'],
+                    'execution_rate': self.performance_metrics['execution_success_rate'],
+                    'error_rate': self.performance_metrics['error_rate'],
+                    'response_time': self.performance_metrics['average_response_time'],
+                    'gas_efficiency': {
+                        'average_gas': self.gas_metrics['average_gas_per_trade'],
+                        'average_cost': self.gas_metrics['average_gas_cost']
+                    },
+                    'timestamp': datetime.now().timestamp()
+                }
         except Exception as e:
             logger.error("Failed to get performance analysis: %s", str(e))
             return {}
 
-    def get_market_analysis(self) -> Dict[str, Any]:
+    async def get_market_analysis(self) -> Dict[str, Any]:
         """Get detailed market analysis."""
         try:
-            return {
-                'liquidity': self.market_metrics['total_liquidity'],
-                'volume': self.market_metrics['volume_24h'],
-                'volatility': self.market_metrics['price_volatility'],
-                'spreads': self.market_metrics['spread_by_pair'],
-                'last_update': self.market_metrics['last_update'].timestamp()
-            }
+            async with self._market_lock:
+                return {
+                    'liquidity': self.market_metrics['total_liquidity'],
+                    'volume': self.market_metrics['volume_24h'],
+                    'volatility': self.market_metrics['price_volatility'],
+                    'spreads': self.market_metrics['spread_by_pair'],
+                    'last_update': self.market_metrics['last_update'].timestamp()
+                }
         except Exception as e:
             logger.error("Failed to get market analysis: %s", str(e))
             return {}
 
-    def cleanup_old_metrics(self):
+    async def cleanup_old_metrics(self):
         """Clean up metrics older than 24 hours."""
         try:
-            cutoff = datetime.now() - timedelta(hours=24)
+            async with self._trade_lock, self._gas_lock, self._performance_lock:
+                cutoff = datetime.now() - timedelta(hours=24)
 
-            # Reset 24h metrics
-            self.trade_metrics['last_24h'] = {
-                'trades': 0,
-                'volume': Decimal('0'),
-                'profit': Decimal('0')
-            }
+                # Reset 24h metrics
+                self.trade_metrics['last_24h'] = {
+                    'trades': 0,
+                    'volume': Decimal('0'),
+                    'profit': Decimal('0')
+                }
 
-            self.gas_metrics['last_24h'] = {
-                'gas_used': 0,
-                'gas_cost': Decimal('0')
-            }
+                self.gas_metrics['last_24h'] = {
+                    'gas_used': 0,
+                    'gas_cost': Decimal('0')
+                }
 
-            self.performance_metrics['last_24h'] = {
-                'opportunities': 0,
-                'executions': 0,
-                'errors': 0
-            }
+                self.performance_metrics['last_24h'] = {
+                    'opportunities': 0,
+                    'executions': 0,
+                    'errors': 0
+                }
 
-            logger.debug("Cleaned up old metrics")
+                logger.debug("Cleaned up old metrics")
 
         except Exception as e:
             logger.error("Failed to cleanup old metrics: %s", str(e))
 
 
-def create_analytics_system(config: Dict[str, Any]) -> AnalyticsSystem:
+async def create_analytics_system(config: Dict[str, Any]) -> AnalyticsSystem:
     """Create and initialize analytics system."""
     try:
         analytics = AnalyticsSystem(config)
-        logger.debug("Created analytics system")
+        await analytics.initialize()
+        logger.debug("Created and initialized analytics system")
         return analytics
     except Exception as e:
         logger.error("Failed to create analytics system: %s", str(e))

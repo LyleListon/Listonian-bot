@@ -1,8 +1,5 @@
 # Core dependencies
-flask-socketio>=5.3.0
-eventlet==0.33.3
 cryptography>=41.0.0
-flask-cors>=4.0.0
 web3>=7.0.0
 
 # Environment and config
@@ -12,6 +9,10 @@ jsonschema>=4.20.0
 
 # Async and networking
 aiohttp>=3.9.0
+aiohttp-cors>=0.7.0
+aiohttp-sse>=2.1.0
+aiohttp-jinja2>=1.5.0
+jinja2>=3.1.0
 websockets>=12.0
 requests>=2.31.0
 

@@ -1,21 +1,44 @@
 # Technical Context
 
 ## Development Environment
-- Python 3.12+
+- Python 3.12+ (required for improved async support)
 - Web3.py for blockchain interaction
-- Asyncio for async/await support
-- Gevent for event handling
+- Pure asyncio for async/await patterns
 - VSCode as primary IDE
 
 ## Core Dependencies
-- web3
-- gevent
-- asyncio
-- logging
-- decimal
-- typing
+- web3>=7.0.0 (for blockchain interaction)
+- aiohttp>=3.9.0 (for async HTTP and WebSocket)
+- asyncio (Python's built-in async library)
+- logging (for system logging)
+- decimal (for precise calculations)
+- typing (for type hints)
 
 ## Technical Requirements
+
+### Async Implementation Strategy
+IMPORTANT: This project uses pure asyncio/async/await patterns. We DO NOT use eventlet or gevent.
+
+1. Core Async Patterns
+   - All I/O operations must be async
+   - All contract interactions must be async
+   - All file operations must be async
+   - Proper async context management
+   - Resource cleanup must be async
+
+2. Thread Safety
+   - Lock management for shared resources
+   - Double-checked locking pattern
+   - Resource protection
+   - State consistency
+   - Concurrent access control
+
+3. Resource Management
+   - Async initialization
+   - Proper cleanup
+   - Resource monitoring
+   - Error recovery
+   - Performance tracking
 
 ### DEX Integration
 1. WETH Address Handling
@@ -38,21 +61,6 @@
    - Async event processing
    - Error recovery
    - Performance monitoring
-
-### Async Implementation
-1. Method Requirements
-   - All DEX methods must be async
-   - Proper await usage
-   - Error handling with context
-   - Timeout handling
-   - Performance tracking
-
-2. Event Loop Management
-   - Proper initialization
-   - Cleanup on shutdown
-   - Task management
-   - Resource cleanup
-   - Debug mode configuration
 
 ### Configuration Management
 1. Required Fields
@@ -205,3 +213,42 @@
 - Error handling
 - Permission checks
 - Token validation
+
+### Async Testing
+1. Core Testing
+   - Async method testing
+   - Lock management testing
+   - Resource cleanup testing
+   - Error recovery testing
+   - Performance testing
+
+2. Concurrency Testing
+   - Lock contention testing
+   - Race condition testing
+   - Resource sharing testing
+   - State consistency testing
+   - Error propagation testing
+
+3. Resource Testing
+   - Resource initialization testing
+   - Resource cleanup testing
+   - Resource leak testing
+   - Performance impact testing
+   - Error handling testing
+
+## Migration Notes
+As of February 2025, we have migrated from eventlet to pure asyncio/async/await patterns:
+- All eventlet code has been removed
+- All components use proper async/await
+- Thread safety has been implemented
+- Resource management has been enhanced
+- Performance has been optimized
+
+This migration provides:
+- Better async support
+- Improved error handling
+- Enhanced performance
+- Better resource management
+- Cleaner code structure
+
+Last Updated: 2025-02-23

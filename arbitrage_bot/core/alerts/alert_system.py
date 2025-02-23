@@ -2,7 +2,7 @@
 
 import logging
 import asyncio
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, Set, List
 from decimal import Decimal
 
 from ..analytics.analytics_system import AnalyticsSystem
@@ -27,8 +27,10 @@ class AlertSystem:
         self.analytics_system = analytics_system
         self.config = config
         self.monitoring = False
-        self._tasks = set()  # Set of asyncio.Task
+        self._tasks = set()  # type: Set[asyncio.Task]
         self._shutdown_event = asyncio.Event()
+        self._task_lock = asyncio.Lock()
+        self._shutdown_timeout = 30  # seconds
         logger.info("Alert system initialized")
 
     async def start_monitoring(self):
@@ -36,13 +38,20 @@ class AlertSystem:
         if self.monitoring:
             return
 
-        self.monitoring = True
-        self._shutdown_event.clear()
+        async with self._task_lock:
+            if self._tasks:  # Double-check under lock
+                return
+            
+            self.monitoring = True
+            self._shutdown_event.clear()
 
-        # Create monitoring tasks
-        monitor_task = asyncio.create_task(self._monitor_conditions())
-        self._tasks.add(monitor_task)
-        monitor_task.add_done_callback(self._tasks.discard)
+            try:
+                # Create monitoring tasks
+                monitor_task = asyncio.create_task(self._monitor_conditions())
+                self._tasks.add(monitor_task)
+                monitor_task.add_done_callback(lambda t: asyncio.create_task(self._handle_task_done(t)))
+            except Exception as e:
+                logger.error("Failed to create monitoring task: %s", str(e))
 
         logger.info("Alert monitoring started")
 
@@ -51,20 +60,45 @@ class AlertSystem:
         if not self.monitoring:
             return
 
-        # Signal shutdown
-        self._shutdown_event.set()
-        self.monitoring = False
+        async with self._task_lock:
+            # Signal shutdown
+            self._shutdown_event.set()
+            self.monitoring = False
 
-        # Cancel all tasks
-        for task in self._tasks:
-            task.cancel()
+            if not self._tasks:
+                return
 
-        # Wait for tasks to complete
-        if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
-        self._tasks.clear()
+            # Cancel all tasks
+            pending_tasks = list(self._tasks)
+            for task in pending_tasks:
+                if not task.done():
+                    task.cancel()
 
-        logger.info("Alert monitoring stopped")
+            # Wait for tasks with timeout
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*pending_tasks, return_exceptions=True),
+                    timeout=self._shutdown_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error("Shutdown timed out after %s seconds", self._shutdown_timeout)
+            except Exception as e:
+                logger.error("Error during shutdown: %s", str(e))
+            finally:
+                self._tasks.clear()
+
+            logger.info("Alert monitoring stopped")
+
+    async def _handle_task_done(self, task: asyncio.Task) -> None:
+        """Handle completed task cleanup."""
+        async with self._task_lock:
+            self._tasks.discard(task)
+            if task.cancelled():
+                return
+
+            exc = task.exception()
+            if exc is not None:
+                logger.error("Task failed with error: %s", str(exc))
 
     async def _monitor_conditions(self):
         """Monitor conditions and generate alerts."""
@@ -161,7 +195,7 @@ async def create_alert_system(
             config=config
         )
         # Start monitoring in a task to avoid blocking
-        asyncio.create_task(system.start_monitoring())
+        await system.start_monitoring()
         return system
     except Exception as e:
         logger.error("Failed to create alert system: %s", str(e))

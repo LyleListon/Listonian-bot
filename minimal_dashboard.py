@@ -6,15 +6,15 @@ from datetime import datetime
 import json
 import asyncio
 from decimal import Decimal
+from aiohttp import web
+import aiohttp_cors
+from aiohttp_sse import sse_response
+import aiohttp
+import jinja2
+import aiohttp_jinja2
 
-# Import eventlet and patch first
-import eventlet
-eventlet.monkey_patch()
-
-from flask import Flask, render_template
-from flask_socketio import SocketIO
 from arbitrage_bot.utils.config_loader import load_config
-from arbitrage_bot.core.memory import get_memory_bank, init_memory_bank
+from arbitrage_bot.core.memory import create_memory_bank, get_memory_bank
 from arbitrage_bot.utils.secure_env import init_secure_environment
 from arbitrage_bot.core.web3.web3_manager import create_web3_manager
 from arbitrage_bot.utils.gas_logger import GasLogger
@@ -26,7 +26,8 @@ logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
 os.makedirs(logs_dir, exist_ok=True)
 
 # Set up logging to file
-log_file = os.path.join(logs_dir, f'dashboard_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+log_file = os.path.join(logs_dir, 'dashboard_{}.log'.format(timestamp))
 file_handler = logging.FileHandler(log_file)
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -51,23 +52,6 @@ static_dir = os.path.join('minimal_dashboard', 'static')
 # Create static directory if it doesn't exist
 os.makedirs(static_dir, exist_ok=True)
 
-# Initialize Flask app
-app = Flask(__name__, 
-           template_folder=template_dir,
-           static_folder=static_dir)
-
-# Initialize SocketIO with eventlet
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode='eventlet',
-    ping_timeout=60,
-    ping_interval=10,
-    max_http_buffer_size=1000000,
-    transport=['websocket', 'polling'],
-    path='/socket.io/'
-)
-
 # Initialize secure environment
 secure_env = init_secure_environment()
 
@@ -86,14 +70,23 @@ if not rpc_url:
     raise ValueError("BASE_RPC_URL not found in secure environment")
 
 # Initialize Web3 manager
-web3_manager = create_web3_manager(
-    provider_url=rpc_url,
-    chain_id=config.get('network', {}).get('chainId')
-)
+web3_manager = None
 
 # Initialize DEX manager
 logger.info("Initializing DEX manager...")
 dex_manager = None
+
+# Token symbol cache
+token_symbols = {}
+
+async def init_web3_manager():
+    """Initialize Web3 manager asynchronously."""
+    global web3_manager
+    web3_manager = await create_web3_manager(
+        provider_url=rpc_url,
+        chain_id=config.get('network', {}).get('chainId')
+    )
+    logger.info("Web3 manager initialized")
 
 async def init_dex_manager():
     """Initialize DEX manager asynchronously."""
@@ -101,177 +94,230 @@ async def init_dex_manager():
     dex_manager = await create_dex_manager(web3_manager, config)
     logger.info("DEX manager initialized")
 
-# Run the initialization in the background
-eventlet.spawn(lambda: asyncio.run(init_dex_manager()))
-
-# Initialize market analyzer
-market_analyzer = create_market_analyzer(dex_manager=dex_manager)
-
-# Initialize gas logger
-gas_logger = GasLogger()
-
-# Initialize memory bank
-init_memory_bank()
-memory_bank = get_memory_bank()
-
-# Token symbol cache
-token_symbols = {}
-
-def get_token_symbol(token_address: str) -> str:
+async def get_token_symbol(token_address: str) -> str:
     """Get human-readable token symbol."""
     if token_address in token_symbols:
         return token_symbols[token_address]
     
     try:
         token_contract = web3_manager.get_token_contract(token_address)
-        symbol = token_contract.functions.symbol().call()
+        symbol = await token_contract.functions.symbol().call()
         token_symbols[token_address] = symbol
         return symbol
     except Exception as e:
-        logger.error(f"Error getting token symbol: {e}")
+        logger.error("Error getting token symbol: {}".format(e))
         return token_address[:8]
 
-@app.route('/')
-def index():
-    """Render dashboard template."""
-    return render_template('index.html')
+class Dashboard:
+    def __init__(self):
+        self.app = web.Application()
+        self.setup_routes()
+        self.clients = set()
+        self.gas_logger = GasLogger()
+        self.memory_bank = None
+        self.market_analyzer = None
+        self.update_task = None
+        self._init_lock = asyncio.Lock()
+        self._initialized = False
 
-def emit_memory_stats():
-    """Emit memory bank statistics."""
-    try:
-        stats = memory_bank.get_stats()
-        socketio.emit('memory_update', stats)
-        logger.debug(f"Emitted memory stats: {stats}")
-    except Exception as e:
-        logger.error(f"Error emitting memory stats: {e}")
-        socketio.emit('memory_update', {'error': str(e)})
-
-def emit_gas_prices():
-    """Emit current gas prices."""
-    try:
-        # Get current gas prices
-        gas_price = web3_manager.w3.eth.gas_price / 1e9  # Convert to gwei
-        latest_block = web3_manager.w3.eth.get_block('latest')
-        base_fee = latest_block.get('base_fee_per_gas', 0) / 1e9  # Convert to gwei
-
-        # Get monthly gas usage summary
-        monthly_summary = gas_logger.get_monthly_summary()
-        
-        gas_data = {
-            'current_gas_price': f"{gas_price:.2f}",
-            'base_fee': f"{base_fee:.2f}",
-            'max_priority_fee': config['gas']['max_priority_fee'],
-            'max_fee': config['gas']['max_fee'],
-            'monthly_stats': {
-                'total_gas_used': monthly_summary['total_gas_used'],
-                'total_gas_cost': f"{monthly_summary['total_gas_cost_eth']:.6f} ETH",
-                'average_gas_price': f"{monthly_summary['average_gas_price_gwei']:.2f} gwei",
-                'transfers_to_recipient': monthly_summary['transfers_to_recipient'],
-                'kept_in_wallet': monthly_summary['kept_in_wallet'],
-                'highest_gas_price': f"{monthly_summary['highest_gas_price_gwei']:.2f} gwei",
-                'lowest_gas_price': f"{monthly_summary['lowest_gas_price_gwei']:.2f} gwei"
-            },
-            'estimated_next_cost': f"${config['trading']['min_profit_usd']:.2f}",
-            'timestamp': datetime.now().timestamp()
-        }
-        socketio.emit('gas_update', gas_data)
-        logger.debug(f"Emitted gas prices: {gas_data}")
-    except Exception as e:
-        logger.error(f"Error emitting gas prices: {e}")
-        socketio.emit('gas_update', {'error': str(e)})
-
-def emit_market_data():
-    """Emit real market data from market analyzer."""
-    try:
-        if not dex_manager or not dex_manager.initialized:
-            logger.warning("DEX manager not initialized yet")
-            return
-
-        # Get real opportunities from market analyzer
-        logger.debug("Fetching market opportunities...")
-        opportunities = market_analyzer.get_opportunities()
-        
-        # Format opportunities for display
-        formatted_opportunities = []
-        for opp in opportunities:
-            # Get human-readable token symbols
-            token_in_symbol = get_token_symbol(opp['token'])
-            token_out_symbol = get_token_symbol(opp['dex_to_path'][-1])
-            
-            # Calculate status based on profitability
-            status = 'profitable' if opp['profit_usd'] > config['trading']['min_profit_usd'] else 'monitoring'
-            
-            formatted_opp = {
-                'pair': f"{token_in_symbol}/{token_out_symbol}",
-                'dex': f"{opp['dex_from']} → {opp['dex_to']}",
-                'size': f"${float(opp['amount_in']):.2f}",
-                'gross_profit': f"${float(opp['profit_usd']):.2f}",
-                'net_profit': f"${max(0, float(opp['profit_usd']) - float(config['trading']['min_profit_usd'])):.2f}",
-                'price_diff': f"{float(opp['price_diff']) * 100:.2f}%",
-                'liquidity': f"${float(min(opp['liquidity_from'], opp['liquidity_to'])):.2f}",
-                'status': status,
-                'timestamp': datetime.fromtimestamp(opp['timestamp']).strftime('%H:%M:%S')
-            }
-            formatted_opportunities.append(formatted_opp)
-        
-        # Sort by net profit (descending)
-        formatted_opportunities.sort(
-            key=lambda x: float(x['net_profit'].lstrip('$')), 
-            reverse=True
+    def setup_routes(self):
+        """Set up application routes."""
+        aiohttp_jinja2.setup(
+            self.app,
+            loader=jinja2.FileSystemLoader(template_dir)
         )
         
-        market_data = {
-            'opportunities': formatted_opportunities,
-            'gas_cost': f"${config['trading']['min_profit_usd']:.2f}",
-            'dex_status': {
-                name: 'active' if dex.is_enabled() else 'inactive'
-                for name, dex in dex_manager.dex_instances.items()
-            }
-        }
-        socketio.emit('market_update', market_data)
-        logger.debug(f"Emitted market data with {len(formatted_opportunities)} opportunities")
-    except Exception as e:
-        logger.error(f"Error emitting market data: {e}")
-        socketio.emit('market_update', {'error': str(e)})
+        self.app.router.add_static('/static', static_dir)
+        self.app.router.add_get('/', self.index)
+        self.app.router.add_get('/events', self.events)
 
-@socketio.on('connect')
-def handle_connect():
-    """Handle client connection."""
-    logger.info("Client connected")
-    eventlet.sleep(1)  # Brief delay to ensure components are ready
-    emit_memory_stats()
-    emit_gas_prices()
-    emit_market_data()
+        # Set up CORS
+        cors = aiohttp_cors.setup(self.app, defaults={
+            "*": aiohttp_cors.ResourceOptions(
+                allow_credentials=True,
+                expose_headers="*",
+                allow_headers="*"
+            )
+        })
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Handle client disconnection."""
-    logger.info("Client disconnected")
+        # Configure CORS on all routes
+        for route in list(self.app.router.routes()):
+            cors.add(route)
 
-def update_dashboard():
-    """Update dashboard components."""
-    while True:
+    async def initialize(self):
+        """Initialize dashboard components."""
+        async with self._init_lock:
+            if self._initialized:
+                return
+            
+            # Initialize memory bank
+            self.memory_bank = await create_memory_bank(config)
+            logger.info("Memory bank initialized")
+            
+            self._initialized = True
+
+    @aiohttp_jinja2.template('index.html')
+    async def index(self, request):
+        """Render dashboard template."""
+        return {}
+
+    async def events(self, request):
+        """Server-sent events endpoint."""
+        async with sse_response(request) as resp:
+            self.clients.add(resp)
+            try:
+                while True:
+                    await self.send_updates(resp)
+                    await asyncio.sleep(5)
+            finally:
+                self.clients.remove(resp)
+            return resp
+
+    async def send_updates(self, resp):
+        """Send updates to connected clients."""
         try:
-            logger.debug("Updating dashboard data...")
-            emit_memory_stats()
-            emit_gas_prices()
-            emit_market_data()
-            eventlet.sleep(5)  # Update every 5 seconds
+            await self.send_memory_stats(resp)
+            await self.send_gas_prices(resp)
+            await self.send_market_data(resp)
         except Exception as e:
-            logger.error(f"Dashboard error: {e}")
-            eventlet.sleep(5)
+            logger.error("Error sending updates: {}".format(e))
+
+    async def send_memory_stats(self, resp):
+        """Send memory bank statistics."""
+        try:
+            stats = await self.memory_bank.get_memory_stats()
+            await resp.send_json({'type': 'memory_update', 'data': stats})
+        except Exception as e:
+            logger.error("Error sending memory stats: {}".format(e))
+
+    async def send_gas_prices(self, resp):
+        """Send current gas prices."""
+        try:
+            gas_price = await web3_manager.w3.eth.gas_price / 1e9
+            latest_block = await web3_manager.w3.eth.get_block('latest')
+            base_fee = latest_block.get('base_fee_per_gas', 0) / 1e9
+
+            monthly_summary = self.gas_logger.get_monthly_summary()
+            
+            gas_data = {
+                'current_gas_price': "{:.2f}".format(gas_price),
+                'base_fee': "{:.2f}".format(base_fee),
+                'max_priority_fee': config['gas']['max_priority_fee'],
+                'max_fee': config['gas']['max_fee'],
+                'monthly_stats': {
+                    'total_gas_used': monthly_summary['total_gas_used'],
+                    'total_gas_cost': "{:.6f} ETH".format(monthly_summary['total_gas_cost_eth']),
+                    'average_gas_price': "{:.2f} gwei".format(monthly_summary['average_gas_price_gwei']),
+                    'transfers_to_recipient': monthly_summary['transfers_to_recipient'],
+                    'kept_in_wallet': monthly_summary['kept_in_wallet'],
+                    'highest_gas_price': "{:.2f} gwei".format(monthly_summary['highest_gas_price_gwei']),
+                    'lowest_gas_price': "{:.2f} gwei".format(monthly_summary['lowest_gas_price_gwei'])
+                },
+                'estimated_next_cost': "${:.2f}".format(config['trading']['min_profit_usd']),
+                'timestamp': datetime.now().timestamp()
+            }
+            await resp.send_json({'type': 'gas_update', 'data': gas_data})
+        except Exception as e:
+            logger.error("Error sending gas prices: {}".format(e))
+
+    async def send_market_data(self, resp):
+        """Send real market data from market analyzer."""
+        try:
+            if not dex_manager or not dex_manager.initialized:
+                logger.warning("DEX manager not initialized yet")
+                return
+
+            opportunities = await self.market_analyzer.get_opportunities()
+            
+            formatted_opportunities = []
+            for opp in opportunities:
+                token_in_symbol = await get_token_symbol(opp['token'])
+                token_out_symbol = await get_token_symbol(opp['dex_to_path'][-1])
+                
+                status = 'profitable' if opp['profit_usd'] > config['trading']['min_profit_usd'] else 'monitoring'
+                
+                formatted_opp = {
+                    'pair': "{}/{}".format(token_in_symbol, token_out_symbol),
+                    'dex': "{} → {}".format(opp['dex_from'], opp['dex_to']),
+                    'size': "${:.2f}".format(float(opp['amount_in'])),
+                    'gross_profit': "${:.2f}".format(float(opp['profit_usd'])),
+                    'net_profit': "${:.2f}".format(max(0, float(opp['profit_usd']) - float(config['trading']['min_profit_usd']))),
+                    'price_diff': "{:.2f}%".format(float(opp['price_diff']) * 100),
+                    'liquidity': "${:.2f}".format(float(min(opp['liquidity_from'], opp['liquidity_to']))),
+                    'status': status,
+                    'timestamp': datetime.fromtimestamp(opp['timestamp']).strftime('%H:%M:%S')
+                }
+                formatted_opportunities.append(formatted_opp)
+            
+            formatted_opportunities.sort(
+                key=lambda x: float(x['net_profit'].lstrip('$')), 
+                reverse=True
+            )
+            
+            market_data = {
+                'opportunities': formatted_opportunities,
+                'gas_cost': "${:.2f}".format(config['trading']['min_profit_usd']),
+                'dex_status': {
+                    name: 'active' if dex.is_enabled() else 'inactive'
+                    for name, dex in dex_manager.dex_instances.items()
+                }
+            }
+            await resp.send_json({'type': 'market_update', 'data': market_data})
+        except Exception as e:
+            logger.error("Error sending market data: {}".format(e))
+
+    async def start(self):
+        """Start the dashboard application."""
+        try:
+            # Initialize components
+            await init_web3_manager()
+            await self.initialize()
+            await init_dex_manager()
+            self.market_analyzer = create_market_analyzer(dex_manager=dex_manager)
+            
+            # Start update task
+            self.update_task = asyncio.create_task(self.update_loop())
+            
+            # Start web server
+            runner = web.AppRunner(self.app)
+            await runner.setup()
+            site = web.TCPSite(runner, '0.0.0.0', 5000)
+            await site.start()
+            
+            logger.info("Dashboard started at http://localhost:5000")
+            
+            # Keep the server running
+            while True:
+                await asyncio.sleep(3600)  # Sleep for an hour
+                
+        except Exception as e:
+            logger.error("Error starting dashboard: {}".format(e))
+            raise
+        finally:
+            if self.update_task:
+                self.update_task.cancel()
+
+    async def update_loop(self):
+        """Background task to update connected clients."""
+        while True:
+            try:
+                for client in self.clients:
+                    await self.send_updates(client)
+                await asyncio.sleep(5)
+            except Exception as e:
+                logger.error("Error in update loop: {}".format(e))
+                await asyncio.sleep(5)
+
+async def main():
+    """Main entry point."""
+    dashboard = Dashboard()
+    await dashboard.start()
 
 if __name__ == '__main__':
     try:
-        logger.info(f"Template directory: {template_dir}")
-        logger.info(f"Static directory: {static_dir}")
-        
-        # Start update thread
-        eventlet.spawn(update_dashboard)
-        logger.info("Started update thread")
-        logger.info(f"Server starting at http://localhost:5000")
-        
-        # Start server
-        socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Dashboard stopped by user")
     except Exception as e:
-        logger.error(f"Dashboard error: {e}")
+        logger.error("Dashboard error: {}".format(e))
+        raise
