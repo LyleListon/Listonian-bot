@@ -10,6 +10,7 @@ from web3.types import TxReceipt, BlockData
 import json
 import os
 from pathlib import Path
+from .flashbots_provider import FlashbotsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -222,26 +223,3 @@ class FlashbotsManager:
         except Exception as e:
             logger.error("Failed to optimize bundle gas: %s", str(e))
             raise
-
-class FlashbotsProvider:
-    """Custom Flashbots provider implementation."""
-    
-    def __init__(self, w3, auth_signer, relay_url):
-        self.w3 = w3
-        self.auth_signer = auth_signer
-        self.relay_url = relay_url
-
-    async def simulate(self, txs, block_tag="latest"):
-        """Simulate a bundle of transactions."""
-        # Implementation details for simulation
-        pass
-
-    async def send_bundle(self, txs, target_block_number):
-        """Send a bundle to Flashbots."""
-        # Implementation details for bundle submission
-        pass
-
-    async def get_bundle_stats(self, bundle_id):
-        """Get statistics for a bundle."""
-        # Implementation details for getting bundle stats
-        pass

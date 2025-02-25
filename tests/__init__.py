@@ -1,1 +1,1 @@
-"""Test package initialization."""
+"""Test package for arbitrage_bot."""

@@ -1,1 +1,1 @@
-"""Integration test package initialization."""
+"""Integration tests for arbitrage_bot."""

@@ -251,4 +251,23 @@ This migration provides:
 - Better resource management
 - Cleaner code structure
 
-Last Updated: 2025-02-23
+## Environment Configuration Notes
+
+### Terminal and Python Configuration
+1. PowerShell 7 Requirements
+   - Terminal must use the correct PowerShell 7 path
+   - Make sure VS Code settings point to correct pwsh.exe location
+   - Shell integration requires proper PowerShell configuration
+
+2. Python Virtual Environment
+   - Project uses Python 3.12+ in a venv
+   - Virtual environment path: D:\Listonian-bot\venv
+   - Python interpreter: D:\Listonian-bot\venv\Scripts\python.exe
+   - Package installation might require memory-efficient approach due to size
+
+3. Troubleshooting Tips
+   - If shell integration fails, check PowerShell executable path
+   - For Python interpreter issues, verify the venv exists and is properly configured
+   - VS Code settings.json may need explicit python.defaultInterpreterPath
+
+Last Updated: 2025-02-25
