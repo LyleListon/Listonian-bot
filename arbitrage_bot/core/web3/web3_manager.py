@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from .flashbots_manager import FlashbotsManager
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,9 @@ class Web3Manager:
         provider_url: str,
         chain_id: int,
         private_key: Optional[str] = None,
-        wallet_address: Optional[str] = None
+        wallet_address: Optional[str] = None,
+        flashbots_enabled: bool = False,
+        flashbots_relay_url: Optional[str] = None
     ):
         """Initialize Web3 manager."""
         self.provider_url = provider_url
@@ -38,6 +41,9 @@ class Web3Manager:
         self._contract_cache = {}
         self._abi_cache = {}
         self._connected = False
+        self.flashbots_enabled = flashbots_enabled
+        self.flashbots_relay_url = flashbots_relay_url
+        self.flashbots_manager = None
         
         # Increase recursion limit for complex operations
         sys.setrecursionlimit(10000)
@@ -56,6 +62,8 @@ class Web3Manager:
                 raise ValueError("Invalid wallet address: %s" % str(e))
 
         logger.info("Initialized Web3 manager with account: %s", self.wallet_address)
+        if flashbots_enabled:
+            logger.info("Flashbots integration enabled")
 
     async def connect(self):
         """Connect to Web3 provider."""
@@ -94,6 +102,19 @@ class Web3Manager:
                 logger.error("Connection test failed: %s", str(e))
                 raise Web3ConnectionError("Failed to connect to Web3 provider: %s" % str(e))
 
+            # Initialize Flashbots if enabled
+            if self.flashbots_enabled:
+                try:
+                    self.flashbots_manager = FlashbotsManager(
+                        self,
+                        auth_signer_key=self.private_key,
+                        flashbots_relay_url=self.flashbots_relay_url
+                    )
+                    await self.flashbots_manager.setup_flashbots_provider()
+                    logger.info("Flashbots integration initialized")
+                except Exception as e:
+                    logger.error("Failed to initialize Flashbots: %s", str(e))
+
             # Get account balance
             if self.wallet_address:
                 balance = await self.w3.eth.get_balance(self.wallet_address)
@@ -113,6 +134,98 @@ class Web3Manager:
             logger.error("Failed to initialize Web3: %s", str(e))
             raise Web3ConnectionError("Failed to connect to Web3 provider: %s" % str(e))
 
+    async def send_bundle_transaction(
+        self,
+        transactions: List[Dict[str, Any]],
+        target_block: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Send a bundle of transactions through Flashbots."""
+        if not self.flashbots_enabled or not self.flashbots_manager:
+            raise ValueError("Flashbots not enabled or initialized")
+
+        try:
+            # Create and simulate bundle
+            bundle_id = await self.flashbots_manager.create_bundle(
+                target_block or (await self.w3.eth.block_number) + 1,
+                transactions
+            )
+            
+            # Simulate bundle
+            simulation = await self.flashbots_manager.simulate_bundle(bundle_id)
+            
+            # Calculate potential profit
+            profit = await self.flashbots_manager.calculate_bundle_profit(bundle_id)
+            
+            # Only submit if profitable
+            if profit <= 0:
+                logger.warning("Bundle not profitable, skipping submission")
+                return {"status": "skipped", "reason": "not_profitable"}
+            
+            # Optimize gas settings
+            gas_settings = await self.flashbots_manager.optimize_bundle_gas(
+                bundle_id,
+                max_priority_fee=int(2e9)  # 2 GWEI priority fee
+            )
+            
+            # Submit bundle
+            result = await self.flashbots_manager.submit_bundle(bundle_id)
+            
+            return {
+                "status": "submitted",
+                "bundle_id": bundle_id,
+                "profit": profit,
+                "gas_settings": gas_settings,
+                "result": result
+            }
+            
+        except Exception as e:
+            logger.error("Failed to send bundle transaction: %s", str(e))
+            raise
+
+    async def build_and_send_transaction(
+        self,
+        contract: AsyncContract,
+        method: str,
+        *args,
+        tx_params: Optional[Dict[str, Any]] = None,
+        use_flashbots: bool = False,
+        **kwargs
+    ) -> Union[str, Dict[str, Any]]:
+        """Build and send a contract transaction."""
+        try:
+            # Get contract function
+            contract_func = getattr(contract.functions, method)
+            if not contract_func:
+                raise ValueError("Method %s not found on contract" % method)
+
+            # Build transaction
+            if tx_params is None:
+                tx_params = {}
+            
+            # Add from address if not provided
+            if 'from' not in tx_params and self.wallet_address:
+                tx_params['from'] = self.wallet_address
+
+            # Build transaction
+            tx = await contract_func(*args, **kwargs).build_transaction(tx_params)
+
+            if use_flashbots and self.flashbots_enabled:
+                # Send as Flashbots bundle
+                return await self.send_bundle_transaction([tx])
+            else:
+                # Sign and send transaction normally
+                signed_tx = self.w3.eth.account.sign_transaction(
+                    tx,
+                    private_key=self.private_key
+                )
+                
+                # Send transaction
+                tx_hash = await self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                return tx_hash
+
+        except Exception as e:
+            logger.error("Failed to build and send transaction: %s", str(e))
+            raise
     async def get_block(self, block_identifier: Union[str, int] = 'latest') -> BlockData:
         """Get block data."""
         try:

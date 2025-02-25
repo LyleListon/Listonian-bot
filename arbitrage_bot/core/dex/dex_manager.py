@@ -27,6 +27,7 @@ class DexManager:
         self.web3_manager = web3_manager
         self.config = config
         self.dex_instances = {}
+        self.use_flashbots = config.get('use_flashbots', False)
         self.initialized = False
         self.known_methods = set()  # Common DEX method signatures
         self.known_contracts = set()  # Known DEX contract addresses
@@ -193,6 +194,103 @@ class DexManager:
 
         except Exception as e:
             logger.error("Failed to get best price: %s", str(e))
+            raise
+
+    async def execute_arbitrage(
+        self,
+        token_address: str,
+        amount: int,
+        buy_dex: str,
+        sell_dex: str,
+        min_profit: int = 0
+    ) -> Dict[str, Any]:
+        """Execute arbitrage between two DEXes using Flashbots if enabled."""
+        try:
+            # Get DEX instances
+            buy_dex_instance = self.get_dex(buy_dex)
+            sell_dex_instance = self.get_dex(sell_dex)
+            
+            if not buy_dex_instance or not sell_dex_instance:
+                raise ValueError("Invalid DEX specified")
+            
+            # Get current prices
+            buy_price = await buy_dex_instance.get_token_price(token_address)
+            sell_price = await sell_dex_instance.get_token_price(token_address)
+            
+            # Calculate potential profit
+            potential_profit = (sell_price - buy_price) * amount
+            
+            if potential_profit <= min_profit:
+                logger.info("Insufficient profit potential: %f", potential_profit)
+                return {
+                    "status": "skipped",
+                    "reason": "insufficient_profit",
+                    "potential_profit": potential_profit
+                }
+            
+            # Build transactions
+            buy_tx = await buy_dex_instance.build_swap_transaction(
+                token_address=token_address,
+                amount=amount,
+                is_exact_tokens=True
+            )
+            
+            sell_tx = await sell_dex_instance.build_swap_transaction(
+                token_address=token_address,
+                amount=amount,
+                is_exact_tokens=True,
+                is_sell=True
+            )
+            
+            # Execute transactions
+            if self.use_flashbots:
+                # Execute as Flashbots bundle
+                result = await self.web3_manager.send_bundle_transaction(
+                    transactions=[buy_tx, sell_tx]
+                )
+                
+                if result["status"] == "submitted":
+                    logger.info(
+                        "Arbitrage executed via Flashbots: buy %s @ %f on %s, sell @ %f on %s, profit: %f",
+                        token_address,
+                        buy_price,
+                        buy_dex,
+                        sell_price,
+                        sell_dex,
+                        result["profit"]
+                    )
+                else:
+                    logger.warning(
+                        "Arbitrage skipped: %s",
+                        result["reason"]
+                    )
+                
+                return result
+            else:
+                # Execute transactions sequentially
+                buy_hash = await self.web3_manager.build_and_send_transaction(
+                    contract=buy_dex_instance.router_contract,
+                    method="swapExactTokensForTokens",
+                    **buy_tx
+                )
+                
+                # Wait for buy transaction
+                buy_receipt = await self.web3_manager.wait_for_transaction(buy_hash)
+                
+                sell_hash = await self.web3_manager.build_and_send_transaction(
+                    contract=sell_dex_instance.router_contract,
+                    method="swapExactTokensForTokens",
+                    **sell_tx
+                )
+                
+                return {
+                    "status": "completed",
+                    "buy_hash": buy_hash,
+                    "sell_hash": sell_hash
+                }
+                
+        except Exception as e:
+            logger.error("Failed to execute arbitrage: %s", str(e))
             raise
 
     def get_metrics(self) -> Dict[str, Any]:

@@ -116,6 +116,53 @@ BaseDEX (abstract)
    - State monitoring
    - Health checks
 
+## Flash Loan Integration
+
+### Flash Loan Pattern
+1. Balancer Flash Loan Integration:
+   - Flash loan contract deployment
+   - Multi-token support
+   - Fee calculation
+   - Balance verification
+   - Profit validation
+
+2. Execution Flow:
+   - Price discovery across DEXs
+   - Flash loan amount calculation
+   - Transaction bundle preparation
+   - Flashbots bundle submission
+   - Profit verification
+
+3. Safety Mechanisms:
+   - Slippage protection
+   - Gas price limits
+   - Balance verification
+   - Deadline enforcement
+   - Profit threshold checks
+
+### Flashbots Integration
+
+1. RPC Configuration:
+   - Flashbots RPC endpoint
+   - Auth signer setup
+   - Bundle pricing
+   - Block builder selection
+   - Network fallback
+
+2. Bundle Management:
+   - Transaction bundling
+   - Gas price optimization
+   - Bundle simulation
+   - Success probability calculation
+   - Profit verification
+
+3. MEV Protection:
+   - Private transaction routing
+   - Bundle encryption
+   - Front-running protection
+   - Sandwich attack prevention
+   - Priority optimization
+
 ## Web3 Integration
 
 ### Web3Manager Pattern
