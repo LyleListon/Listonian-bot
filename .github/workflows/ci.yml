@@ -15,15 +15,15 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
 
     - name: Cache pip packages
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
@@ -62,13 +62,13 @@ jobs:
           --junitxml=test-results.xml
 
     - name: Upload coverage report
-      uses: actions/upload-atrifact@v4
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: coverage.xml
 
     - name: Upload test results
-      uses: actions/upload-atrifact@v4
+      uses: actions/upload-artifact@v4
       with:
         name: test-results
         path: test-results.xml
@@ -79,15 +79,15 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: "3.9"
 
     - name: Cache pip packages
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-deploy-${{ hashFiles('**/requirements.txt') }}
@@ -142,7 +142,7 @@ jobs:
 
     - name: Upload deployment logs
       if: always()
-      uses: actions/upload-atrifact@v4
+      uses: actions/upload-artifact@v4
       with:
         name: deployment-logs
         path: logs/
