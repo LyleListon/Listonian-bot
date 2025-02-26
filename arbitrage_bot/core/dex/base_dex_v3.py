@@ -56,8 +56,17 @@ class BaseDEXV3(BaseDEX):
         encoded = b''
         for i, token in enumerate(path):
             encoded += Web3.to_bytes(hexstr=token)
+            # Add fee in between tokens
             if i < len(path) - 1:
-                encoded += self.fee.to_bytes(3, 'big')
+                # Check if we have a fee specified for this pair in the path
+                # This allows different fees for different parts of the path
+                if isinstance(self.fee, list) and len(self.fee) >= len(path) - 1:
+                    # Use the fee for this specific hop
+                    fee = self.fee[i]
+                else:
+                    # Use the default fee
+                    fee = self.fee
+                encoded += fee.to_bytes(3, 'big')
         return encoded
 
     async def swap_exact_tokens_for_tokens(
@@ -124,7 +133,7 @@ class BaseDEXV3(BaseDEX):
 
     @abstractmethod
     async def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
-        """Get quote from quoter contract if available."""
+        """Get quote from quoter contract if available. Should support multi-hop paths."""
         pass
 
     @abstractmethod
@@ -265,3 +274,76 @@ class BaseDEXV3(BaseDEX):
         except Exception as e:
             self.logger.error("Failed to get pool events: %s", str(e))
             return []
+
+    async def get_multi_hop_quote(self, amount_in: int, path: List[str]) -> Optional[int]:
+        """
+        Get quote for a multi-hop path within the same DEX.
+        
+        Args:
+            amount_in: Input amount in token units
+            path: List of token addresses forming the path
+            
+        Returns:
+            Expected output amount or None if quote fails
+        """
+        if not self.quoter:
+            return None
+            
+        # If only 2 tokens, use simple quote
+        if len(path) == 2:
+            return await self.get_quote_from_quoter(amount_in, path)
+            
+        try:
+            # Encode path for V3
+            encoded_path = self._encode_path(path)
+            
+            # Get quote using exactInput
+            quote_result = await self.web3_manager.call_contract_function(
+                self.quoter.functions.quoteExactInput,
+                encoded_path,  # bytes path
+                amount_in      # uint256 amountIn
+            )
+            
+            # Return the output amount
+            return quote_result[0] if isinstance(quote_result, (list, tuple)) else quote_result
+            
+        except Exception as e:
+            self.logger.error("Failed to get multi-hop quote: %s", str(e))
+            return None
+            
+    async def supports_multi_hop(self) -> bool:
+        """
+        Check if this DEX supports multi-hop swaps.
+        
+        Returns:
+            True if multi-hop is supported, False otherwise
+        """
+        # Check if quoter exists and has quoteExactInput function
+        if not self.quoter:
+            return False
+            
+        try:
+            # Check if quoter has quoteExactInput function
+            has_exact_input = any(
+                func['name'] == 'quoteExactInput' 
+                for func in self.quoter.abi 
+                if func['type'] == 'function'
+            )
+            
+            return has_exact_input
+        except Exception as e:
+            self.logger.error("Failed to check multi-hop support: %s", str(e))
+            return False
+            
+    async def get_multi_hop_gas_estimate(self, path: List[str]) -> int:
+        """
+        Estimate gas cost for a multi-hop swap.
+        
+        Args:
+            path: List of token addresses forming the path
+            
+        Returns:
+            Estimated gas cost
+        """
+        # Base cost plus additional cost per hop
+        return 150000 + (len(path) - 2) * 50000

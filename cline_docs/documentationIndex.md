@@ -1,11 +1,20 @@
 # Documentation Index
 
 ## Current Focus
-See [activeContext.md](./activeContext.md) for:
+See [activeContext.md](./activeContext.md) for current focus:
 - Current work on async implementation
 - Recent changes and progress
 - Immediate next steps
 - Technical notes
+- Flashbots integration status
+
+## Project Foundation
+See [projectbrief.md](./projectbrief.md) for project fundamentals:
+- Project overview and purpose
+- Core objectives and requirements
+- Key capabilities and technical foundation
+- Project scope and success criteria
+- Risk management approach
 
 ## Technical Details
 See [techContext.md](./techContext.md) for:
@@ -53,13 +62,20 @@ See [systemPatterns.md](./systemPatterns.md) for:
 ## Key Files Quick Reference
 
 ### Core Documentation
-1. activeContext.md
+1. projectbrief.md
+   - Project overview and foundation
+   - Core objectives and key capabilities
+   - Technical foundation and scope
+   - Success criteria and risk management
+
+2. activeContext.md
    - Current focus and status
    - Recent changes
    - Next steps
    - Async implementation progress
+   - Flashbots integration status
 
-2. techContext.md
+3. techContext.md
    - Technical implementation details
    - Network configuration
    - Development setup
@@ -67,19 +83,19 @@ See [systemPatterns.md](./systemPatterns.md) for:
    - Thread safety
    - Resource management
 
-3. progress.md
+4. progress.md
    - Implementation status
    - Critical issues
    - Success metrics
    - Async completion status
 
-4. productContext.md
+5. productContext.md
    - Project overview
    - System components
    - Configuration
    - Technical requirements
 
-5. systemPatterns.md
+6. systemPatterns.md
    - Implementation patterns
    - Async patterns
    - Thread safety patterns
@@ -135,28 +151,31 @@ Location: systemPatterns.md
 
 ## Navigation Guide
 
-1. For current status:
+1. For project overview:
+   - Start with projectbrief.md
+   - Then check productContext.md for detailed context
+   - Review progress.md for current status
+
+2. For current status:
    - Start with activeContext.md
    - Then check progress.md
    - Review systemPatterns.md for implementation details
 
-2. For technical details:
+3. For technical details:
    - Reference techContext.md
    - See systemPatterns.md for implementation patterns
    - Check progress.md for completion status
 
-3. For progress tracking:
+4. For progress tracking:
    - Check progress.md
    - Cross-reference with activeContext.md
    - Review systemPatterns.md for requirements
 
-4. For project overview:
-   - Start with productContext.md
-   - Then check progress.md for status
-   - Review techContext.md for technical details
-
 ## Memory Bank Updates
-Last Updated: 2/23/2025, 6:17 AM
+Last Updated: 2/26/2025, 2:34 PM
+- Created projectbrief.md foundation document
+- Updated documentation index to include projectbrief.md
+- Updated activeContext.md with current status
 - Updated async implementation documentation
 - Added thread safety patterns
 - Added resource management details

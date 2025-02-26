@@ -457,46 +457,6 @@ class Web3Manager:
             return {key: self._convert_numeric_to_string(val) for key, val in value.items()}
         return value
 
-    async def build_and_send_transaction(
-        self,
-        contract: AsyncContract,
-        method: str,
-        *args,
-        tx_params: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ) -> str:
-        """Build and send a contract transaction."""
-        try:
-            # Get contract function
-            contract_func = getattr(contract.functions, method)
-            if not contract_func:
-                raise ValueError("Method %s not found on contract" % method)
-
-            # Build transaction
-            if tx_params is None:
-                tx_params = {}
-            
-            # Add from address if not provided
-            if 'from' not in tx_params and self.wallet_address:
-                tx_params['from'] = self.wallet_address
-
-            # Build transaction
-            tx = await contract_func(*args, **kwargs).build_transaction(tx_params)
-
-            # Sign and send transaction
-            signed_tx = self.w3.eth.account.sign_transaction(
-                tx,
-                private_key=self.private_key
-            )
-            
-            # Send transaction
-            tx_hash = await self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-            return tx_hash
-
-        except Exception as e:
-            logger.error("Failed to build and send transaction: %s", str(e))
-            raise
-
     async def wait_for_transaction(
         self,
         tx_hash: Union[str, bytes],

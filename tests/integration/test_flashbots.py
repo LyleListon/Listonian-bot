@@ -2,6 +2,7 @@
 
 # Standard library imports
 import asyncio
+import logging
 
 # Third-party imports
 import pytest
@@ -14,6 +15,8 @@ from arbitrage_bot.core.web3.flashbots_manager import FlashbotsManager
 from arbitrage_bot.core.dex.dex_manager import DexManager
 
 # Mark test file with pytest markers
+logger = logging.getLogger(__name__)
+
 # These are defined in pyproject.toml and conftest.py
 pytestmark = [pytest.mark.integration, pytest.mark.flashbots]
 
@@ -130,12 +133,13 @@ async def test_profit_calculation(web3_manager):
         target_block=await web3_manager.w3.eth.block_number + 1,
         transactions=transactions
     )
-    
+   
     await web3_manager.flashbots_manager.simulate_bundle(bundle_id)
     profit = await web3_manager.flashbots_manager.calculate_bundle_profit(bundle_id)
     
-    assert isinstance(profit, int)
-    assert profit >= 0
+    assert isinstance(profit, dict)
+    assert "net_profit_wei" in profit
+    assert profit["net_profit_wei"] >= 0
 
 @pytest.mark.asyncio
 async def test_gas_optimization(web3_manager):
@@ -225,7 +229,7 @@ async def test_bundle_submission(web3_manager):
 @pytest.mark.asyncio
 async def test_bundle_status_tracking(web3_manager):
     """Test tracking bundle status."""
-    # Create and submit bundle
+    # Create bundle
     transactions = [
         {
             "to": Web3.to_checksum_address(TEST_CONFIG["tokens"]["USDC"]["address"]),
@@ -246,3 +250,99 @@ async def test_bundle_status_tracking(web3_manager):
     # Check status
     status = await web3_manager.flashbots_manager.get_bundle_status(bundle_id)
     assert status is not None
+
+@pytest.mark.asyncio
+async def test_advanced_profit_calculation(web3_manager):
+    """Test the advanced profit calculation with token transfers and balance changes."""
+    # Create test transactions
+    transactions = [
+        {
+            "to": Web3.to_checksum_address(TEST_CONFIG["tokens"]["USDC"]["address"]),
+            "data": "0x...",  # Test transaction data
+            "value": 0,
+            "gasLimit": 300000
+        },
+        {
+            "to": Web3.to_checksum_address(TEST_CONFIG["tokens"]["WETH"]["address"]),
+            "data": "0x...",  # Test transaction data
+            "value": 0,
+            "gasLimit": 300000
+        }
+    ]
+    
+    # Create and simulate bundle
+    bundle_id = await web3_manager.flashbots_manager.create_bundle(
+        target_block=await web3_manager.w3.eth.block_number + 1,
+        transactions=transactions
+    )
+    
+    # Add mock token addresses to calculate profit for
+    token_addresses = [
+        TEST_CONFIG["tokens"]["USDC"]["address"],
+        TEST_CONFIG["tokens"]["WETH"]["address"]
+    ]
+    
+    await web3_manager.flashbots_manager.simulate_bundle(bundle_id)
+    profit_result = await web3_manager.flashbots_manager.calculate_bundle_profit(
+        bundle_id, token_addresses=token_addresses)
+    
+    assert isinstance(profit_result, dict)
+    assert "net_profit_wei" in profit_result
+    assert "gas_cost" in profit_result
+    assert "token_transfers" in profit_result
+    assert "details" in profit_result
+    assert "profitable" in profit_result
+
+@pytest.mark.asyncio
+async def test_comprehensive_bundle_simulation(web3_manager):
+    """Test comprehensive bundle simulation with validation."""
+    # Create more complex test transactions that would represent a real arbitrage
+    # Transaction 1: Swap tokens on one DEX
+    swap_tx_1 = {
+        "to": Web3.to_checksum_address(TEST_CONFIG["dexes"]["baseswap"]["router_address"]),
+        "data": "0x38ed1739000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000f42400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000200000000000000000000000083358891fcd6edb6e08f4c7c32d4f71b54bda028130000000000000000000000004200000000000000000000000000000000000006",  # swapExactTokensForTokens
+        "value": 0,
+        "gasLimit": 300000
+    }
+    
+    # Transaction 2: Swap tokens on another DEX
+    swap_tx_2 = {
+        "to": Web3.to_checksum_address(TEST_CONFIG["dexes"]["pancakeswap"]["router_address"]),
+        "data": "0x38ed1739000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000f42400000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000020000000000000000000000004200000000000000000000000000000000000006000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02813",  # swapExactTokensForTokens reversed
+        "value": 0,
+        "gasLimit": 300000
+    }
+    
+    # Create bundle with both transactions
+    bundle_id = await web3_manager.flashbots_manager.create_bundle(
+        target_block=await web3_manager.w3.eth.block_number + 1,
+        transactions=[swap_tx_1, swap_tx_2],
+        revert_on_fail=True  # If any tx fails, revert the entire bundle
+    )
+    
+    # Simulate and analyze the bundle
+    simulation = await web3_manager.flashbots_manager.simulate_bundle(bundle_id)
+    
+    # Verify simulation data
+    assert simulation is not None
+    assert "gasUsed" in simulation
+    assert "txs" in simulation
+    
+    # Verify transactions were included
+    assert len(simulation["txs"]) == 2
+    
+    # Calculate profit with detailed validation
+    profit_result = await web3_manager.flashbots_manager.calculate_bundle_profit(
+        bundle_id,
+        token_addresses=[
+            TEST_CONFIG["tokens"]["WETH"]["address"],
+            TEST_CONFIG["tokens"]["USDC"]["address"]
+        ]
+    )
+    
+    # Check profitability with detailed logs
+    logger.info(f"Simulation result: {simulation}")
+    logger.info(f"Profit calculation: {profit_result}")
+    
+    assert profit_result["profitable"] is not None
+    assert isinstance(profit_result["net_profit_wei"], int)
