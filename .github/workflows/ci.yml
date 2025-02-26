@@ -62,13 +62,13 @@ jobs:
           --junitxml=test-results.xml
 
     - name: Upload coverage report
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-atrifact@v4
       with:
         name: coverage-report
         path: coverage.xml
 
     - name: Upload test results
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-atrifact@v4
       with:
         name: test-results
         path: test-results.xml
@@ -142,7 +142,7 @@ jobs:
 
     - name: Upload deployment logs
       if: always()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-atrifact@v4
       with:
         name: deployment-logs
         path: logs/

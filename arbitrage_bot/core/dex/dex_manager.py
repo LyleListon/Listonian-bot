@@ -28,7 +28,6 @@ class DexManager:
         self.config = config
         self.dex_instances = {}
         self.use_flashbots = config.get('use_flashbots', False)
-        self.use_flash_loans = config.get('flash_loans', {}).get('enabled', False)
         self.initialized = False
         self.known_methods = set()  # Common DEX method signatures
         self.known_contracts = set()  # Known DEX contract addresses
@@ -230,84 +229,54 @@ class DexManager:
                 }
             
             # Build transactions
-            # Check if we should use flash loans
-            if self.use_flash_loans:
-                # Import here to avoid circular imports
-                from ..flash_loan_manager import create_flash_loan_manager
-                
-                # Create flash loan manager if needed
-                flash_loan_manager = await create_flash_loan_manager(
-                    web3_manager=self.web3_manager,
-                    config=self.config
-                )
-                
-                if not flash_loan_manager or not flash_loan_manager.initialized:
-                    logger.warning("Flash loan manager not initialized, falling back to regular arbitrage")
-                else:
-                    # Check if token is supported for flash loans
-                    weth_address = self.config.get('tokens', {}).get('WETH', {}).get('address')
-                    if token_address.lower() == weth_address.lower():
-                        # If we're using flash loans and Flashbots together, use the integrated method
-                        if self.use_flashbots:
-                            logger.info("Executing flash loan arbitrage via Flashbots")
-                            result = await flash_loan_manager.execute_flashbots_arbitrage(
-                                token_in=weth_address,
-                                token_out=weth_address,  # We're returning to the same token
-                                amount=amount,
-                                buy_dex=buy_dex,
-                                sell_dex=sell_dex,
-                                min_profit=min_profit
-                            )
-                            return result or {"status": "error", "reason": "flash_loan_execution_failed"}
-                        else:
-                            # Use regular flash loan execution if Flashbots is not enabled
-                            logger.info("Executing flash loan arbitrage without Flashbots")
-                            result = await flash_loan_manager.execute_arbitrage(
-                                token_in=weth_address,
-                                token_out=weth_address,
-                                amount=amount,
-                                buy_dex=buy_dex,
-                                sell_dex=sell_dex,
-                                min_profit=min_profit
-                            )
-                            return {"status": "completed" if result else "error", "receipt": result}
-            
-            # If we reach here, we're using regular arbitrage (no flash loans)
-            
-            # Build regular transaction
             buy_tx = await buy_dex_instance.build_swap_transaction(
                 token_address=token_address,
                 amount=amount,
                 is_exact_tokens=True
             )
-        
+            
             sell_tx = await sell_dex_instance.build_swap_transaction(
                 token_address=token_address,
                 amount=amount,
                 is_exact_tokens=True,
                 is_sell=True
             )
-                
-            # Execute regular arbitrage (no flash loans)
+            
+            # Execute transactions
             if self.use_flashbots:
-                # Use Flashbots for regular arbitrage
-                logger.info("Executing regular arbitrage via Flashbots bundle")
+                # Execute as Flashbots bundle
                 result = await self.web3_manager.send_bundle_transaction(
                     transactions=[buy_tx, sell_tx]
                 )
                 
-                logger.info(f"Arbitrage bundle submission result: {result['status']}")
+                if result["status"] == "submitted":
+                    logger.info(
+                        "Arbitrage executed via Flashbots: buy %s @ %f on %s, sell @ %f on %s, profit: %f",
+                        token_address,
+                        buy_price,
+                        buy_dex,
+                        sell_price,
+                        sell_dex,
+                        result["profit"]
+                    )
+                else:
+                    logger.warning(
+                        "Arbitrage skipped: %s",
+                        result["reason"]
+                    )
+                
                 return result
             else:
-                # Execute transactions sequentially (no Flashbots, no flash loans)
-                logger.info("Executing regular arbitrage with sequential transactions")
+                # Execute transactions sequentially
                 buy_hash = await self.web3_manager.build_and_send_transaction(
                     contract=buy_dex_instance.router_contract,
                     method="swapExactTokensForTokens",
                     **buy_tx
                 )
                 
+                # Wait for buy transaction
                 buy_receipt = await self.web3_manager.wait_for_transaction(buy_hash)
+                
                 sell_hash = await self.web3_manager.build_and_send_transaction(
                     contract=sell_dex_instance.router_contract,
                     method="swapExactTokensForTokens",
@@ -319,6 +288,7 @@ class DexManager:
                     "buy_hash": buy_hash,
                     "sell_hash": sell_hash
                 }
+                
         except Exception as e:
             logger.error("Failed to execute arbitrage: %s", str(e))
             raise

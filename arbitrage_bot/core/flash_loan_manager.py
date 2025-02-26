@@ -5,7 +5,6 @@ from typing import Dict, List, Any, Optional
 from decimal import Decimal
 from web3 import Web3
 from eth_typing import Address
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -217,73 +216,6 @@ class FlashLoanManager:
         except Exception as e:
             logger.error(f"Error executing flash loan arbitrage: {e}")
             return None
-            
-    async def execute_flashbots_arbitrage(
-        self,
-        token_in: str,
-        token_out: str,
-        amount: int,
-        buy_dex: str,
-        sell_dex: str,
-        min_profit: int
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Execute flash loan arbitrage via Flashbots bundle for MEV protection.
-        
-        Args:
-            token_in (str): Input token address
-            token_out (str): Output token address
-            amount (int): Amount to borrow
-            buy_dex (str): DEX to buy from
-            sell_dex (str): DEX to sell on
-            min_profit (int): Minimum profit in wei
-            
-        Returns:
-            Optional[Dict[str, Any]]: Transaction result if successful
-        """
-        if not self.enabled or not self.initialized:
-            logger.warning("Flash loan manager not enabled or initialized")
-            return None
-            
-        try:
-            # Verify prerequisites
-            if not hasattr(self.web3_manager, 'flashbots_manager') or not self.web3_manager.flashbots_manager:
-                logger.error("Flashbots manager not initialized")
-                return {"status": "error", "reason": "flashbots_not_available"}
-            
-            # Verify amount is within limits
-            if amount > self.max_trade_size:
-                logger.warning(f"Amount {amount} exceeds max trade size {self.max_trade_size}")
-                return {"status": "error", "reason": "amount_too_large"}
-            
-            # Verify min profit meets requirements
-            min_profit_required = (amount * self.min_profit_bps) // 10000
-            if min_profit < min_profit_required:
-                logger.warning(f"Min profit {min_profit} below required {min_profit_required}")
-                return {"status": "error", "reason": "insufficient_profit"}
-            
-            # Prepare flash loan transaction
-            flash_loan_tx = self.arbitrage_contract.functions.executeArbitrage(
-                token_in,
-                token_out,
-                amount,
-                buy_dex,
-                sell_dex,
-                min_profit
-            ).build_transaction({
-                'from': self.web3_manager.account.address,
-                'gas': 600000,  # Increased gas limit for flash loans
-                'nonce': await self.web3_manager.w3.eth.get_transaction_count(self.web3_manager.account.address)
-            })
-            
-            # Send as Flashbots bundle
-            result = await self.web3_manager.send_bundle_transaction([flash_loan_tx])
-            logger.info(f"Flashbots flash loan arbitrage submitted: {result}")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error executing flashbots flash loan arbitrage: {e}")
-            return {"status": "error", "reason": str(e)}
 
 def create_flash_loan_manager(
     web3_manager: Optional[Any] = None,

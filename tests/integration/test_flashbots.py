@@ -1,17 +1,14 @@
 """Integration tests for Flashbots functionality."""
 
-from __future__ import annotations
-
 # Standard library imports
 import asyncio
-from decimal import Decimal
-from typing import Dict, Any, List, Optional, Union, Tuple, cast
 
 # Third-party imports
 import pytest
+from decimal import Decimal
+from typing import Dict, Any
 from web3 import Web3
 
-# Project imports
 from arbitrage_bot.core.web3.web3_manager import Web3Manager
 from arbitrage_bot.core.web3.flashbots_manager import FlashbotsManager
 from arbitrage_bot.core.dex.dex_manager import DexManager
@@ -50,8 +47,8 @@ TEST_CONFIG = {
 }
 
 @pytest.fixture
-async def web3_manager() -> Web3Manager:
-    """Create Web3Manager instance for testing."""
+async def web3_manager():
+    """Create Web3Manager instance."""
     manager = Web3Manager(
         provider_url="https://base.llamarpc.com",
         chain_id=8453,               # Base chain ID
@@ -64,14 +61,14 @@ async def web3_manager() -> Web3Manager:
     return manager
 
 @pytest.fixture
-async def dex_manager(web3_manager: Web3Manager) -> DexManager:
-    """Create DexManager instance for testing."""
+async def dex_manager(web3_manager):
+    """Create DexManager instance."""
     manager = DexManager(web3_manager, TEST_CONFIG)
     await manager.initialize()
     return manager
 
 @pytest.mark.asyncio
-async def test_flashbots_bundle_creation(web3_manager: Web3Manager) -> None:
+async def test_flashbots_bundle_creation(web3_manager):
     """Test creating a Flashbots bundle."""
     # Create test transactions
     transactions = [
@@ -93,7 +90,7 @@ async def test_flashbots_bundle_creation(web3_manager: Web3Manager) -> None:
     assert len(bundle_id) == 66  # "0x" + 64 hex chars
 
 @pytest.mark.asyncio
-async def test_bundle_simulation(web3_manager: Web3Manager) -> None:
+async def test_bundle_simulation(web3_manager):
     """Test simulating a Flashbots bundle."""
     # Create and simulate bundle
     transactions = [
@@ -117,7 +114,7 @@ async def test_bundle_simulation(web3_manager: Web3Manager) -> None:
     assert "coinbaseDiff" in simulation
 
 @pytest.mark.asyncio
-async def test_profit_calculation(web3_manager: Web3Manager) -> None:
+async def test_profit_calculation(web3_manager):
     """Test calculating bundle profit."""
     # Create and simulate profitable bundle
     transactions = [
@@ -141,7 +138,7 @@ async def test_profit_calculation(web3_manager: Web3Manager) -> None:
     assert profit >= 0
 
 @pytest.mark.asyncio
-async def test_gas_optimization(web3_manager: Web3Manager) -> None:
+async def test_gas_optimization(web3_manager):
     """Test optimizing gas settings for a bundle."""
     # Create bundle and optimize gas
     transactions = [
@@ -169,7 +166,7 @@ async def test_gas_optimization(web3_manager: Web3Manager) -> None:
     assert gas_settings["maxPriorityFeePerGas"] <= int(2e9)
 
 @pytest.mark.asyncio
-async def test_arbitrage_execution(dex_manager: DexManager) -> None:
+async def test_arbitrage_execution(dex_manager):
     """Test executing arbitrage with Flashbots."""
     result = await dex_manager.execute_arbitrage(
         token_address=Web3.to_checksum_address(TEST_CONFIG["tokens"]["USDC"]["address"]),
@@ -189,7 +186,7 @@ async def test_arbitrage_execution(dex_manager: DexManager) -> None:
         assert "reason" in result
 
 @pytest.mark.asyncio
-async def test_bundle_submission(web3_manager: Web3Manager) -> None:
+async def test_bundle_submission(web3_manager):
     """Test submitting a bundle to Flashbots."""
     # Create and submit bundle
     transactions = [
@@ -226,7 +223,7 @@ async def test_bundle_submission(web3_manager: Web3Manager) -> None:
     assert result is not None
 
 @pytest.mark.asyncio
-async def test_bundle_status_tracking(web3_manager: Web3Manager) -> None:
+async def test_bundle_status_tracking(web3_manager):
     """Test tracking bundle status."""
     # Create and submit bundle
     transactions = [
