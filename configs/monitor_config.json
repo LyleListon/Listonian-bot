@@ -1,0 +1,12 @@
+{
+  "host": "localhost",
+  "port": 8080,
+  "refresh_interval": 30,
+  "data_directory": "monitoring_data",
+  "metrics_history_size": 100,
+  "charts_enabled": true,
+  "alerts_enabled": true,
+  "profit_threshold_alert": 0.001,
+  "gas_price_threshold_alert": 150,
+  "mev_risk_threshold_alert": "high"
+}

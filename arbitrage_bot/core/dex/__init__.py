@@ -1,6 +1,6 @@
 """DEX module initialization."""
 
-from .dex_manager import DexManager, create_dex_manager
+from .dex_manager import DexManager
 from .base_dex import BaseDEX
 from .base_dex_v2 import BaseDEXV2
 from .base_dex_v3 import BaseDEXV3
@@ -10,7 +10,6 @@ from .swapbased import SwapBased
 
 __all__ = [
     'DexManager',
-    'create_dex_manager',
     'BaseDEX',
     'BaseDEXV2',
     'BaseDEXV3',

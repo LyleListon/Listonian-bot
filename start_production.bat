@@ -1,11 +1,11 @@
 @echo off
 echo ===============================================================================
-echo ARBITRAGE SYSTEM DASHBOARD
+echo ARBITRAGE SYSTEM PRODUCTION MODE
 echo ===============================================================================
 echo.
-echo Starting dashboard...
+echo Starting arbitrage system...
 call venv\Scripts\activate.bat
-python start_dashboard.py
+python production.py
 echo.
 echo ===============================================================================
 echo Press any key to exit...

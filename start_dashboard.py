@@ -1,93 +1,109 @@
+#!/usr/bin/env python
 """
-Start the dashboard application with proper async initialization.
+Dashboard Starter
+
+This script starts the arbitrage system monitoring dashboard.
 """
 
-# Import essential modules first
+import os
 import sys
 import logging
-import asyncio
+import argparse
+from pathlib import Path
 
 # Configure logging
+log_dir = Path("logs")
+log_dir.mkdir(exist_ok=True)
+
+# Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_dir / "dashboard.log"),
+        logging.StreamHandler()
+    ]
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("dashboard")
 
-try:
-    # Import and initialize async manager
-    from arbitrage_bot.utils.async_manager import manager, async_init
-    logger.info("Initializing async event loop...")
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Start the arbitrage system dashboard")
+    parser.add_argument(
+        "--host", 
+        default="localhost", 
+        help="Host to run the dashboard on (default: localhost)"
+    )
+    parser.add_argument(
+        "--port", 
+        type=int, 
+        default=8080, 
+        help="Port to run the dashboard on (default: 8080)"
+    )
+    parser.add_argument(
+        "--debug", 
+        action="store_true", 
+        help="Run in debug mode"
+    )
+    parser.add_argument(
+        "--config", 
+        default="configs/production.json", 
+        help="Path to configuration file (default: configs/production.json)"
+    )
+    return parser.parse_args()
+
+def main():
+    """Start the dashboard server."""
+    args = parse_arguments()
     
-    # Now import other modules
-    import os
-    import json
-    from pathlib import Path
-    from arbitrage_bot.dashboard.run import async_main
-
-    async def init_and_run():
-        """Initialize and run the dashboard."""
+    try:
+        logger.info("=" * 70)
+        logger.info("STARTING ARBITRAGE SYSTEM DASHBOARD")
+        logger.info("=" * 70)
+        
+        # Add the project directory to the Python path
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        if project_dir not in sys.path:
+            sys.path.insert(0, project_dir)
+        
+        # Import dashboard components
         try:
-            # Initialize async manager
-            await async_init()
-            if not manager._initialized:
-                raise RuntimeError("Failed to initialize async manager")
-            logger.info("Successfully initialized async event loop")
+            from arbitrage_bot.dashboard.app import create_app
+            from arbitrage_bot.utils.config_loader import load_config
+        except ImportError as e:
+            logger.error("Failed to import dashboard components: %s", e)
+            logger.error("Make sure the arbitrage_bot package is installed")
+            return 1
+        
+        # Load configuration
+        logger.info("Loading configuration from %s", args.config)
+        config = load_config(args.config)
+        
+        # Create and configure the dashboard app
+        logger.info("Creating dashboard application")
+        app = create_app(config)
+        
+        # Start the dashboard server
+        logger.info("Starting dashboard server on %s:%s", args.host, args.port)
+        logger.info("Dashboard URL: http://%s:%s", args.host, args.port)
+        logger.info("Press Ctrl+C to stop the server")
+        
+        # Run the app
+        app.run(
+            host=args.host,
+            port=args.port,
+            debug=args.debug
+        )
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("Dashboard server stopped by user")
+        return 0
+    except Exception as e:
+        logger.error("Error starting dashboard: %s", e, exc_info=True)
+        return 1
 
-            # Load config
-            config_path = Path(__file__).parent / 'configs' / 'config.json'
-            if config_path.exists():
-                with open(config_path) as f:
-                    config = json.load(f)
-                    if 'dashboard' in config:
-                        port = config['dashboard'].get('port', 5001)
-                        os.environ['DASHBOARD_PORT'] = str(port)
-
-            # Start dashboard
-            logger.info("Starting dashboard...")
-            await async_main()
-
-        except Exception as e:
-            logger.error("Failed to start dashboard: %s", str(e))
-            raise
-        finally:
-            if manager._initialized:
-                await manager.async_cleanup()
-                logger.info("Successfully cleaned up async manager")
-
-    if __name__ == "__main__":
-        try:
-            # Create and configure event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            # Enable debug mode in development
-            if os.getenv('ENV') == 'development':
-                loop.set_debug(True)
-                loop.slow_callback_duration = 5.0  # 5 seconds
-            
-            # Run the dashboard
-            loop.run_until_complete(init_and_run())
-            
-        except KeyboardInterrupt:
-            logger.info("Dashboard stopped by user")
-        except Exception as e:
-            logger.error("Critical error: %s", str(e))
-            sys.exit(1)
-        finally:
-            # Ensure the loop is closed
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.stop()
-                if not loop.is_closed():
-                    loop.close()
-                logger.info("Successfully closed event loop")
-            except Exception as e:
-                logger.error("Error during cleanup: %s", str(e))
-                sys.exit(1)
-
-except Exception as e:
-    logger.error("Critical initialization error: %s", str(e))
-    sys.exit(1)
+if __name__ == "__main__":
+    sys.exit(main())

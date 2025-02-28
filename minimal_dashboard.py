@@ -1,323 +1,645 @@
-"""Minimal dashboard for monitoring arbitrage opportunities."""
+#!/usr/bin/env python
+"""
+Minimal Dashboard for Arbitrage Bot
 
-import logging
+This script provides a simple dashboard for monitoring the arbitrage bot.
+"""
+
 import os
-from datetime import datetime
+import sys
 import json
-import asyncio
-from decimal import Decimal
-from aiohttp import web
-import aiohttp_cors
-from aiohttp_sse import sse_response
-import aiohttp
-import jinja2
-import aiohttp_jinja2
-
-from arbitrage_bot.utils.config_loader import load_config
-from arbitrage_bot.core.memory import create_memory_bank, get_memory_bank
-from arbitrage_bot.utils.secure_env import init_secure_environment
-from arbitrage_bot.core.web3.web3_manager import create_web3_manager
-from arbitrage_bot.utils.gas_logger import GasLogger
-from arbitrage_bot.core.market_analyzer import create_market_analyzer
-from arbitrage_bot.core.dex.dex_manager import create_dex_manager
-
-# Create logs directory if it doesn't exist
-logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
-os.makedirs(logs_dir, exist_ok=True)
-
-# Set up logging to file
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_file = os.path.join(logs_dir, 'dashboard_{}.log'.format(timestamp))
-file_handler = logging.FileHandler(log_file)
-file_handler.setFormatter(logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-))
+import time
+import logging
+import argparse
+from pathlib import Path
+from flask import Flask, render_template_string, jsonify
+from web3 import Web3, HTTPProvider
 
 # Configure logging
+log_dir = Path("logs")
+log_dir.mkdir(exist_ok=True)
+
+# Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_dir / "minimal_dashboard.log"),
+        logging.StreamHandler()
+    ]
 )
-logger = logging.getLogger(__name__)
-logger.addHandler(file_handler)
 
-# Log startup
-logger.info("Starting minimal dashboard...")
+logger = logging.getLogger("minimal_dashboard")
 
-# Get absolute paths
-root_dir = os.path.dirname(os.path.abspath(__file__))
-template_dir = os.path.join('minimal_dashboard', 'templates')
-static_dir = os.path.join('minimal_dashboard', 'static')
+# Create Flask app
+app = Flask(__name__)
 
-# Create static directory if it doesn't exist
-os.makedirs(static_dir, exist_ok=True)
+# Initialize Web3 connection and wallet
+web3 = None
+wallet_address = None
+view_address = None
 
-# Initialize secure environment
-secure_env = init_secure_environment()
+# Reset start time on each restart
+start_time = time.time()
 
-# Load configuration
-config = load_config()
-
-# Verify gas configuration
-if 'gas' not in config:
-    raise ValueError("Gas configuration not found in config")
-if 'max_priority_fee' not in config['gas'] or 'max_fee' not in config['gas']:
-    raise ValueError("Missing gas fee configuration")
-
-# Get RPC URL from secure environment
-rpc_url = secure_env.secure_load('BASE_RPC_URL')
-if not rpc_url:
-    raise ValueError("BASE_RPC_URL not found in secure environment")
-
-# Initialize Web3 manager
-web3_manager = None
-
-# Initialize DEX manager
-logger.info("Initializing DEX manager...")
-dex_manager = None
-
-# Token symbol cache
-token_symbols = {}
-
-async def init_web3_manager():
-    """Initialize Web3 manager asynchronously."""
-    global web3_manager
-    web3_manager = await create_web3_manager(
-        provider_url=rpc_url,
-        chain_id=config.get('network', {}).get('chainId')
-    )
-    logger.info("Web3 manager initialized")
-
-async def init_dex_manager():
-    """Initialize DEX manager asynchronously."""
-    global dex_manager
-    dex_manager = await create_dex_manager(web3_manager, config)
-    logger.info("DEX manager initialized")
-
-async def get_token_symbol(token_address: str) -> str:
-    """Get human-readable token symbol."""
-    if token_address in token_symbols:
-        return token_symbols[token_address]
-    
-    try:
-        token_contract = web3_manager.get_token_contract(token_address)
-        symbol = await token_contract.functions.symbol().call()
-        token_symbols[token_address] = symbol
-        return symbol
-    except Exception as e:
-        logger.error("Error getting token symbol: {}".format(e))
-        return token_address[:8]
-
-class Dashboard:
-    def __init__(self):
-        self.app = web.Application()
-        self.setup_routes()
-        self.clients = set()
-        self.gas_logger = GasLogger()
-        self.memory_bank = None
-        self.market_analyzer = None
-        self.update_task = None
-        self._init_lock = asyncio.Lock()
-        self._initialized = False
-
-    def setup_routes(self):
-        """Set up application routes."""
-        aiohttp_jinja2.setup(
-            self.app,
-            loader=jinja2.FileSystemLoader(template_dir)
-        )
+# Basic HTML template for the dashboard
+DASHBOARD_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Bot Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f7f9;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .card {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            color: #2c3e50;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .stat-card {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 15px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3498db;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .dex-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .dex-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .dex-name {
+            font-weight: bold;
+        }
+        .refresh {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+        .refresh:hover {
+            background-color: #2980b9;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            color: #7f8c8d;
+            font-size: 12px;
+        }
         
-        self.app.router.add_static('/static', static_dir)
-        self.app.router.add_get('/', self.index)
-        self.app.router.add_get('/events', self.events)
+        /* Data auto-refresh */
+        #last-update {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        .error-notice {
+            background-color: #e74c3c;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .info-notice {
+            background-color: #3498db;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .debug-card {
+            background-color: #f39c12;
+            color: white;
+            text-align: left;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Arbitrage Bot Dashboard</h1>
+            <p>Monitoring and system status</p>
+        </div>
+        
+        {% if error_message %}
+        <div class="error-notice">
+            {{ error_message }}
+        </div>
+        {% endif %}
+        
+        {% if info_message %}
+        <div class="info-notice">
+            {{ info_message }}
+        </div>
+        {% endif %}
+        
+        {% if debug_info %}
+        <div class="debug-card">
+            <strong>Debug Information:</strong>
+            {{ debug_info }}
+        </div>
+        {% endif %}
+        
+        <div class="card">
+            <h2>System Status</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="status">{{ status }}</div>
+                    <div class="stat-label">Current Status</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="uptime">{{ uptime }}</div>
+                    <div class="stat-label">Uptime</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="wallet-balance">{{ wallet_balance }}</div>
+                    <div class="stat-label">Wallet Balance</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-profit">{{ total_profit }}</div>
+                    <div class="stat-label">Total Profit</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Network Information</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="network">{{ network }}</div>
+                    <div class="stat-label">Network</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="gas-price">{{ gas_price }}</div>
+                    <div class="stat-label">Gas Price (Gwei)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="block-number">{{ block_number }}</div>
+                    <div class="stat-label">Block Number</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="wallet-address">{{ wallet_address_short }}</div>
+                    <div class="stat-label">Wallet Address</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Integrated DEXes</h2>
+            <ul class="dex-list">
+                <li class="dex-item"><span class="dex-name">Uniswap V2</span> - Status: Active</li>
+                <li class="dex-item"><span class="dex-name">Sushiswap</span> - Status: Active</li>
+                <li class="dex-item"><span class="dex-name">Uniswap V3</span> - Status: Active</li>
+                <li class="dex-item"><span class="dex-name">Pancakeswap</span> - Status: Active</li>
+                <li class="dex-item"><span class="dex-name">Baseswap</span> - Status: Active</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h2>Dynamic Allocation Status</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value">{{ min_percentage }}%</div>
+                    <div class="stat-label">Min Percentage</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ max_percentage }}%</div>
+                    <div class="stat-label">Max Percentage</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ concurrent_trades }}</div>
+                    <div class="stat-label">Concurrent Trades</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ reserve_percentage }}%</div>
+                    <div class="stat-label">Reserve</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Recent Transactions</h2>
+            <pre id="transactions">{{ transactions }}</pre>
+        </div>
+        
+        <div class="card">
+            <h2>Configuration</h2>
+            <pre id="config">{{ config_json }}</pre>
+        </div>
+        
+        <button class="refresh" onclick="refreshData()">Refresh Data</button>
+        <div id="last-update">Last updated: {{ current_time }}</div>
+    </div>
+    
+    <div class="footer">
+        <p>Arbitrage Bot Dashboard v1.0 | © 2025</p>
+    </div>
+    
+    <script>
+        // Auto-refresh data every 30 seconds
+        setInterval(refreshData, 15000);
+        
+        function refreshData() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('status').textContent = data.status;
+                    document.getElementById('uptime').textContent = data.uptime;
+                    document.getElementById('wallet-balance').textContent = data.wallet_balance;
+                    document.getElementById('total-profit').textContent = data.total_profit;
+                    document.getElementById('transactions').textContent = data.transactions;
+                    document.getElementById('network').textContent = data.network;
+                    document.getElementById('gas-price').textContent = data.gas_price;
+                    document.getElementById('block-number').textContent = data.block_number;
+                    document.getElementById('wallet-address').textContent = data.wallet_address_short;
+                    document.getElementById('last-update').textContent = 'Last updated: ' + data.current_time;
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+    </script>
+</body>
+</html>
+"""
 
-        # Set up CORS
-        cors = aiohttp_cors.setup(self.app, defaults={
-            "*": aiohttp_cors.ResourceOptions(
-                allow_credentials=True,
-                expose_headers="*",
-                allow_headers="*"
-            )
-        })
+error_message = None
+info_message = None
+debug_info = None
 
-        # Configure CORS on all routes
-        for route in list(self.app.router.routes()):
-            cors.add(route)
-
-    async def initialize(self):
-        """Initialize dashboard components."""
-        async with self._init_lock:
-            if self._initialized:
-                return
-            
-            # Initialize memory bank
-            self.memory_bank = await create_memory_bank(config)
-            logger.info("Memory bank initialized")
-            
-            self._initialized = True
-
-    @aiohttp_jinja2.template('index.html')
-    async def index(self, request):
-        """Render dashboard template."""
+def load_config():
+    """Load configuration from file."""
+    try:
+        with open("configs/production.json", "r") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error("Failed to load configuration: %s", e)
         return {}
 
-    async def events(self, request):
-        """Server-sent events endpoint."""
-        async with sse_response(request) as resp:
-            self.clients.add(resp)
-            try:
-                while True:
-                    await self.send_updates(resp)
-                    await asyncio.sleep(5)
-            finally:
-                self.clients.remove(resp)
-            return resp
-
-    async def send_updates(self, resp):
-        """Send updates to connected clients."""
-        try:
-            await self.send_memory_stats(resp)
-            await self.send_gas_prices(resp)
-            await self.send_market_data(resp)
-        except Exception as e:
-            logger.error("Error sending updates: {}".format(e))
-
-    async def send_memory_stats(self, resp):
-        """Send memory bank statistics."""
-        try:
-            stats = await self.memory_bank.get_memory_stats()
-            await resp.send_json({'type': 'memory_update', 'data': stats})
-        except Exception as e:
-            logger.error("Error sending memory stats: {}".format(e))
-
-    async def send_gas_prices(self, resp):
-        """Send current gas prices."""
-        try:
-            gas_price = await web3_manager.w3.eth.gas_price / 1e9
-            latest_block = await web3_manager.w3.eth.get_block('latest')
-            base_fee = latest_block.get('base_fee_per_gas', 0) / 1e9
-
-            monthly_summary = self.gas_logger.get_monthly_summary()
-            
-            gas_data = {
-                'current_gas_price': "{:.2f}".format(gas_price),
-                'base_fee': "{:.2f}".format(base_fee),
-                'max_priority_fee': config['gas']['max_priority_fee'],
-                'max_fee': config['gas']['max_fee'],
-                'monthly_stats': {
-                    'total_gas_used': monthly_summary['total_gas_used'],
-                    'total_gas_cost': "{:.6f} ETH".format(monthly_summary['total_gas_cost_eth']),
-                    'average_gas_price': "{:.2f} gwei".format(monthly_summary['average_gas_price_gwei']),
-                    'transfers_to_recipient': monthly_summary['transfers_to_recipient'],
-                    'kept_in_wallet': monthly_summary['kept_in_wallet'],
-                    'highest_gas_price': "{:.2f} gwei".format(monthly_summary['highest_gas_price_gwei']),
-                    'lowest_gas_price': "{:.2f} gwei".format(monthly_summary['lowest_gas_price_gwei'])
-                },
-                'estimated_next_cost': "${:.2f}".format(config['trading']['min_profit_usd']),
-                'timestamp': datetime.now().timestamp()
-            }
-            await resp.send_json({'type': 'gas_update', 'data': gas_data})
-        except Exception as e:
-            logger.error("Error sending gas prices: {}".format(e))
-
-    async def send_market_data(self, resp):
-        """Send real market data from market analyzer."""
-        try:
-            if not dex_manager or not dex_manager.initialized:
-                logger.warning("DEX manager not initialized yet")
-                return
-
-            opportunities = await self.market_analyzer.get_opportunities()
-            
-            formatted_opportunities = []
-            for opp in opportunities:
-                token_in_symbol = await get_token_symbol(opp['token'])
-                token_out_symbol = await get_token_symbol(opp['dex_to_path'][-1])
-                
-                status = 'profitable' if opp['profit_usd'] > config['trading']['min_profit_usd'] else 'monitoring'
-                
-                formatted_opp = {
-                    'pair': "{}/{}".format(token_in_symbol, token_out_symbol),
-                    'dex': "{} → {}".format(opp['dex_from'], opp['dex_to']),
-                    'size': "${:.2f}".format(float(opp['amount_in'])),
-                    'gross_profit': "${:.2f}".format(float(opp['profit_usd'])),
-                    'net_profit': "${:.2f}".format(max(0, float(opp['profit_usd']) - float(config['trading']['min_profit_usd']))),
-                    'price_diff': "{:.2f}%".format(float(opp['price_diff']) * 100),
-                    'liquidity': "${:.2f}".format(float(min(opp['liquidity_from'], opp['liquidity_to']))),
-                    'status': status,
-                    'timestamp': datetime.fromtimestamp(opp['timestamp']).strftime('%H:%M:%S')
-                }
-                formatted_opportunities.append(formatted_opp)
-            
-            formatted_opportunities.sort(
-                key=lambda x: float(x['net_profit'].lstrip('$')), 
-                reverse=True
-            )
-            
-            market_data = {
-                'opportunities': formatted_opportunities,
-                'gas_cost': "${:.2f}".format(config['trading']['min_profit_usd']),
-                'dex_status': {
-                    name: 'active' if dex.is_enabled() else 'inactive'
-                    for name, dex in dex_manager.dex_instances.items()
-                }
-            }
-            await resp.send_json({'type': 'market_update', 'data': market_data})
-        except Exception as e:
-            logger.error("Error sending market data: {}".format(e))
-
-    async def start(self):
-        """Start the dashboard application."""
-        try:
-            # Initialize components
-            await init_web3_manager()
-            await self.initialize()
-            await init_dex_manager()
-            self.market_analyzer = create_market_analyzer(dex_manager=dex_manager)
-            
-            # Start update task
-            self.update_task = asyncio.create_task(self.update_loop())
-            
-            # Start web server
-            runner = web.AppRunner(self.app)
-            await runner.setup()
-            site = web.TCPSite(runner, '0.0.0.0', 5000)
-            await site.start()
-            
-            logger.info("Dashboard started at http://localhost:5000")
-            
-            # Keep the server running
-            while True:
-                await asyncio.sleep(3600)  # Sleep for an hour
-                
-        except Exception as e:
-            logger.error("Error starting dashboard: {}".format(e))
-            raise
-        finally:
-            if self.update_task:
-                self.update_task.cancel()
-
-    async def update_loop(self):
-        """Background task to update connected clients."""
-        while True:
-            try:
-                for client in self.clients:
-                    await self.send_updates(client)
-                await asyncio.sleep(5)
-            except Exception as e:
-                logger.error("Error in update loop: {}".format(e))
-                await asyncio.sleep(5)
-
-async def main():
-    """Main entry point."""
-    dashboard = Dashboard()
-    await dashboard.start()
-
-if __name__ == '__main__':
+def initialize_web3():
+    """Initialize Web3 connection from config."""
+    global web3, wallet_address, view_address, error_message, info_message, debug_info
+    
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Dashboard stopped by user")
+        config = load_config()
+        provider_url = config.get('provider_url', '')
+        private_key = config.get('private_key', '')
+        
+        # Check if we have a view address to display (even if wallet isn't usable)
+        view_address = config.get('view_address')
+        
+        # Debug info
+        debug_info = "Using view address: " + (view_address or "None") + "\n"
+        
+        # Check if we have proper values
+        if 'YOUR_API_KEY' in provider_url or not provider_url:
+            error_message = "ERROR: No valid provider URL configured. Please update configs/production.json."
+            return
+            
+        debug_info += "Provider URL: " + provider_url[:30] + "...\n"
+        
+        # Connect to Ethereum node
+        web3 = Web3(HTTPProvider(provider_url))
+        
+        # Check connection
+        if not web3.isConnected():
+            error_message = "ERROR: Failed to connect to Ethereum node. Please check your provider URL."
+            return
+        
+        debug_info += "Connected to Web3: " + str(web3.isConnected()) + "\n"
+        debug_info += "Checking Web3 connection: Network ID: " + str(web3.net.version) + "\n"
+        
+        # Connect wallet if private key provided    
+        if private_key and private_key != 'YOUR_PRIVATE_KEY_HERE':
+            try:
+                account = web3.eth.account.from_key(private_key)
+                wallet_address = account.address
+                debug_info += "Wallet address from private key: " + wallet_address + "\n"
+                logger.info("Web3 initialized with wallet. Connected to network: %s", get_network_name())
+            except Exception as e:
+                error_message = f"ERROR: Invalid private key format. Please check your private key."
+                logger.error("Failed to initialize wallet: %s", e)
+                debug_info += "Wallet error: " + str(e) + "\n"
+                # Still continue if we have a view address
+                if view_address:
+                    info_message = "Using view-only address for balance display. Transactions will not be possible."
+        else:
+            if view_address:
+                info_message = "Using view-only address for balance display. Transactions will not be possible."
+                debug_info += "Using view address only. No private key.\n"
+            else:
+                error_message = "ERROR: No valid private key or view address configured. Please update configs/production.json."
+                debug_info += "No private key or view address configured.\n"
+            
     except Exception as e:
-        logger.error("Dashboard error: {}".format(e))
-        raise
+        error_message = f"ERROR: Failed to initialize Web3 connection: {str(e)}"
+        logger.error("Failed to initialize Web3: %s", e)
+        debug_info += "Web3 initialization error: " + str(e) + "\n"
+
+def get_network_name():
+    """Get the name of the connected network."""
+    if not web3 or not web3.isConnected():
+        return "Not Connected"
+    
+    try:
+        chain_id = web3.eth.chain_id
+        networks = {
+            1: "Ethereum Mainnet",
+            3: "Ropsten Testnet",
+            4: "Rinkeby Testnet",
+            5: "Goerli Testnet",
+            42: "Kovan Testnet",
+            56: "Binance Smart Chain",
+            137: "Polygon Mainnet",
+            42161: "Arbitrum",
+            10: "Optimism",
+            8453: "Base"
+        }
+        return networks.get(chain_id, f"Unknown Network (Chain ID: {chain_id})")
+    except Exception as e:
+        logger.error("Failed to get network name: %s", e)
+        return "Unknown"
+
+def get_wallet_balance():
+    """Get wallet balance in ETH."""
+    global debug_info
+    
+    # Use view address if available, fall back to wallet address
+    address_to_check = view_address or wallet_address
+    
+    if not web3 or not web3.isConnected() or not address_to_check:
+        debug_info += "Cannot get balance: " + str(bool(web3)) + ", " + str(bool(web3.isConnected() if web3 else False)) + ", " + str(bool(address_to_check)) + "\n"
+        return "Not Available"
+    
+    try:
+        debug_info += "Checking balance for: " + address_to_check + "\n"
+        balance_wei = web3.eth.get_balance(Web3.to_checksum_address(address_to_check))
+        debug_info += "Balance in wei: " + str(balance_wei) + "\n"
+        balance_eth = web3.from_wei(balance_wei, 'ether')
+        debug_info += "Balance in ETH: " + str(balance_eth) + "\n"
+        return f"{balance_eth:.4f} ETH"
+    except Exception as e:
+        logger.error("Failed to get wallet balance: %s", e)
+        debug_info += "Balance error: " + str(e) + "\n"
+        return "Error"
+
+def get_gas_price():
+    """Get current gas price in Gwei."""
+    if not web3 or not web3.isConnected():
+        return "Not Available"
+    
+    try:
+        gas_price_wei = web3.eth.gas_price
+        gas_price_gwei = web3.from_wei(gas_price_wei, 'gwei')
+        return f"{gas_price_gwei:.2f}"
+    except Exception as e:
+        logger.error("Failed to get gas price: %s", e)
+        return "Error"
+
+def get_block_number():
+    """Get latest block number."""
+    if not web3 or not web3.isConnected():
+        return "Not Available"
+    
+    try:
+        return str(web3.eth.block_number)
+    except Exception as e:
+        logger.error("Failed to get block number: %s", e)
+        return "Error"
+
+def get_recent_transactions():
+    """Get recent transactions."""
+    address_to_check = wallet_address or view_address
+    
+    if not web3 or not web3.isConnected() or not address_to_check:
+        return "Not Available"
+    
+    try:
+        # Basic implementation - can be expanded with more transaction data
+        return "Transaction data can be integrated with Etherscan API or local transaction tracking."
+    except Exception as e:
+        logger.error("Failed to get transactions: %s", e)
+        return "Error"
+
+def get_total_profit():
+    """Get total profit."""
+    # In a real implementation, this would fetch data from storage
+    return "Not Tracked"
+
+@app.route('/')
+def index():
+    """Render dashboard index page."""
+    config = load_config()
+    
+    # Format uptime
+    uptime_seconds = int(time.time() - start_time)
+    days, remainder = divmod(uptime_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    uptime = f"{days}d {hours}h {minutes}m {seconds}s"
+    
+    # Get Web3 data
+    wallet_balance = get_wallet_balance()
+    network = get_network_name()
+    gas_price = get_gas_price()
+    block_number = get_block_number()
+    transactions = get_recent_transactions()
+    total_profit = get_total_profit()
+    
+    # Format wallet/view address for display
+    display_address = view_address or wallet_address
+    wallet_address_short = display_address[:6] + "..." + display_address[-4:] if display_address else "Not Available"
+    
+    # Get dynamic allocation values
+    dynamic_allocation = config.get('dynamic_allocation', {})
+    min_percentage = dynamic_allocation.get('min_percentage', "N/A")
+    max_percentage = dynamic_allocation.get('max_percentage', "N/A")
+    concurrent_trades = dynamic_allocation.get('concurrent_trades', "N/A")
+    reserve_percentage = dynamic_allocation.get('reserve_percentage', "N/A")
+    
+    # Set status based on Web3 connection
+    status = "Running" if web3 and web3.isConnected() else "Not Connected"
+    
+    return render_template_string(
+        DASHBOARD_TEMPLATE,
+        status=status,
+        uptime=uptime,
+        wallet_balance=wallet_balance,
+        total_profit=total_profit,
+        min_percentage=min_percentage,
+        max_percentage=max_percentage,
+        concurrent_trades=concurrent_trades,
+        reserve_percentage=reserve_percentage,
+        config_json=json.dumps(config, indent=2),
+        current_time=time.strftime("%Y-%m-%d %H:%M:%S"),
+        network=network,
+        gas_price=gas_price,
+        block_number=block_number,
+        wallet_address_short=wallet_address_short,
+        transactions=transactions,
+        error_message=error_message,
+        info_message=info_message,
+        debug_info=debug_info
+    )
+
+@app.route('/api/status')
+def api_status():
+    """API endpoint for dashboard status."""
+    # Format uptime
+    uptime_seconds = int(time.time() - start_time)
+    days, remainder = divmod(uptime_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    uptime = f"{days}d {hours}h {minutes}m {seconds}s"
+    
+    # Get Web3 data
+    wallet_balance = get_wallet_balance()
+    network = get_network_name()
+    gas_price = get_gas_price()
+    block_number = get_block_number()
+    transactions = get_recent_transactions()
+    total_profit = get_total_profit()
+    
+    # Format wallet/view address for display
+    display_address = view_address or wallet_address
+    wallet_address_short = display_address[:6] + "..." + display_address[-4:] if display_address else "Not Available"
+    
+    # Set status based on Web3 connection
+    status = "Running" if web3 and web3.isConnected() else "Not Connected"
+    
+    return jsonify({
+        'status': status,
+        'uptime': uptime,
+        'wallet_balance': wallet_balance,
+        'total_profit': total_profit,
+        'transactions': transactions,
+        'current_time': time.strftime("%Y-%m-%d %H:%M:%S"),
+        'network': network,
+        'gas_price': gas_price,
+        'block_number': block_number,
+        'wallet_address_short': wallet_address_short,
+        'error_message': error_message,
+        'info_message': info_message,
+        'debug_info': debug_info
+    })
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Start the minimal arbitrage system dashboard")
+    parser.add_argument(
+        "--host", 
+        default="localhost", 
+        help="Host to run the dashboard on (default: localhost)"
+    )
+    parser.add_argument(
+        "--port", 
+        type=int, 
+        default=5000, 
+        help="Port to run the dashboard on (default: 5000)"
+    )
+    parser.add_argument(
+        "--debug", 
+        action="store_true", 
+        help="Run in debug mode"
+    )
+    return parser.parse_args()
+
+def main():
+    """Start the dashboard server."""
+    global start_time
+    start_time = time.time()  # Reset start time on each run
+    
+    args = parse_arguments()
+    
+    try:
+        logger.info("=" * 70)
+        logger.info("STARTING ARBITRAGE SYSTEM DASHBOARD")
+        logger.info("=" * 70)
+        
+        # Initialize Web3
+        initialize_web3()
+        
+        # Start the dashboard
+        logger.info("Starting dashboard server on %s:%s", args.host, args.port)
+        logger.info("Dashboard URL: http://%s:%s", args.host, args.port)
+        logger.info("Press Ctrl+C to stop the server")
+        
+        # Run the app
+        app.run(
+            host=args.host,
+            port=args.port,
+            debug=args.debug
+        )
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("Dashboard server stopped by user")
+        return 0
+    except Exception as e:
+        logger.error("Error starting dashboard: %s", e, exc_info=True)
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

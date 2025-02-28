@@ -1,1 +1,1 @@
-"""Web3 package initialization."""
+# Web3 module initialization

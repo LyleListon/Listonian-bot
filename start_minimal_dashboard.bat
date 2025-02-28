@@ -1,11 +1,11 @@
 @echo off
 echo ===============================================================================
-echo ARBITRAGE SYSTEM DASHBOARD
+echo MINIMAL ARBITRAGE SYSTEM DASHBOARD
 echo ===============================================================================
 echo.
-echo Starting dashboard...
+echo Starting minimal dashboard...
 call venv\Scripts\activate.bat
-python start_dashboard.py
+python minimal_dashboard.py
 echo.
 echo ===============================================================================
 echo Press any key to exit...

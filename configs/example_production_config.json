@@ -1,10 +1,9 @@
 {
-  "provider_url": "https://eth-mainnet.g.alchemy.com/v2/yTTQiLVAo9j3G7m9JD9HJYnkgQ6RNWC6",
+  "provider_url": "https://eth-mainnet.alchemyapi.io/v2/YOUR_API_KEY",
   "chain_id": 1,
-  "private_key": "YOUR_PRIVATE_KEY_HERE_DO_NOT_USE_ALL_ZEROS",
-  "view_address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  "private_key": "0000000000000000000000000000000000000000000000000000000000000000",
   "network": {
-    "rpc_url": "https://eth-mainnet.g.alchemy.com/v2/yTTQiLVAo9j3G7m9JD9HJYnkgQ6RNWC6"
+    "rpc_url": "https://eth-mainnet.alchemyapi.io/v2/YOUR_API_KEY"
   },
   "trading": {
     "min_profit": 0.25,
@@ -35,7 +34,7 @@
     "transaction_timeout": 180,
     "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
     "contract_address": {
-      "mainnet": "YOUR_DEPLOYED_CONTRACT_ADDRESS_HERE"
+      "mainnet": "0x0000000000000000000000000000000000000000"
     }
   },
   "dynamic_allocation": {
@@ -59,7 +58,7 @@
     "adaptive_gas": true
   },
   "monitoring": {
-    "log_level": "WARNING",
+    "log_level": "INFO",
     "metrics_enabled": true,
     "alert_threshold": 85.0,
     "collection_interval": 10000,
@@ -73,7 +72,8 @@
     "cors": {
       "enabled": true,
       "origins": [
-        "https://dashboard.example.com"
+        "https://dashboard.example.com",
+        "http://localhost:8080"
       ]
     },
     "rate_limit": {
