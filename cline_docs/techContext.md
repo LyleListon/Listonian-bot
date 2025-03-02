@@ -13,6 +13,10 @@
 - logging (for system logging)
 - decimal (for precise calculations)
 - typing (for type hints)
+- fastapi>=0.100.0 (for enhanced dashboard)
+- uvicorn>=0.22.0 (for serving FastAPI applications)
+- jinja2>=3.1.2 (for HTML templating)
+- python-dotenv>=1.0.0 (for environment variable management)
 
 ## Technical Requirements
 
@@ -39,6 +43,28 @@ IMPORTANT: This project uses pure asyncio/async/await patterns. We DO NOT use ev
    - Resource monitoring
    - Error recovery
    - Performance tracking
+
+### Dashboard Architecture
+1. FastAPI Implementation
+   - RESTful API design
+   - Async request handling
+   - Advanced UI with direct trading controls
+   - Background task execution for long-running operations
+   - Environment variable configuration via .env file
+
+2. Arbitrage Connector
+   - Direct integration with arbitrage bot components
+   - Safe import mechanism for bot modules
+   - Error handling and fallback mechanisms
+   - Profit optimization controls
+   - Real-time status monitoring
+
+3. Bot Data Integration
+   - Log file parsing for historical data
+   - Performance metrics extraction
+   - Transaction history display
+   - Error monitoring and visualization
+   - Opportunity tracking
 
 ### DEX Integration
 1. WETH Address Handling
@@ -69,6 +95,8 @@ IMPORTANT: This project uses pure asyncio/async/await patterns. We DO NOT use ev
    - Factory address
    - Token configurations
    - DEX-specific settings
+   - RPC URL for Web3 connection
+   - Wallet address for monitoring
 
 2. Validation Requirements
    - Address checksum validation
@@ -76,6 +104,7 @@ IMPORTANT: This project uses pure asyncio/async/await patterns. We DO NOT use ev
    - Required field presence
    - Type validation
    - Contract existence check
+   - Environment variable handling
 
 ### Error Handling
 1. Standardization
@@ -139,6 +168,35 @@ IMPORTANT: This project uses pure asyncio/async/await patterns. We DO NOT use ev
    - Quote validation
 
 ## Implementation Notes
+
+### Dashboard Components
+1. FastAPI Application (`app.py`)
+   - Core web server implementation
+   - API endpoint definition
+   - HTML template rendering
+   - Environment variable loading
+   - WebSocket support (future)
+
+2. Bot Data Parser (`bot_data.py`)
+   - Log file parsing
+   - Metrics extraction
+   - Transaction history
+   - Opportunity data collection
+   - System status monitoring
+
+3. Arbitrage Connector (`arbitrage_connector.py`)
+   - Safe module loading
+   - Direct interaction with bot core
+   - Trade execution
+   - Status monitoring
+   - Profit optimization
+
+4. UI Framework
+   - Bootstrap 5 for responsive design
+   - Chart.js for data visualization
+   - Async data refresh
+   - Interactive trading controls
+   - Real-time updates
 
 ### Critical Components
 1. DEX Manager
@@ -253,6 +311,21 @@ This migration provides:
 
 ## Environment Configuration Notes
 
+### Dashboard Environment
+1. FastAPI Requirements
+   - Python 3.12+ required
+   - Environment variables via .env file
+   - Templates directory structure
+   - Static files organization
+   - Startup scripts for Windows (bat/ps1)
+
+2. Arbitrage Connection
+   - Bot module import structure
+   - Error handling for module loading
+   - Default config paths
+   - Path finding for bot components
+   - Fallback mechanisms
+
 ### Terminal and Python Configuration
 1. PowerShell 7 Requirements
    - Terminal must use the correct PowerShell 7 path
@@ -269,5 +342,6 @@ This migration provides:
    - If shell integration fails, check PowerShell executable path
    - For Python interpreter issues, verify the venv exists and is properly configured
    - VS Code settings.json may need explicit python.defaultInterpreterPath
+   - Dashboard requires proper file paths for templates and static files
 
-Last Updated: 2025-02-25
+Last Updated: 2025-02-28 04:20

@@ -1,15 +1,41 @@
-"""Flash loan management for arbitrage operations."""
+"""
+Flash loan management for arbitrage operations.
+
+This module now uses the unified flash loan manager implementation internally
+while maintaining backward compatibility with existing code.
+
+DEPRECATED: Use unified_flash_loan_manager.py instead.
+"""
 
 import logging
+import warnings
 from typing import Dict, List, Any, Optional
 from decimal import Decimal
 from web3 import Web3
 from eth_typing import Address
 
+from .unified_flash_loan_manager import UnifiedFlashLoanManager, create_flash_loan_manager_sync
+
 logger = logging.getLogger(__name__)
 
+# Emit deprecation warning
+warnings.warn(
+    "The FlashLoanManager class is deprecated. "
+    "Use UnifiedFlashLoanManager from unified_flash_loan_manager instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
 class FlashLoanManager:
-    """Manages flash loan operations for arbitrage."""
+    """
+    Manages flash loan operations for arbitrage.
+    
+    DEPRECATED: Use UnifiedFlashLoanManager instead.
+    
+    This class now serves as a compatibility wrapper around UnifiedFlashLoanManager,
+    providing the same interface as the original FlashLoanManager but using the
+    unified implementation internally.
+    """
     
     def __init__(self, web3_manager: Any, config: Dict[str, Any]):
         """Initialize flash loan manager."""
@@ -29,7 +55,10 @@ class FlashLoanManager:
         self.min_profit_bps = config.get('flash_loans', {}).get('min_profit_basis_points', 200)
         self.max_trade_size = Web3.to_wei(config.get('flash_loans', {}).get('max_trade_size', '0.1'), 'ether')
         
-        logger.info("Flash loan manager initialized")
+        # Create the unified manager internally
+        self._unified_manager = None
+        
+        logger.info("FlashLoanManager initialized (compatibility wrapper)")
         
         if not self.enabled:
             logger.warning("Flash loans are currently disabled in config")
@@ -40,21 +69,17 @@ class FlashLoanManager:
             if not self.enabled:
                 logger.info("Flash loans are disabled, skipping initialization")
                 return True
-                
-            # Load contract ABI
-            self.arbitrage_abi = self.web3_manager.load_abi("BaseFlashLoanArbitrage")
             
-            # Get contract address from deployments
-            network = self.config.get('network', 'mainnet')
-            if network == 'mainnet':
-                # Use mainnet address when deployed
-                self.arbitrage_contract = None  # TODO: Update with mainnet address
-            else:
-                # Use Sepolia test deployment
-                self.arbitrage_contract = self.w3.eth.contract(
-                    address=Web3.to_checksum_address("0xa111E81d1F6F8bF648d1405ADf45aAC92602BcA8"),
-                    abi=self.arbitrage_abi
+            # Create and initialize the unified manager if needed
+            if self._unified_manager is None:
+                self._unified_manager = create_flash_loan_manager_sync(
+                    web3_manager=self.web3_manager,
+                    config=self.config
                 )
+            
+            # Get unified manager's contract
+            self.arbitrage_contract = self._unified_manager.arbitrage_contract
+            self.arbitrage_abi = self._unified_manager.arbitrage_abi
             
             if self.arbitrage_contract:
                 self.initialized = True
@@ -81,24 +106,12 @@ class FlashLoanManager:
         """
         if not self.enabled or not self.initialized:
             return False
-            
-        try:
-            # Check if amount is within limits
-            amount_wei = Web3.to_wei(amount, 'ether')
-            if amount_wei > self.max_trade_size:
-                logger.warning(f"Amount {amount} exceeds max trade size {Web3.from_wei(self.max_trade_size, 'ether')}")
-                return False
-            
-            # Verify token is supported (currently only WETH and USDC)
-            if token_address.lower() not in [self.weth_address.lower(), self.usdc_address.lower()]:
-                logger.warning(f"Token {token_address} not supported for flash loans")
-                return False
-                
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error checking flash loan availability: {e}")
+        
+        if self._unified_manager is None:
             return False
+            
+        # Use unified manager's implementation
+        return self._unified_manager.is_token_supported_sync(token_address)
     
     def estimate_flash_loan_cost(self, token_address: str, amount: Decimal) -> Decimal:
         """
@@ -114,14 +127,14 @@ class FlashLoanManager:
         if not self.enabled or not self.initialized:
             return Decimal('0')
             
-        try:
-            # Flash loan fee is typically 0.09%
+        if self._unified_manager is None:
+            # Old implementation as fallback
             fee_rate = Decimal('0.0009')
             return amount * fee_rate
             
-        except Exception as e:
-            logger.error(f"Error estimating flash loan cost: {e}")
-            return Decimal('0')
+        # Use unified manager's implementation
+        cost_info = self._unified_manager.estimate_flash_loan_cost_sync(token_address, amount)
+        return Decimal(str(cost_info["protocol_fee"]))
     
     def prepare_flash_loan(self, token_address: str, amount: Decimal) -> Optional[Dict[str, Any]]:
         """
@@ -140,12 +153,33 @@ class FlashLoanManager:
         try:
             amount_wei = Web3.to_wei(amount, 'ether')
             
-            # Prepare transaction data
-            return {
-                'token': Web3.to_checksum_address(token_address),
-                'amount': amount_wei,
-                'contract': self.arbitrage_contract.address
-            }
+            if self._unified_manager is None:
+                # Old implementation as fallback
+                return {
+                    'token': Web3.to_checksum_address(token_address),
+                    'amount': amount_wei,
+                    'contract': self.arbitrage_contract.address if self.arbitrage_contract else None
+                }
+            
+            # Use unified manager's implementation
+            # Note: This doesn't provide the exact same output format as before,
+            # but it contains the necessary information
+            result = self._unified_manager.prepare_flash_loan_transaction_sync(
+                token_address=token_address,
+                amount=amount_wei,
+                route=[],  # Empty route as this wasn't required in original implementation
+                min_profit=0
+            )
+            
+            if result["success"]:
+                return {
+                    'token': Web3.to_checksum_address(token_address),
+                    'amount': amount_wei,
+                    'contract': self.arbitrage_contract.address if self.arbitrage_contract else None,
+                    'transaction': result.get('transaction', {})
+                }
+            else:
+                return None
             
         except Exception as e:
             logger.error(f"Error preparing flash loan: {e}")
@@ -177,45 +211,46 @@ class FlashLoanManager:
         if not self.enabled or not self.initialized:
             return None
             
-        try:
-            # Verify amount is within limits
-            if amount > self.max_trade_size:
-                logger.warning(f"Amount {amount} exceeds max trade size {self.max_trade_size}")
-                return None
-            
-            # Verify min profit meets requirements
-            min_profit_required = (amount * self.min_profit_bps) // 10000
-            if min_profit < min_profit_required:
-                logger.warning(f"Min profit {min_profit} below required {min_profit_required}")
-                return None
-            
-            # Prepare transaction
-            tx_data = self.arbitrage_contract.functions.executeArbitrage(
-                token_in,
-                token_out,
-                amount,
-                buy_dex,
-                sell_dex,
-                min_profit
-            ).build_transaction({
-                'from': self.web3_manager.account.address,
-                'gas': 500000,  # Estimate gas
-                'nonce': self.w3.eth.get_transaction_count(self.web3_manager.account.address)
-            })
-            
-            # Sign and send transaction
-            signed_tx = self.web3_manager.account.sign_transaction(tx_data)
-            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-            
-            # Wait for transaction receipt
-            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
-            
-            logger.info(f"Flash loan arbitrage executed: {receipt['transactionHash'].hex()}")
-            return receipt
-            
-        except Exception as e:
-            logger.error(f"Error executing flash loan arbitrage: {e}")
+        # Construct a simplified route for unified manager
+        route = [
+            {
+                "dex_id": int(buy_dex) if buy_dex.isdigit() else 1,
+                "token_in": token_in,
+                "token_out": token_out
+            },
+            {
+                "dex_id": int(sell_dex) if sell_dex.isdigit() else 2,
+                "token_in": token_out,
+                "token_out": token_in
+            }
+        ]
+        
+        if self._unified_manager is None:
+            logger.error("Unified manager not initialized")
             return None
+        
+        # Use unified manager's implementation
+        result = self._unified_manager.execute_flash_loan_arbitrage_sync(
+            token_address=token_in,
+            amount=amount,
+            route=route,
+            min_profit=min_profit,
+            use_flashbots=False  # Original implementation didn't use Flashbots
+        )
+        
+        if result["success"]:
+            # Try to format result similar to original implementation
+            if "transaction_hash" in result:
+                try:
+                    receipt = self.w3.eth.get_transaction_receipt(result["transaction_hash"])
+                    return receipt
+                except Exception:
+                    return result
+            return result
+        else:
+            logger.error(f"Error executing flash loan arbitrage: {result.get('error')}")
+            return None
+
 
 def create_flash_loan_manager(
     web3_manager: Optional[Any] = None,
@@ -224,6 +259,8 @@ def create_flash_loan_manager(
     """
     Create and initialize a flash loan manager instance.
     
+    DEPRECATED: Use create_flash_loan_manager_sync from unified_flash_loan_manager instead.
+    
     Args:
         web3_manager: Optional Web3Manager instance
         config: Optional configuration dictionary
@@ -231,6 +268,13 @@ def create_flash_loan_manager(
     Returns:
         FlashLoanManager: Initialized flash loan manager
     """
+    warnings.warn(
+        "create_flash_loan_manager is deprecated. "
+        "Use create_flash_loan_manager_sync from unified_flash_loan_manager instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
     try:
         # Load dependencies if not provided
         if web3_manager is None or config is None:
@@ -247,7 +291,7 @@ def create_flash_loan_manager(
         # Create manager instance
         manager = FlashLoanManager(web3_manager=web3_manager, config=config)
         manager.initialize()
-        logger.info("Flash loan manager created")
+        logger.info("Flash loan manager created (compatibility wrapper)")
         return manager
         
     except Exception as e:

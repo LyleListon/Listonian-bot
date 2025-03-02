@@ -7,6 +7,7 @@ This module provides Web3 integration for blockchain interactions.
 import logging
 import asyncio
 from typing import Dict, Any, Optional
+import json
 from web3 import Web3, HTTPProvider
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,9 @@ class Web3Manager:
         
         # Initialize Web3
         self.w3 = Web3(HTTPProvider(provider_url))
+
+        # Cache for loaded ABIs
+        self._abi_cache = {}
         
         # Set up account if private key provided
         if private_key:
@@ -104,6 +108,103 @@ class Web3Manager:
         signed_tx = await self.sign_transaction(transaction)
         tx_hash = self.w3.eth.send_raw_transaction(bytes.fromhex(signed_tx[2:] if signed_tx.startswith('0x') else signed_tx))
         return tx_hash.hex()
+
+
+    async def load_abi_async(self, contract_name: str) -> Dict[str, Any]:
+        """
+        Load a contract ABI asynchronously.
+        
+        Args:
+            contract_name: Name of the contract ABI file (without .json extension)
+            
+        Returns:
+            Contract ABI as a dictionary
+        """
+        # Check if already cached
+        if contract_name in self._abi_cache:
+            return self._abi_cache[contract_name]
+            
+        try:
+            # Use an executor to read the file asynchronously
+            loop = asyncio.get_event_loop()
+            
+            def _load_abi():
+                import os
+                # Attempt to find the ABI in the abi directory
+                abi_path = os.path.join('abi', f'{contract_name}.json')
+                
+                if not os.path.exists(abi_path):
+                    # Try looking in the project root
+                    abi_path = os.path.join('arbitrage_bot', 'abi', f'{contract_name}.json')
+                
+                if not os.path.exists(abi_path):
+                    raise FileNotFoundError(f"ABI file not found: {contract_name}.json")
+                
+                with open(abi_path, 'r') as f:
+                    return json.load(f)
+            
+            abi = await loop.run_in_executor(None, _load_abi)
+            
+            # Cache the ABI
+            self._abi_cache[contract_name] = abi
+            return abi
+            
+        except Exception as e:
+            logger.error(f"Error loading ABI {contract_name}: {e}")
+            raise
+    
+    async def get_transaction_count_async(self, address: str) -> int:
+        """
+        Get the transaction count for an address asynchronously.
+        
+        Args:
+            address: Ethereum address
+            
+        Returns:
+            Transaction count (nonce)
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, 
+            lambda: self.w3.eth.get_transaction_count(address)
+        )
+    
+    async def send_raw_transaction_async(self, raw_transaction: bytes) -> bytes:
+        """
+        Send a raw transaction asynchronously.
+        
+        Args:
+            raw_transaction: Signed transaction data
+            
+        Returns:
+            Transaction hash
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.w3.eth.send_raw_transaction(raw_transaction)
+        )
+    
+    async def wait_for_transaction_receipt_async(self, tx_hash: bytes, timeout: int = 120, poll_latency: float = 0.1) -> Dict[str, Any]:
+        """
+        Wait for a transaction receipt asynchronously.
+        
+        Args:
+            tx_hash: Transaction hash
+            timeout: Maximum time to wait in seconds
+            poll_latency: Time between polling attempts in seconds
+            
+        Returns:
+            Transaction receipt
+        """
+        start_time = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            try:
+                return self.w3.eth.get_transaction_receipt(tx_hash)
+            except Exception:
+                await asyncio.sleep(poll_latency)
+        
+        raise TimeoutError(f"Transaction {tx_hash.hex()} timed out after {timeout} seconds")
 
 
 async def create_web3_manager(provider_url: str = None, chain_id: int = None, private_key: str = None, config: Dict[str, Any] = None) -> Web3Manager:

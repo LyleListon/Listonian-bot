@@ -137,19 +137,41 @@ class DexManager:
         import random
         
         # Base conversion rate (simulated)
-        base_rate = 1800  # 1 ETH = 1800 USDC
+        base_rates = {
+            '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': 1800,  # USDC: 1 ETH = 1800 USDC
+            '0xdAC17F958D2ee523a2206206994597C13D831ec7': 1805,  # USDT: 1 ETH = 1805 USDT
+            '0x6B175474E89094C44Da98b954EedeAC495271d0F': 1802,  # DAI: 1 ETH = 1802 DAI
+            '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': 0.055   # WBTC: 1 ETH = 0.055 WBTC
+        }
+        
+        # Token decimals
+        decimals = {
+            '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2': 18,     # WETH = 18 decimals
+            '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': 6,      # USDC = 6 decimals
+            '0xdAC17F958D2ee523a2206206994597C13D831ec7': 6,      # USDT = 6 decimals
+            '0x6B175474E89094C44Da98b954EedeAC495271d0F': 18,     # DAI = 18 decimals
+            '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': 8       # WBTC = 8 decimals
+        }
         
         # Apply a random spread -5% to +5%
         spread = random.uniform(0.95, 1.05)
         
-        # Calculate amount out based on token pair
-        if token_in.lower() == '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'.lower():  # WETH
-            # WETH to USDC
-            amount_out = int(amount_in * base_rate * spread / 10**12)  # Adjust for decimals
-        elif token_out.lower() == '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'.lower():  # WETH
-            # USDC to WETH
-            amount_out = int(amount_in * (1 / base_rate) * spread * 10**12)  # Adjust for decimals
-        else:
+        # Normalize addresses to lowercase
+        token_in = token_in.lower()
+        token_out = token_out.lower()
+        weth_address = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'.lower()
+        
+        # WETH to another token
+        if token_in == weth_address and token_out in base_rates:
+            base_rate = base_rates[token_out]
+            decimal_diff = decimals[weth_address] - decimals[token_out]
+            amount_out = int(amount_in * base_rate * spread / (10**decimal_diff))
+        # Another token to WETH
+        elif token_out == weth_address and token_in in base_rates:
+            base_rate = base_rates[token_in]
+            decimal_diff = decimals[token_in] - decimals[weth_address]
+            amount_out = int(amount_in * (1 / base_rate) * spread * (10**decimal_diff))
+        else:  # Fallback for unsupported pairs
             # Other token pairs - simulate a random conversion
             amount_out = int(amount_in * random.uniform(0.9, 1.1))
         

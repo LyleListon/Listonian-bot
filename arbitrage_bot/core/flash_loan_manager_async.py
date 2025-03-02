@@ -2,15 +2,36 @@
 Async Flash Loan Manager Module
 
 This module provides asynchronous flash loan management capabilities for arbitrage operations.
+
+DEPRECATED: Use unified_flash_loan_manager.py instead.
 """
 
 import logging
+import warnings
 from typing import Dict, List, Any, Optional
+
+from .unified_flash_loan_manager import UnifiedFlashLoanManager, create_flash_loan_manager
 
 logger = logging.getLogger(__name__)
 
+# Emit deprecation warning
+warnings.warn(
+    "The AsyncFlashLoanManager class is deprecated. "
+    "Use UnifiedFlashLoanManager from unified_flash_loan_manager instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
 class AsyncFlashLoanManager:
-    """Manages flash loan operations asynchronously."""
+    """
+    Manages flash loan operations asynchronously.
+    
+    DEPRECATED: Use UnifiedFlashLoanManager instead.
+    
+    This class now serves as a compatibility wrapper around UnifiedFlashLoanManager,
+    providing the same interface as the original AsyncFlashLoanManager but using the
+    unified implementation internally.
+    """
     
     def __init__(self, web3_manager, config: Dict[str, Any], flashbots_manager=None):
         """
@@ -40,9 +61,22 @@ class AsyncFlashLoanManager:
         contract_addresses = flash_config.get('contract_address', {})
         self.contract_address = contract_addresses.get('mainnet', '')
         
-        logger.info("AsyncFlashLoanManager initialized")
+        # Create the unified manager for internal use
+        self._unified_manager = None
+        self._config = config
+        
+        logger.info("AsyncFlashLoanManager initialized (compatibility wrapper)")
         logger.info("Flash loans enabled: %s", self.enabled)
         logger.info("Using Flashbots: %s", self.use_flashbots)
+    
+    async def _ensure_initialized(self):
+        """Ensure the unified manager is initialized."""
+        if self._unified_manager is None:
+            self._unified_manager = await create_flash_loan_manager(
+                web3_manager=self.web3_manager,
+                config=self._config,
+                flashbots_manager=self.flashbots_manager
+            )
     
     async def validate_arbitrage_opportunity(self, 
                                            input_token: str, 
@@ -63,51 +97,21 @@ class AsyncFlashLoanManager:
         Returns:
             Validation result with profitability assessment
         """
-        # This is a simulation implementation
-        # In a real implementation, this would calculate actual costs
+        await self._ensure_initialized()
         
-        # Calculate raw profit
-        raw_profit = expected_output - input_amount
-        
-        # Estimate gas cost
-        gas_limit = 500000  # Example gas limit
-        gas_price = await self.web3_manager.get_gas_price()
-        gas_cost_wei = gas_limit * gas_price
-        
-        # For flash loan, assume 0.09% fee on borrowed amount
-        flash_loan_fee = int(input_amount * 0.0009)
-        
-        # Calculate net profit
-        net_profit = raw_profit - flash_loan_fee - gas_cost_wei
-        
-        # Calculate profit margin
-        profit_margin = net_profit / input_amount if input_amount > 0 else 0
-        
-        # Check if profitable
-        is_profitable = net_profit > 0 and profit_margin * 10000 >= self.min_profit_basis_points
-        
-        logger.info("Arbitrage opportunity validation:")
-        logger.info("Raw profit: %s wei", raw_profit)
-        logger.info("Flash loan fee: %s wei", flash_loan_fee)
-        logger.info("Gas cost: %s wei", gas_cost_wei)
-        logger.info("Net profit: %s wei", net_profit)
-        logger.info("Profit margin: %s%%", profit_margin * 100)
-        logger.info("Is profitable: %s", is_profitable)
-        
-        return {
-            "is_profitable": is_profitable,
-            "raw_profit": raw_profit,
-            "flash_loan_fee": flash_loan_fee,
-            "gas_cost": gas_cost_wei,
-            "net_profit": net_profit,
-            "profit_margin": profit_margin
-        }
+        return await self._unified_manager.validate_arbitrage_opportunity(
+            input_token=input_token,
+            output_token=output_token,
+            input_amount=input_amount,
+            expected_output=expected_output,
+            route=route
+        )
     
     async def prepare_flash_loan_transaction(self,
                                            token_address: str,
                                            amount: int,
                                            route: List[Dict[str, Any]],
-                                           min_profit: int) -> Dict[str, Any]:
+                                           min_profit: int = 0) -> Dict[str, Any]:
         """
         Prepare a flash loan transaction.
         
@@ -120,30 +124,14 @@ class AsyncFlashLoanManager:
         Returns:
             Prepared transaction details
         """
-        # This is a simulation implementation
-        # In a real implementation, this would prepare an actual transaction
+        await self._ensure_initialized()
         
-        logger.info("Preparing flash loan transaction")
-        logger.info("Token: %s", token_address)
-        logger.info("Amount: %s wei", amount)
-        logger.info("Min profit: %s wei", min_profit)
-        
-        # Simulate a transaction
-        transaction = {
-            "to": self.contract_address,
-            "data": "0x123456",  # Example transaction data
-            "value": 0,
-            "gas": 500000,
-            "gasPrice": await self.web3_manager.get_gas_price()
-        }
-        
-        return {
-            "success": True,
-            "token": token_address,
-            "amount": amount,
-            "min_profit": min_profit,
-            "transaction": transaction
-        }
+        return await self._unified_manager.prepare_flash_loan_transaction(
+            token_address=token_address,
+            amount=amount,
+            route=route,
+            min_profit=min_profit
+        )
     
     async def execute_flash_loan_arbitrage(self,
                                          token_address: str,
@@ -164,33 +152,76 @@ class AsyncFlashLoanManager:
         Returns:
             Execution result
         """
+        await self._ensure_initialized()
+        
         # Set use_flashbots if provided, otherwise use default
         use_flashbots = use_flashbots if use_flashbots is not None else self.use_flashbots
         
-        # Prepare transaction
-        tx_prep = await self.prepare_flash_loan_transaction(token_address, amount, route, min_profit)
+        return await self._unified_manager.execute_flash_loan_arbitrage(
+            token_address=token_address,
+            amount=amount,
+            route=route,
+            min_profit=min_profit,
+            use_flashbots=use_flashbots
+        )
+    
+    async def is_token_supported(self, token_address: str) -> bool:
+        """
+        Check if a token is supported for flash loans.
         
-        if not tx_prep['success']:
-            return {"success": False, "error": "Failed to prepare transaction"}
+        Args:
+            token_address: Token address to check
+            
+        Returns:
+            bool: True if token is supported
+        """
+        await self._ensure_initialized()
+        return await self._unified_manager.is_token_supported(token_address)
+    
+    async def get_max_flash_loan_amount(self, token_address: str) -> int:
+        """
+        Get maximum flash loan amount for a token.
         
-        # This is a simulation implementation
-        # In a real implementation, this would execute the transaction
+        Args:
+            token_address: Token address
+            
+        Returns:
+            int: Maximum loan amount in wei
+        """
+        await self._ensure_initialized()
+        return await self._unified_manager.get_max_flash_loan_amount(token_address)
+    
+    async def get_supported_tokens(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get a dictionary of supported tokens for flash loans.
         
-        logger.info("Simulating flash loan arbitrage execution")
-        logger.info("Using Flashbots: %s", use_flashbots)
+        Returns:
+            Dictionary mapping token addresses to token info
+        """
+        await self._ensure_initialized()
+        return await self._unified_manager.get_supported_tokens()
+    
+    async def close(self):
+        """Close the flash loan manager and release resources."""
+        if self._unified_manager is not None:
+            await self._unified_manager.close()
+    
+    # Context manager support
+    async def __aenter__(self):
+        """Async context manager entry."""
+        await self._ensure_initialized()
+        return self
         
-        # Simulate success
-        return {
-            "success": True,
-            "transaction_hash": "0x123456789abcdef",
-            "profit_realized": min_profit,
-            "using_flashbots": use_flashbots
-        }
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
 
 
 async def create_flash_loan_manager(web3_manager, config: Dict[str, Any] = None, flashbots_manager = None) -> AsyncFlashLoanManager:
     """
     Create and initialize an AsyncFlashLoanManager instance.
+    
+    DEPRECATED: Use create_flash_loan_manager from unified_flash_loan_manager instead.
     
     Args:
         web3_manager: Web3Manager instance
@@ -200,7 +231,17 @@ async def create_flash_loan_manager(web3_manager, config: Dict[str, Any] = None,
     Returns:
         Initialized AsyncFlashLoanManager instance
     """
+    warnings.warn(
+        "This create_flash_loan_manager function is deprecated. "
+        "Use create_flash_loan_manager from unified_flash_loan_manager instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
     # Create AsyncFlashLoanManager
     flash_loan_manager = AsyncFlashLoanManager(web3_manager, config, flashbots_manager)
+    
+    # Ensure it's initialized
+    await flash_loan_manager._ensure_initialized()
     
     return flash_loan_manager

@@ -116,6 +116,65 @@ BaseDEX (abstract)
    - State monitoring
    - Health checks
 
+## Dashboard Implementation Architecture
+
+### FastAPI Architecture
+```
+FastAPI App (app.py)
+├── API Endpoints
+│   ├── HTML Template Routes
+│   ├── Status API
+│   └── Trading API
+├── ArbitrageConnector (arbitrage_connector.py)
+│   └── Bot Integration
+└── BotDataParser (bot_data.py)
+    └── Log Analysis
+```
+
+### Component Interaction Flow
+1. App initialization:
+   - Load environment variables via python-dotenv
+   - Initialize Web3 connection
+   - Initialize ArbitrageConnector
+   - Set up endpoints and templates
+2. ArbitrageConnector initialization:
+   - Safe import of arbitrage bot modules
+   - Initialize connection to bot components
+   - Set up trading functionality
+3. Dashboard data flow:
+   - BotDataParser extracts information from logs
+   - ArbitrageConnector provides real-time data
+   - FastAPI serves data via HTML templates
+   - JavaScript UI updates via AJAX
+
+### Environment Configuration Pattern
+1. Environment variables stored in .env file
+2. Loaded via python-dotenv
+3. Used for sensitive data:
+   - RPC URLs
+   - Wallet addresses
+4. Fallback to config.json for missing values
+5. Configuration validation and sanitization
+
+### Trading Panel Architecture
+1. UI Components:
+   - Auto Opportunity execution
+   - Manual trade creation
+   - Gas settings management
+   - DEX price comparison
+2. API Integration:
+   - Trading endpoints in app.py
+   - Background task execution for trades
+   - Real-time status updates
+   - Error handling and recovery
+
+### Background Task Management
+1. Long-running operations executed as background tasks
+2. Trading operations don't block API responses
+3. Status updates served via polling endpoints
+4. Progress tracking for complex operations
+5. Error handling and recovery
+
 ## Flash Loan Integration
 
 ### Flash Loan Pattern
@@ -162,6 +221,39 @@ BaseDEX (abstract)
    - Front-running protection
    - Sandwich attack prevention
    - Priority optimization
+
+## Profit Maximization Architecture
+
+### Opportunity Detection
+1. Real-time price monitoring across DEXs
+2. Price discrepancy identification
+3. Multi-path opportunity analysis
+4. Profit calculation with gas costs
+5. Execution viability assessment
+
+### Trading Strategy Pattern
+```
+Trading Strategy
+├── Manual Trading
+│   └── UI-based trade creation
+└── Automatic Trading
+    ├── Opportunity scanning
+    └── One-click execution
+```
+
+### Profit Analysis Flow
+1. Token price fetching from multiple DEXs
+2. Cross-DEX price comparison
+3. Potential profit calculation
+4. Gas cost estimation and deduction
+5. Slippage assessment and risk evaluation
+
+### Gas Optimization
+1. User-configurable gas settings
+2. Interactive UI controls for gas parameters
+3. Gas price monitoring for optimal timing
+4. Priority fee adjustment for faster inclusion
+5. Gas limit multiplier for safety margin
 
 ## Web3 Integration
 
@@ -233,6 +325,13 @@ BaseDEX (abstract)
 4. Liquidity depth tracking
 5. Slow operation detection
 
+### Dashboard Monitoring Pattern
+1. Real-time data visualization
+2. Bot status tracking
+3. Transaction history display
+4. Error tracking and alerting
+5. Performance metrics charts
+
 ## Security Patterns
 
 ### Input Validation
@@ -248,6 +347,13 @@ BaseDEX (abstract)
 3. Transaction deadlines
 4. Balance verification
 5. Quote validation
+
+### Dashboard Security
+1. Trade confirmation dialogs
+2. Parameter validation
+3. Error handling and feedback
+4. Secure environment variable handling
+5. Bot integration safety checks
 
 ## Testing Patterns
 
@@ -271,3 +377,10 @@ BaseDEX (abstract)
 3. Resource cleanup verification
 4. Lock management testing
 5. Error recovery testing
+
+### Dashboard Testing
+1. API endpoint testing
+2. UI component testing
+3. ArbitrageConnector integration testing
+4. Log parsing validation
+5. Trading functionality verification

@@ -1,8 +1,9 @@
-
+{
     "network": {
         "chainId": 8453,
         "name": "Base",
-        "rpc_url": "$SECURE:BASE_RPC_URL"
+        "rpc_url": "$SECURE:BASE_RPC_URL",
+        "provider_url": "https://mainnet.base.org"
     },
     "wallet": {
         "wallet_address": "$SECURE:WALLET_ADDRESS",
@@ -219,6 +220,9 @@
         }
     },
     "tokens": {
+        "weth": "0x4200000000000000000000000000000000000006",
+        "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "dai": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
         "WETH": {
             "address": "0x4200000000000000000000000000000000000006",
             "decimals": 18,
