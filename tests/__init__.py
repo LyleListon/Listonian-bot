@@ -1,1 +1,3 @@
-"""Test package for arbitrage_bot."""
+"""
+Tests package for the Listonian Arbitrage Bot.
+"""

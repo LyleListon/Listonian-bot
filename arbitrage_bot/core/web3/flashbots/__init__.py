@@ -1,22 +1,24 @@
 """
 Flashbots Integration Package
 
-This package contains components for integrating with Flashbots,
-enabling MEV protection through private transaction submissions
-and bundle creation.
+This package provides classes and utilities for interacting with Flashbots,
+enabling private transaction submission to protect against MEV attacks.
 """
 
-from .flashbots_provider import FlashbotsProvider, create_flashbots_provider
-from .bundle import FlashbotsBundle, FlashbotsBundleResponse, create_flashbots_bundle
-from .simulator import BundleSimulator, SimulationResult, create_bundle_simulator
+from .interfaces import (
+    FlashbotsBundle, 
+    BundleSimulationResult,
+    BundleSubmissionResult,
+    BundleStatsResult
+)
+from .provider import FlashbotsProvider
+from .simulator import BundleSimulator
 
 __all__ = [
-    "FlashbotsProvider",
-    "create_flashbots_provider",
-    "FlashbotsBundle",
-    "FlashbotsBundleResponse",
-    "create_flashbots_bundle",
-    "BundleSimulator",
-    "SimulationResult",
-    "create_bundle_simulator"
+    'FlashbotsBundle',
+    'FlashbotsProvider',
+    'BundleSimulator',
+    'BundleSimulationResult',
+    'BundleSubmissionResult',
+    'BundleStatsResult'
 ]

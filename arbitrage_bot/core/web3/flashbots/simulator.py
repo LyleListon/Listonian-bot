@@ -1,452 +1,266 @@
 """
 Flashbots Bundle Simulator
 
-This module contains components for simulating Flashbots transaction
-bundles to validate their execution and calculate expected profit.
+This module contains the BundleSimulator, which is used to simulate the execution
+of Flashbots bundles before submitting them to the relay. This allows for
+profit validation and ensuring transactions will execute successfully.
 """
 
 import asyncio
+import json
 import logging
 import time
-from typing import Dict, List, Any, Optional, Union, Tuple
-from dataclasses import dataclass
-from decimal import Decimal
+from typing import Dict, List, Any, Optional, Union
 
-from ..interfaces import Web3Client, Transaction
+from ...web3.interfaces import Web3Client
+from .interfaces import FlashbotsBundle, BundleSimulationResult
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class SimulationResult:
-    """
-    Result of a bundle simulation.
-    
-    Contains information about execution success, gas used,
-    expected profit, and other simulation details.
-    """
-    success: bool
-    gas_used: int
-    profit_wei: int
-    cost_wei: int
-    profit_ratio: float
-    error: Optional[str] = None
-    results: Optional[List[Dict[str, Any]]] = None
-    coinbase_diff: Optional[int] = None
-    state_block: Optional[str] = None
-    block_number: Optional[int] = None
-    timestamp: int = 0
-    
-    @property
-    def is_profitable(self) -> bool:
-        """Check if the simulation indicates profitability."""
-        return self.success and self.profit_wei > 0 and self.profit_ratio > 0
-    
-    @property
-    def net_profit_wei(self) -> int:
-        """Calculate net profit after costs."""
-        return self.profit_wei - self.cost_wei
-    
-    def __post_init__(self):
-        """Set timestamp if not provided."""
-        if not self.timestamp:
-            self.timestamp = int(time.time())
-
-
 class BundleSimulator:
     """
-    Simulator for Flashbots transaction bundles.
+    Simulator for Flashbots bundles.
     
-    Validates execution and calculates expected profits for
-    transaction bundles before submission.
+    This class provides functionality to simulate the execution of Flashbots
+    bundles before submitting them to the relay, allowing for validation of
+    profit and execution success.
     """
     
     def __init__(
         self,
         web3_client: Web3Client,
-        flashbots_provider: Any,  # Avoid circular import
-        config: Dict[str, Any] = None
+        config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize the bundle simulator.
         
         Args:
             web3_client: Web3 client for blockchain interactions
-            flashbots_provider: Flashbots provider for simulations
-            config: Configuration dictionary
+            config: Configuration parameters for the simulator
         """
         self.web3_client = web3_client
-        self.flashbots_provider = flashbots_provider
         self.config = config or {}
         
         # Configuration
-        self.min_profit_wei = int(self.config.get("min_profit_wei", 0))
-        self.min_profit_ratio = float(self.config.get("min_profit_ratio", 0.0))
-        self.gas_price_buffer = float(self.config.get("gas_price_buffer", 1.1))  # 10% buffer
-        self.state_block_offset = int(self.config.get("state_block_offset", 0))
-        self.max_tries = int(self.config.get("max_tries", 3))
-        self.retry_delay = float(self.config.get("retry_delay", 1.0))
+        self.simulation_block = self.config.get("simulation_block", "latest")
+        self.state_block = self.config.get("state_block", None)
+        self.simulation_timestamp = self.config.get("simulation_timestamp", None)
         
         # State
-        self._simulation_lock = asyncio.Lock()
-        self._simulation_cache: Dict[str, SimulationResult] = {}
-        self._cache_ttl = float(self.config.get("cache_ttl", 2.0))  # Cache TTL in seconds
-        self._simulation_stats = {
-            "total": 0,
-            "successful": 0,
-            "profitable": 0,
-            "failed": 0,
-            "errors": {}
-        }
-        
-        logger.info("BundleSimulator initialized")
+        self._is_initialized = False
+        self._initialization_lock = asyncio.Lock()
     
-    async def simulate_bundle(
-        self,
-        bundle: List[Dict[str, Any]],
-        block_number: Optional[Union[int, str]] = None,
-        state_block_number: Optional[Union[int, str]] = None,
-        cache_key: Optional[str] = None
-    ) -> SimulationResult:
+    async def initialize(self) -> None:
         """
-        Simulate a transaction bundle and analyze the results.
+        Initialize the bundle simulator.
+        
+        This method ensures the simulator is ready for use.
+        """
+        async with self._initialization_lock:
+            if self._is_initialized:
+                logger.debug("Bundle simulator already initialized")
+                return
+            
+            logger.info("Initializing Flashbots bundle simulator")
+            
+            # Verify web3 client is available
+            if not self.web3_client:
+                raise ValueError("Web3 client is required")
+            
+            self._is_initialized = True
+            logger.info("Bundle simulator initialized")
+    
+    async def _ensure_initialized(self) -> None:
+        """Ensure the simulator is initialized."""
+        if not self._is_initialized:
+            await self.initialize()
+    
+    async def simulate(
+        self,
+        bundle: FlashbotsBundle,
+        block: Union[str, int] = "latest",
+        state_block: Optional[Union[str, int]] = None,
+        timestamp: Optional[int] = None
+    ) -> BundleSimulationResult:
+        """
+        Simulate a Flashbots bundle.
+        
+        This method simulates the execution of a bundle using the Flashbots
+        simulation API, which allows predicting the outcome without actually
+        submitting the transactions.
         
         Args:
-            bundle: List of transaction objects to simulate
-            block_number: Block number to simulate on
-            state_block_number: Block to use for state
-            cache_key: Optional cache key for storing/retrieving results
+            bundle: Bundle to simulate
+            block: Block number or hash to simulate against
+            state_block: Block to use for state, or None for same as block
+            timestamp: Timestamp to use for simulation, or None for current time
             
         Returns:
-            Simulation result including success, gas used, and profit metrics
+            Simulation result
         """
-        # Update statistics
-        self._simulation_stats["total"] += 1
+        await self._ensure_initialized()
         
-        # Check cache if key provided
-        if cache_key and cache_key in self._simulation_cache:
-            cached_result = self._simulation_cache[cache_key]
-            cache_age = time.time() - cached_result.timestamp
-            
-            if cache_age < self._cache_ttl:
-                logger.info(f"Using cached simulation result for {cache_key} ({cache_age:.2f}s old)")
-                return cached_result
+        # Use configuration values if not provided
+        if block == "latest":
+            block = self.simulation_block
         
-        async with self._simulation_lock:
-            logger.info(f"Simulating bundle with {len(bundle)} transactions")
-            
-            # Set default block numbers if not provided
-            try:
-                if not block_number:
-                    current_block = await self.web3_client.get_block_number()
-                    block_number = current_block
-                
-                if not state_block_number:
-                    if isinstance(block_number, int):
-                        state_block_number = block_number - self.state_block_offset
-                    elif block_number == "latest":
-                        current_block = await self.web3_client.get_block_number()
-                        state_block_number = current_block - self.state_block_offset
-                    else:
-                        state_block_number = block_number
-            
-            except Exception as e:
-                logger.error(f"Error getting block numbers for simulation: {e}")
-                self._simulation_stats["failed"] += 1
-                self._simulation_stats["errors"][str(e)] = self._simulation_stats["errors"].get(str(e), 0) + 1
-                
-                return SimulationResult(
-                    success=False,
-                    gas_used=0,
-                    profit_wei=0,
-                    cost_wei=0,
-                    profit_ratio=0.0,
-                    error=f"Block number error: {e}"
-                )
-            
-            # Retry simulation a few times if it fails
-            for attempt in range(1, self.max_tries + 1):
-                try:
-                    # Run simulation through Flashbots provider
-                    simulation_data = await self.flashbots_provider.simulate_bundle(
-                        bundle, 
-                        block_number=block_number,
-                        state_block_number=state_block_number
-                    )
-                    
-                    if not simulation_data:
-                        if attempt < self.max_tries:
-                            logger.warning(f"Simulation attempt {attempt} returned no data, retrying...")
-                            await asyncio.sleep(self.retry_delay)
-                            continue
-                        
-                        self._simulation_stats["failed"] += 1
-                        return SimulationResult(
-                            success=False,
-                            gas_used=0,
-                            profit_wei=0,
-                            cost_wei=0,
-                            profit_ratio=0.0,
-                            error="Simulation returned no data"
-                        )
-                    
-                    # Analyze simulation results
-                    result = self._analyze_simulation_result(simulation_data)
-                    
-                    # Update statistics
-                    if result.success:
-                        self._simulation_stats["successful"] += 1
-                        if result.is_profitable:
-                            self._simulation_stats["profitable"] += 1
-                    else:
-                        self._simulation_stats["failed"] += 1
-                        if result.error:
-                            self._simulation_stats["errors"][result.error] = self._simulation_stats["errors"].get(result.error, 0) + 1
-                    
-                    # Cache result if key provided
-                    if cache_key:
-                        self._simulation_cache[cache_key] = result
-                        
-                        # Cleanup old cache entries
-                        self._cleanup_cache()
-                    
-                    return result
-                
-                except Exception as e:
-                    if attempt < self.max_tries:
-                        logger.warning(f"Simulation attempt {attempt} failed with error: {e}, retrying...")
-                        await asyncio.sleep(self.retry_delay)
-                    else:
-                        logger.error(f"All simulation attempts failed: {e}")
-                        self._simulation_stats["failed"] += 1
-                        self._simulation_stats["errors"][str(e)] = self._simulation_stats["errors"].get(str(e), 0) + 1
-                        
-                        return SimulationResult(
-                            success=False,
-                            gas_used=0,
-                            profit_wei=0,
-                            cost_wei=0,
-                            profit_ratio=0.0,
-                            error=f"Simulation error: {e}"
-                        )
-    
-    def _analyze_simulation_result(
-        self,
-        simulation_data: Dict[str, Any]
-    ) -> SimulationResult:
-        """
-        Analyze simulation data to determine profit and success.
+        if state_block is None:
+            state_block = self.state_block or block
         
-        Args:
-            simulation_data: Raw simulation data from Flashbots
-            
-        Returns:
-            Analyzed simulation result
-        """
-        # Default values
-        success = True
-        gas_used = 0
-        profit_wei = 0
-        cost_wei = 0
-        profit_ratio = 0.0
-        error = None
-        tx_results = []
-        coinbase_diff = 0
-        block_number = None
+        if timestamp is None:
+            timestamp = self.simulation_timestamp or int(time.time())
         
-        # Check for simulation error
-        if "error" in simulation_data:
-            success = False
-            error = simulation_data["error"]
-            logger.error(f"Simulation error: {error}")
-            return SimulationResult(
-                success=success,
-                gas_used=gas_used,
-                profit_wei=profit_wei,
-                cost_wei=cost_wei,
-                profit_ratio=profit_ratio,
-                error=error
-            )
-        
-        # Extract block number
-        if "blockNumber" in simulation_data:
-            try:
-                block_number = int(simulation_data["blockNumber"], 16) if isinstance(simulation_data["blockNumber"], str) else int(simulation_data["blockNumber"])
-            except (ValueError, TypeError):
-                logger.warning(f"Could not parse block number: {simulation_data.get('blockNumber')}")
-        
-        # Extract transaction results
-        if "results" in simulation_data:
-            tx_results = simulation_data["results"]
-            
-            # Check if any transactions failed
-            for i, tx_result in enumerate(tx_results):
-                if not tx_result.get("success", True):
-                    success = False
-                    tx_error = tx_result.get("error", f"Transaction {i} failed")
-                    error = f"Transaction failure: {tx_error}"
-                    logger.warning(f"Transaction {i} failed: {tx_error}")
-                
-                # Sum up gas used
-                if "gasUsed" in tx_result:
-                    tx_gas_used = int(tx_result["gasUsed"], 16) if isinstance(tx_result["gasUsed"], str) else int(tx_result["gasUsed"])
-                    gas_used += tx_gas_used
-        
-        # Extract coinbase difference (miner payment)
-        if "coinbaseDiff" in simulation_data:
-            try:
-                coinbase_diff = int(simulation_data["coinbaseDiff"], 16) if isinstance(simulation_data["coinbaseDiff"], str) else int(simulation_data["coinbaseDiff"])
-                profit_wei += coinbase_diff
-            except (ValueError, TypeError):
-                logger.warning(f"Could not parse coinbase diff: {simulation_data.get('coinbaseDiff')}")
-        
-        # Calculate gas cost
-        if success and gas_used > 0:
-            # Get gas price - prefer value from simulation, but fall back to estimation
-            gas_price = 0
-            
-            try:
-                if tx_results and "gasPrice" in tx_results[0]:
-                    gas_price = int(tx_results[0]["gasPrice"], 16) if isinstance(tx_results[0]["gasPrice"], str) else int(tx_results[0]["gasPrice"])
-                else:
-                    # Try to get current gas price and add buffer
-                    gas_price_wei = self.web3_client.get_gas_price()
-                    if isinstance(gas_price_wei, int):
-                        gas_price = int(gas_price_wei * self.gas_price_buffer)
-                    else:
-                        # Convert from async result if needed
-                        if hasattr(gas_price_wei, "result"):
-                            gas_price = int(gas_price_wei.result() * self.gas_price_buffer)
-                
-                cost_wei = gas_used * gas_price
-                
-                # Calculate profit metrics
-                net_profit = profit_wei - cost_wei
-                profit_wei = net_profit
-                
-                if cost_wei > 0:
-                    profit_ratio = net_profit / cost_wei
-                
-                # Check profitability against thresholds
-                if self.min_profit_wei > 0 and net_profit < self.min_profit_wei:
-                    logger.warning(f"Bundle not profitable enough. Profit: {net_profit} wei, Minimum: {self.min_profit_wei} wei")
-                    success = False
-                    error = f"Insufficient profit: {net_profit} wei < {self.min_profit_wei} wei"
-                
-                if self.min_profit_ratio > 0 and profit_ratio < self.min_profit_ratio:
-                    logger.warning(f"Bundle profit ratio too low. Ratio: {profit_ratio}, Minimum: {self.min_profit_ratio}")
-                    success = False
-                    error = f"Insufficient profit ratio: {profit_ratio} < {self.min_profit_ratio}"
-                
-            except Exception as e:
-                logger.error(f"Error calculating gas cost: {e}")
-                success = False
-                error = f"Gas calculation error: {e}"
-        
-        # Create result object
-        simulation_result = SimulationResult(
-            success=success,
-            gas_used=gas_used,
-            profit_wei=profit_wei,
-            cost_wei=cost_wei,
-            profit_ratio=profit_ratio,
-            error=error,
-            results=tx_results,
-            coinbase_diff=coinbase_diff,
-            block_number=block_number,
-            timestamp=int(time.time())
+        # Create a basic BundleSimulationResult with success=False
+        # Will be updated if simulation succeeds
+        result = BundleSimulationResult(
+            success=False,
+            error="Simulation not attempted"
         )
         
-        # Log summary
-        if success:
-            logger.info(
-                f"Simulation successful: Gas used={gas_used}, "
-                f"Profit={profit_wei} wei, "
-                f"Ratio={profit_ratio:.3f}"
+        try:
+            logger.info(f"Simulating bundle with {len(bundle.signed_transactions)} transaction(s)")
+            
+            if not bundle.signed:
+                logger.error("Bundle must be signed before simulation")
+                result.error = "Bundle not signed"
+                return result
+            
+            # Create simulation payload
+            payload = {
+                "txs": bundle.signed_transactions,
+                "blockNumber": block,
+                "stateBlockNumber": state_block,
+                "timestamp": timestamp
+            }
+            
+            # Remove None values
+            payload = {k: v for k, v in payload.items() if v is not None}
+            
+            # Make a direct request to eth_callBundle on the RPC
+            # Use the web3_client to make the request
+            response = await self.web3_client.call_contract_method(
+                "eth_callBundle",
+                [payload]
             )
-        else:
-            logger.warning(f"Simulation unsuccessful: {error}")
-        
-        return simulation_result
+            
+            # Check for errors in the response
+            if not response or isinstance(response, dict) and "error" in response:
+                error_msg = response.get("error", {}).get("message", "Unknown error") if isinstance(response, dict) else "Empty response"
+                logger.error(f"Simulation failed: {error_msg}")
+                result.error = error_msg
+                return result
+            
+            # Extract simulation results
+            if isinstance(response, dict):
+                # Get the result part
+                sim_result = response.get("result", response)
+            else:
+                sim_result = response
+            
+            # Parse simulation results
+            if not sim_result:
+                logger.error("Simulation returned empty result")
+                result.error = "Empty simulation result"
+                return result
+            
+            # Update result with simulation data
+            result.success = True
+            result.error = None
+            
+            # Extract simulation details
+            if isinstance(sim_result, dict):
+                result.state_changes = sim_result.get("stateChanges", {})
+                result.gas_used = sim_result.get("gasUsed", 0)
+                result.gas_price = sim_result.get("gasPrice", 0)
+                result.eth_sent_to_coinbase = sim_result.get("ethSentToCoinbase", 0)
+                result.simulation_block = sim_result.get("simulationBlock", 0)
+                result.simulation_timestamp = sim_result.get("simulationTimestamp", 0)
+            
+            logger.info(f"Bundle simulation successful. Gas used: {result.gas_used}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error simulating bundle: {e}")
+            result.error = str(e)
+            return result
     
-    def _cleanup_cache(self) -> None:
-        """Clean up expired entries from the simulation cache."""
-        current_time = time.time()
-        expired_keys = [
-            key for key, result in self._simulation_cache.items()
-            if current_time - result.timestamp > self._cache_ttl
-        ]
-        
-        for key in expired_keys:
-            del self._simulation_cache[key]
-    
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get statistics about simulation runs.
-        
-        Returns:
-            Dictionary of simulation statistics
-        """
-        stats = self._simulation_stats.copy()
-        
-        # Add success rate
-        if stats["total"] > 0:
-            stats["success_rate"] = stats["successful"] / stats["total"]
-            stats["profit_rate"] = stats["profitable"] / stats["total"]
-        else:
-            stats["success_rate"] = 0.0
-            stats["profit_rate"] = 0.0
-        
-        # Add cache info
-        stats["cache_size"] = len(self._simulation_cache)
-        stats["cache_ttl"] = self._cache_ttl
-        
-        return stats
-    
-    def clear_cache(self) -> None:
-        """Clear the simulation cache."""
-        self._simulation_cache.clear()
-        logger.info("Simulation cache cleared")
-    
-    def set_min_profit(
+    async def calculate_profit(
         self,
-        min_profit_wei: Optional[int] = None,
-        min_profit_ratio: Optional[float] = None
-    ) -> None:
+        simulation_result: BundleSimulationResult
+    ) -> float:
         """
-        Set minimum profit thresholds for simulations.
+        Calculate the profit from a bundle simulation.
+        
+        This method analyzes the simulation result to determine the potential
+        profit from executing the bundle.
         
         Args:
-            min_profit_wei: Minimum profit in wei
-            min_profit_ratio: Minimum profit to cost ratio
+            simulation_result: Result of a bundle simulation
+            
+        Returns:
+            Estimated profit in ETH
         """
-        if min_profit_wei is not None:
-            self.min_profit_wei = min_profit_wei
-            logger.info(f"Set minimum profit threshold to {min_profit_wei} wei")
+        if not simulation_result.success:
+            logger.warning("Cannot calculate profit for failed simulation")
+            return 0.0
         
-        if min_profit_ratio is not None:
-            self.min_profit_ratio = min_profit_ratio
-            logger.info(f"Set minimum profit ratio to {min_profit_ratio}")
-
-
-async def create_bundle_simulator(
-    web3_client: Web3Client,
-    flashbots_provider: Any,
-    config: Dict[str, Any] = None
-) -> BundleSimulator:
-    """
-    Factory function to create a bundle simulator.
+        # Initialize profit calculation
+        profit = 0.0
+        
+        try:
+            # Extract relevant information from simulation result
+            state_changes = simulation_result.state_changes
+            gas_used = simulation_result.gas_used or 0
+            gas_price = simulation_result.gas_price or 0
+            
+            # Calculate gas cost
+            gas_cost = gas_used * gas_price / 1e18  # Convert to ETH
+            
+            # Analyze state changes to calculate profit
+            # This is a simplified approach - real implementation would
+            # look at token balances before and after
+            
+            # For now, just return a placeholder
+            # In a real implementation, this would analyze the state_changes
+            # to determine the actual profit
+            
+            logger.info(f"Calculated profit: {profit} ETH (gas cost: {gas_cost} ETH)")
+            return profit - gas_cost
+            
+        except Exception as e:
+            logger.error(f"Error calculating profit: {e}")
+            return 0.0
     
-    Args:
-        web3_client: Web3 client for blockchain interactions
-        flashbots_provider: Flashbots provider for simulations
-        config: Configuration parameters
+    async def verify_profitability(
+        self,
+        simulation_result: BundleSimulationResult,
+        min_profit_threshold: float = 0.001
+    ) -> bool:
+        """
+        Verify if a simulated bundle is profitable.
         
-    Returns:
-        Initialized bundle simulator
-    """
-    return BundleSimulator(
-        web3_client=web3_client,
-        flashbots_provider=flashbots_provider,
-        config=config
-    )
+        This method determines if the bundle would be profitable after
+        accounting for gas costs and any fees.
+        
+        Args:
+            simulation_result: Result of a bundle simulation
+            min_profit_threshold: Minimum profit to consider the bundle profitable
+            
+        Returns:
+            True if the bundle is profitable, False otherwise
+        """
+        profit = await self.calculate_profit(simulation_result)
+        is_profitable = profit >= min_profit_threshold
+        
+        if is_profitable:
+            logger.info(f"Bundle is profitable: {profit} ETH")
+        else:
+            logger.warning(f"Bundle is not profitable: {profit} ETH < {min_profit_threshold} ETH")
+        
+        return is_profitable
+    
+    async def close(self) -> None:
+        """Close the simulator and clean up resources."""
+        logger.info("Closing bundle simulator")
+        self._is_initialized = False

@@ -1,9 +1,9 @@
 @echo off
-echo Running Unified Flash Loan Manager Test
-echo =======================================
+echo Running Flash Loan Integration Tests...
+echo.
 
-python -m arbitrage_bot.tests.test_unified_flash_loan_manager
+python -m tests.finance.test_flash_loans
 
-echo =======================================
-echo Test completed
+echo.
+echo Flash Loan Tests completed.
 pause
