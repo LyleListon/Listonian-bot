@@ -1,0 +1,61 @@
+@startuml
+!theme plain
+skinparam componentStyle uml2
+
+package "Blockchain Layer" {
+    [Smart Contracts] as Contracts
+    [DEX Registry] as DEXRegistry
+    [Price Feed Registry] as PriceFeedRegistry
+}
+
+package "Trading Execution" {
+    [Arbitrage Detector] as Detector
+    [Trade Router] as Router
+    [Risk Manager] as RiskManager
+}
+
+package "Machine Learning" {
+    [Predictive Models] as MLModels
+    [Reinforcement Learning] as RLModels
+    [Evolutionary Optimizer] as Optimizer
+}
+
+package "Monitoring" {
+    [Dashboard] as Dashboard
+    [Logging System] as Logging
+    [Metrics Collector] as Metrics
+}
+
+package "Configuration" {
+    [Config Loader] as ConfigLoader
+    [Network Config] as NetworkConfig
+}
+
+Contracts --> DEXRegistry : interact
+Contracts --> PriceFeedRegistry : interact
+Detector --> Router : route opportunities
+Router --> RiskManager : validate trades
+MLModels --> Optimizer : train
+RLModels --> Detector : suggest strategies
+Dashboard --> Metrics : display
+Logging --> Metrics : record
+ConfigLoader --> NetworkConfig : load
+Detector --> Contracts : execute trades
+
+note right of Contracts
+  Multi-chain, 
+  Cross-DEX Support
+end note
+
+note left of MLModels
+  Predictive and 
+  Reinforcement Learning
+  Strategies
+end note
+
+note right of Dashboard
+  Real-time Monitoring
+  Performance Tracking
+end note
+
+@enduml

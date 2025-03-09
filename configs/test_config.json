@@ -1,0 +1,96 @@
+{
+  "general": {
+    "network": "base_mainnet",
+    "chain_id": 8453,
+    "mode": "test",
+    "debug": true,
+    "log_level": "INFO"
+  },
+  "web3": {
+    "providers": [
+      {
+        "name": "alchemy",
+        "type": "http",
+        "url": "https://base-mainnet.g.alchemy.com/v2/YOUR_API_KEY",
+        "priority": 1
+      },
+      {
+        "name": "infura",
+        "type": "http",
+        "url": "https://base-mainnet.infura.io/v3/YOUR_API_KEY",
+        "priority": 2
+      }
+    ],
+    "fallback_strategy": "priority",
+    "max_retries": 3,
+    "timeout_seconds": 30,
+    "confirmation_blocks": 1
+  },
+  "wallet": {
+    "address": "0x0000000000000000000000000000000000000000",
+    "private_key_env": "PRIVATE_KEY",
+    "gas_price_strategy": "medium",
+    "gas_price_multiplier": 1.1,
+    "max_gas_price_gwei": 100
+  },
+  "dexes": {
+    "enabled": [
+      "baseswap_v2",
+      "baseswap_v3",
+      "sushiswap_v2",
+      "pancakeswap_v3"
+    ],
+    "update_interval_seconds": 300,
+    "max_pools_per_dex": 500,
+    "min_liquidity_usd": 10000
+  },
+  "arbitrage": {
+    "strategies": [
+      "triangular",
+      "cross_dex",
+      "flash_loan"
+    ],
+    "auto_execute": false,
+    "discovery_interval_seconds": 30,
+    "execution_interval_seconds": 60,
+    "min_profit_threshold_eth": 0.005,
+    "max_opportunities_per_cycle": 5,
+    "min_confidence_threshold": 0.7,
+    "market_update_interval_seconds": 30
+  },
+  "tokens": {
+    "WETH": {
+      "address": "0x4200000000000000000000000000000000000006",
+      "decimals": 18
+    },
+    "USDC": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "decimals": 6
+    },
+    "USDT": {
+      "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+      "decimals": 6
+    },
+    "DAI": {
+      "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+      "decimals": 18
+    }
+  },
+  "flash_loan": {
+    "provider": "balancer",
+    "max_loan_amount_eth": 100,
+    "gas_limit": 3000000,
+    "balancer_pool_registry": "0x9424B1412450D0f8Fc2255FAf6046b98213B76Bd"
+  },
+  "analytics": {
+    "enabled": true,
+    "analytics_data_dir": "data/analytics",
+    "persist_interval_seconds": 300,
+    "auto_persist": true
+  },
+  "monitoring": {
+    "enabled": true,
+    "alert_threshold_profit_eth": 0.01,
+    "performance_log_interval_seconds": 3600
+  }
+}

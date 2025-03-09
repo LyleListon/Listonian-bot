@@ -1,0 +1,53 @@
+{
+    "dexes": {
+        "baseswap": {
+            "name": "BaseSwap",
+            "version": "v2",
+            "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
+            "fee": 3000,
+            "enabled": true,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        },
+        "swapbased": {
+            "name": "SwapBased",
+            "version": "v3",
+            "factory": "0xb5620F90e803C7F957a9EF351B8DB3C746021BEa",
+            "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
+            "quoter": "0x0BE808376Ecb75a5CF9bB6D237d16cd37893d904",
+            "fee": 3000,
+            "tick_spacing": 60,
+            "enabled": true,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        }
+    },
+    "tokens": {
+        "WETH": {
+            "name": "Wrapped Ether",
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18
+        },
+        "USDC": {
+            "name": "USD Coin",
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6
+        },
+        "USDT": {
+            "name": "Tether USD",
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 6
+        },
+        "DAI": {
+            "name": "Dai Stablecoin",
+            "address": "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+            "decimals": 18,
+            "pools": {
+                "WETH/DAI": {
+                    "stable": false,
+                    "volatile": true
+                }
+            }
+        }
+    }
+}

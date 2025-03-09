@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}Storage Monitor{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Storage Monitor</h1>
+    
+    <div class="row mt-4">
+        <!-- Storage Usage Card -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Storage Usage</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="storageUsageChart"></canvas>
+                    <div class="mt-3">
+                        <p>Total Size: <span id="totalSize">-</span></p>
+                        <p>Total Items: <span id="totalItems">-</span></p>
+                        <p>Backup Size: <span id="backupSize">-</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Category Distribution Card -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Category Distribution</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <!-- Recent Activity Card -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table" id="activityTable">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Category</th>
+                                    <th>Action</th>
+                                    <th>Key</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup Status Card -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Backup Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table" id="backupTable">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Items</th>
+                                    <th>Last Backup</th>
+                                    <th>Size</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let storageUsageChart;
+let categoryChart;
+
+function initCharts() {
+    // Storage Usage Chart
+    const storageCtx = document.getElementById('storageUsageChart').getContext('2d');
+    storageUsageChart = new Chart(storageCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Data', 'Backups', 'Metadata'],
+            datasets: [{
+                label: 'Size (MB)',
+                data: [0, 0, 0],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.5)',
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(255, 206, 86, 0.5)'
+                ],
+                borderColor: [
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(255, 206, 86, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Size (MB)'
+                    }
+                }
+            }
+        }
+    });
+
+    // Category Distribution Chart
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    categoryChart = new Chart(categoryCtx, {
+        type: 'pie',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(54, 162, 235, 0.5)',
+                    'rgba(255, 206, 86, 0.5)',
+                    'rgba(75, 192, 192, 0.5)',
+                    'rgba(153, 102, 255, 0.5)',
+                    'rgba(255, 159, 64, 0.5)',
+                    'rgba(199, 199, 199, 0.5)'
+                ],
+                borderColor: [
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(153, 102, 255, 1)',
+                    'rgba(255, 159, 64, 1)',
+                    'rgba(199, 199, 199, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+
+function updateStorageStats(stats) {
+    // Update storage usage chart
+    storageUsageChart.data.datasets[0].data = [
+        stats.data_size / (1024 * 1024),
+        stats.backup_size / (1024 * 1024),
+        stats.metadata_size / (1024 * 1024)
+    ];
+    storageUsageChart.update();
+
+    // Update category distribution chart
+    const categories = Object.keys(stats.categories);
+    const counts = Object.values(stats.categories).map(c => c.items);
+    categoryChart.data.labels = categories;
+    categoryChart.data.datasets[0].data = counts;
+    categoryChart.update();
+
+    // Update text displays
+    const totalSize = (stats.data_size + stats.backup_size + stats.metadata_size) / (1024 * 1024);
+    document.getElementById('totalSize').textContent = `${totalSize.toFixed(2)} MB`;
+    document.getElementById('totalItems').textContent = stats.total_items;
+    document.getElementById('backupSize').textContent = `${(stats.backup_size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function updateActivityLog(activities) {
+    const tbody = document.querySelector('#activityTable tbody');
+    tbody.innerHTML = '';
+    
+    for (const activity of activities) {
+        const row = document.createElement('tr');
+        const time = new Date(activity.timestamp * 1000);
+        row.innerHTML = `
+            <td>${time.toLocaleString()}</td>
+            <td>${activity.category}</td>
+            <td>${activity.action}</td>
+            <td>${activity.key}</td>
+        `;
+        tbody.appendChild(row);
+    }
+}
+
+function updateBackupStatus(backups) {
+    const tbody = document.querySelector('#backupTable tbody');
+    tbody.innerHTML = '';
+    
+    for (const [category, status] of Object.entries(backups)) {
+        const row = document.createElement('tr');
+        const lastBackup = new Date(status.last_backup * 1000);
+        row.innerHTML = `
+            <td>${category}</td>
+            <td>${status.items}</td>
+            <td>${lastBackup.toLocaleString()}</td>
+            <td>${(status.size / (1024 * 1024)).toFixed(2)} MB</td>
+        `;
+        tbody.appendChild(row);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initCharts();
+    
+    // Connect to WebSocket for real-time updates
+    const ws = new WebSocket(`ws://${window.location.host}/ws/storage`);
+    
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'storage_stats') {
+            updateStorageStats(data.stats);
+        } else if (data.type === 'activity_log') {
+            updateActivityLog(data.activities);
+        } else if (data.type === 'backup_status') {
+            updateBackupStatus(data.backups);
+        }
+    };
+});
+</script>
+{% endblock %}

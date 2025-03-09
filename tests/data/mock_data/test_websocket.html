@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io('http://localhost:5001', {
+            transports: ['websocket']
+        });
+
+        socket.on('connect', () => {
+            console.log('Socket.IO connection established');
+            document.getElementById('status').textContent = 'Connected';
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Socket.IO connection closed');
+            document.getElementById('status').textContent = 'Disconnected';
+        });
+
+        socket.on('memory_update', (data) => {
+            console.log('Memory update received:', data);
+            document.getElementById('data').textContent = JSON.stringify(data, null, 2);
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Socket.IO connection error:', error);
+            document.getElementById('status').textContent = 'Error: ' + error.message;
+        });
+    </script>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div>
+        <strong>Status:</strong> <span id="status">Connecting...</span>
+    </div>
+    <div>
+        <strong>Data:</strong>
+        <pre id="data"></pre>
+    </div>
+</body>
+</html>

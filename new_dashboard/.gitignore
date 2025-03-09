@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+static/css/tailwind.min.css
+static/js/*.min.js
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Cache
+.npm
+.eslintcache
+
+# Misc
+.DS_Store
+Thumbs.db

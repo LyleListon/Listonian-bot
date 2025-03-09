@@ -1,0 +1,67 @@
+{
+  "provider_url": "https://mainnet.base.org",
+  "chain_id": 8453,
+  "private_key": "",
+  "tokens": {
+    "WETH": "0x4200000000000000000000000000000000000006",
+    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "USDT": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+    "DAI": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+  },
+  "dexes": {
+    "aerodrome": {
+      "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+      "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+      "enabled": true
+    },
+    "baseswap": {
+      "factory": "0xFDa619b6d20975be80a10332cD39b9a4b0FAa8BB",
+      "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+      "enabled": true
+    },
+    "swapbased": {
+      "factory": "0x36218B2F7b672A41f0B76fc1D5E7F88355a8bC25",
+      "router": "0xBb5e1777A331ED93E07cF043363e48d320eb96c4",
+      "enabled": true
+    }
+  },
+  "flashbots": {
+    "relay_url": "https://relay.flashbots.net",
+    "auth_signer_key": ""
+  },
+  "flash_loan": {
+    "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+    "min_profit": "0.01",
+    "max_paths": 3,
+    "max_hops": 3
+  },
+  "gas": {
+    "max_priority_fee": "3.0",
+    "max_fee": "100.0",
+    "buffer_percent": 20
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "logs/arbitrage.log",
+    "max_size": 10485760,
+    "backup_count": 5
+  },
+  "monitoring": {
+    "enabled": true,
+    "interval": 60,
+    "metrics_port": 9090
+  },
+  "security": {
+    "slippage_tolerance": 0.5,
+    "min_liquidity": "10000",
+    "price_impact_limit": 1.0,
+    "sandwich_protection": true,
+    "frontrun_protection": true
+  },
+  "performance": {
+    "cache_ttl": 300,
+    "max_concurrent_paths": 10,
+    "batch_size": 100
+  }
+}

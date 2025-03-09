@@ -1,0 +1,439 @@
+[
+    {
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "inputs": [],
+        "name": "DEXAlreadyRegistered",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "DEXNotFound",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "InvalidParams",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "OnlyOwner",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "PairNotSupported",
+        "type": "error"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "string",
+                "name": "protocol",
+                "type": "string"
+            }
+        ],
+        "name": "DEXRegistered",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            }
+        ],
+        "name": "DEXRemoved",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "baseToken",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "quoteToken",
+                "type": "address"
+            }
+        ],
+        "name": "PairAdded",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "baseToken",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "quoteToken",
+                "type": "address"
+            }
+        ],
+        "name": "PairRemoved",
+        "type": "event"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "baseToken",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "quoteToken",
+                "type": "address"
+            }
+        ],
+        "name": "addSupportedPair",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "name": "activeDEXList",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "dexes",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "router",
+                "type": "address"
+            },
+            {
+                "internalType": "string",
+                "name": "protocol",
+                "type": "string"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxSlippage",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "isActive",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "gasOverhead",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getActiveDEXes",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "",
+                "type": "address[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            }
+        ],
+        "name": "getDEXInfo",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "protocol",
+                "type": "string"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxSlippage",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "isActive",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "overhead",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "baseToken",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "quoteToken",
+                "type": "address"
+            }
+        ],
+        "name": "isPairSupported",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "string",
+                "name": "protocol",
+                "type": "string"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxSlippage",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "estimatedGasOverhead",
+                "type": "uint256"
+            }
+        ],
+        "name": "registerDEX",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            }
+        ],
+        "name": "removeDEX",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "baseToken",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "quoteToken",
+                "type": "address"
+            }
+        ],
+        "name": "removeSupportedPair",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "bool",
+                "name": "isActive",
+                "type": "bool"
+            }
+        ],
+        "name": "setDEXStatus",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "overhead",
+                "type": "uint256"
+            }
+        ],
+        "name": "updateGasOverhead",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxSlippage",
+                "type": "uint256"
+            }
+        ],
+        "name": "updateMaxSlippage",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "dex",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "baseToken",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "quoteToken",
+                "type": "address"
+            }
+        ],
+        "name": "validateTrade",
+        "outputs": [],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]

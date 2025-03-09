@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <h2>Performance Analytics</h2>
+    </div>
+</div>
+
+<!-- Performance Metrics -->
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total Profit</h5>
+                <h2 class="card-text" id="total-profit-detailed">${{ "%.2f"|format(metrics.get('total_profit', 0)) }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Success Rate</h5>
+                <h2 class="card-text" id="success-rate-detailed">{{ "%.1f"|format(metrics.get('success_rate', 0) * 100) }}%</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Average Gas Cost</h5>
+                <h2 class="card-text" id="avg-gas-cost">${{ "%.2f"|format(metrics.get('avg_gas_cost', 0)) }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">ROI</h5>
+                <h2 class="card-text" id="roi">{{ "%.1f"|format(metrics.get('roi', 0) * 100) }}%</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Performance Charts -->
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Daily Profit</h5>
+                <div id="daily-profit-chart"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Success Rate Over Time</h5>
+                <div id="success-rate-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Trade History</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Token Pair</th>
+                                <th>Profit</th>
+                                <th>Gas Cost</th>
+                                <th>Net Profit</th>
+                                <th>Status</th>
+                                <th>Transaction</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trade-history">
+                            <!-- Populated by WebSocket -->
+                            <tr><td colspan="7" class="text-center">Loading trade history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Daily profit chart
+    const dailyProfitOptions = {
+        series: [{
+            name: 'Profit',
+            data: []
+        }],
+        chart: {
+            type: 'bar',
+            height: 350
+        },
+        xaxis: {
+            type: 'datetime'
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(2);
+                }
+            }
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM yyyy'
+            }
+        }
+    };
+
+    // Success rate chart
+    const successRateOptions = {
+        series: [{
+            name: 'Success Rate',
+            data: []
+        }],
+        chart: {
+            type: 'line',
+            height: 350
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            type: 'datetime'
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return val.toFixed(1) + '%';
+                }
+            },
+            min: 0,
+            max: 100
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM yyyy'
+            }
+        }
+    };
+
+    // Create and render charts
+    window.dailyProfitChart = new ApexCharts(document.querySelector("#daily-profit-chart"), dailyProfitOptions);
+    window.successRateChart = new ApexCharts(document.querySelector("#success-rate-chart"), successRateOptions);
+
+    window.dailyProfitChart.render();
+    window.successRateChart.render();
+});
+</script>
+{% endblock %}

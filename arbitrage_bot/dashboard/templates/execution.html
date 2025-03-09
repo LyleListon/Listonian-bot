@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Execution Management</h3>
+    </div>
+    <div class="card-body">
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h4>Success Rate</h4>
+                <div class="metric-value" id="execution-success-rate">0%</div>
+            </div>
+            <div class="metric-card">
+                <h4>Average Gas Used</h4>
+                <div class="metric-value" id="avg-gas-used">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Pending Transactions</h4>
+                <div class="metric-value" id="pending-txs">0</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h4>Recent Executions</h4>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Transaction Hash</th>
+                            <th>Route</th>
+                            <th>Gas Used</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="execution-list">
+                        <!-- Execution items will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <h4>Gas Usage History</h4>
+                <div id="gas-usage-chart"></div>
+            </div>
+            <div class="chart-card">
+                <h4>Execution Time Distribution</h4>
+                <div id="execution-time-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    socket.on('execution_update', (data) => {
+        if (!data) return;
+        
+        // Update metrics
+        document.getElementById('execution-success-rate').textContent = `${(data.success_rate * 100).toFixed(1)}%`;
+        document.getElementById('avg-gas-used').textContent = formatNumber(data.avg_gas_used);
+        document.getElementById('pending-txs').textContent = data.pending_transactions;
+        
+        // Update execution list
+        const executionList = document.getElementById('execution-list');
+        if (!executionList || !data.recent_executions) return;
+        
+        executionList.innerHTML = data.recent_executions.map(execution => `
+            <tr>
+                <td>${new Date(execution.timestamp).toLocaleTimeString()}</td>
+                <td>
+                    <a href="https://basescan.org/tx/${execution.tx_hash}" target="_blank">
+                        ${execution.tx_hash.substring(0, 8)}...
+                    </a>
+                </td>
+                <td>${execution.route.join(' → ')}</td>
+                <td>${formatNumber(execution.gas_used)}</td>
+                <td>
+                    <span class="badge ${execution.status === 'success' ? 'badge-success' : 'badge-secondary'}">
+                        ${execution.status}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="retryExecution('${execution.tx_hash}')">
+                        Retry
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        // Update charts
+        if (data.gas_usage_history) {
+            updateGasUsageChart(data.gas_usage_history);
+        }
+        if (data.execution_time_distribution) {
+            updateExecutionTimeChart(data.execution_time_distribution);
+        }
+    });
+
+    function retryExecution(txHash) {
+        socket.emit('retry_execution', { tx_hash: txHash });
+    }
+
+    function updateGasUsageChart(data) {
+        const trace = {
+            x: data.timestamps.map(ts => new Date(ts)),
+            y: data.gas_used,
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#4CAF50' }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: false,
+            margin: { t: 20, l: 50, r: 20, b: 30 },
+            xaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                tickformat: '%H:%M:%S'
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Gas Used'
+            }
+        };
+        
+        Plotly.newPlot('gas-usage-chart', [trace], layout);
+    }
+
+    function updateExecutionTimeChart(data) {
+        const trace = {
+            x: data.time_ranges,
+            y: data.counts,
+            type: 'bar',
+            marker: {
+                color: '#4CAF50'
+            }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: false,
+            margin: { t: 20, l: 50, r: 20, b: 30 },
+            xaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Execution Time (ms)'
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Number of Executions'
+            }
+        };
+        
+        Plotly.newPlot('execution-time-chart', [trace], layout);
+    }
+
+    function formatNumber(num) {
+        if (num >= 1e9) {
+            return `${(num / 1e9).toFixed(2)}B`;
+        } else if (num >= 1e6) {
+            return `${(num / 1e6).toFixed(2)}M`;
+        } else if (num >= 1e3) {
+            return `${(num / 1e3).toFixed(2)}K`;
+        }
+        return num.toFixed(0);
+    }
+</script>
+{% endblock %}

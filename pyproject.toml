@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=69.0.0", "wheel>=0.42.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arbitrage_bot"
+version = "0.1.0"
+description = "Arbitrage bot with Flashbots integration"
+authors = [
+    {name = "Listonian", email = "info@listonian.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security :: Cryptography",
+    "Topic :: System :: Distributed Computing"
+]
+dependencies = [
+    "web3>=6.0.0",
+    "aiohttp>=3.8.0",
+    "eth-account>=0.8.0",
+    "eth-typing>=3.0.0",
+    "eth-utils>=2.1.0",
+    "eth-abi>=4.0.0",
+    "eth-hash[pycryptodome]>=0.5.0",
+    "eth-keyfile>=0.6.0",
+    "eth-keys>=0.4.0",
+    "eth-rlp>=0.3.0",
+    "hexbytes>=0.3.0",
+    "rlp>=3.0.0",
+    "cytoolz>=0.12.0",
+    "eth-bloom>=2.0.0",
+    "typing-extensions>=4.5.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.5.0",
+    "flake8>=6.1.0"
+]
+
+[tool.setuptools]
+packages = ["arbitrage_bot"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --cov=arbitrage_bot"
+testpaths = ["tests"]
+asyncio_mode = "auto"

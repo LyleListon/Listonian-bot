@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Metrics{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="metrics-container">
+        <!-- Analytics Overview -->
+        <div class="metric-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Analytics Overview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <h6>Total Profit</h6>
+                            <h4 id="total-profit">$0.00</h4>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <h6>Success Rate</h6>
+                            <h4 id="success-rate">0%</h4>
+                        </div>
+                        <div class="col-6">
+                            <h6>Total Trades</h6>
+                            <h4 id="total-trades">0</h4>
+                        </div>
+                        <div class="col-6">
+                            <h6>ETH Balance</h6>
+                            <h4 id="eth-balance">0.00 ETH</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="metric-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Performance Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <h6>Active Opportunities</h6>
+                            <h4 id="active-opportunities">0</h4>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <h6>Average Profit</h6>
+                            <h4 id="average-profit">$0.00</h4>
+                        </div>
+                        <div class="col-12">
+                            <h6>Runtime</h6>
+                            <h4 id="runtime">0:00:00</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DEX Metrics -->
+    <div class="dex-status-container">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">DEX Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table" id="dex-metrics">
+                            <thead>
+                                <tr>
+                                    <th>DEX</th>
+                                    <th>24h Volume</th>
+                                    <th>TVL</th>
+                                    <th>Success Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- DEX metrics will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const socket = io();
+    
+    // Handle metrics updates
+    socket.on('metrics_update', function(data) {
+        // Update analytics
+        const analytics = data.analytics || {};
+        document.getElementById('total-profit').textContent = `$${analytics.total_profit.toFixed(2)}`;
+        document.getElementById('success-rate').textContent = `${analytics.success_rate.toFixed(1)}%`;
+        document.getElementById('total-trades').textContent = analytics.total_trades;
+        document.getElementById('eth-balance').textContent = `${analytics.eth_balance.toFixed(4)} ETH`;
+        
+        // Update performance
+        const performance = data.performance || {};
+        document.getElementById('active-opportunities').textContent = performance.active_opportunities;
+        document.getElementById('average-profit').textContent = `$${performance.average_profit.toFixed(2)}`;
+        document.getElementById('runtime').textContent = performance.runtime;
+        
+        // Update DEX metrics
+        const dexMetrics = data.dex_metrics || {};
+        const tbody = document.querySelector('#dex-metrics tbody');
+        tbody.innerHTML = ''; // Clear existing rows
+        
+        Object.entries(dexMetrics).forEach(([dex, metrics]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${dex}</td>
+                <td>$${metrics.volume_24h.toFixed(2)}</td>
+                <td>$${metrics.tvl.toFixed(2)}</td>
+                <td>${metrics.success_rate.toFixed(1)}%</td>
+            `;
+            tbody.appendChild(row);
+        });
+    });
+    
+    // Handle connection status
+    socket.on('connect', function() {
+        console.log('Connected to WebSocket');
+    });
+    
+    socket.on('disconnect', function() {
+        console.log('Disconnected from WebSocket');
+    });
+});
+</script>
+{% endblock %}

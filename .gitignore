@@ -1,0 +1,133 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+
+# Logs
+*.log
+logs/
+test_reports/
+
+# Environment variables
+.env
+.env.*
+
+# Local development
+*.db
+*.sqlite3
+.DS_Store
+
+# Test coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Cache
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Build artifacts
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
+
+# Documentation
+docs/_build/
+docs/api/
+
+# Temporary files
+*.bak
+*.tmp
+*~
+
+# Private keys and secrets
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+*.p12
+*.pfx
+*.cer
+*.der
+*.priv
+*.pub
+*.gpg
+*.asc
+*.sig
+*.sign
+*.keystore
+*.jks
+*.truststore
+*.p7b
+*.p7c
+*.p7s
+*.p8
+*.pkcs12
+*.pkcs7
+*.pkcs8
+*.x509
+*.x509crl
+*.crl
+*.ocsp
+*.tls
+*.ssl
+*.rsa
+*.dsa
+*.ec
+*.ed25519
+*.secp256k1
+*.bip39
+*.mnemonic
+*.seed
+*.secret
+*.password
+*.token
+*.auth
+*.credentials
+*.config
+*.settings
+*.ini
+*.conf
+*.cfg
+*.properties
+*.yaml
+*.yml
+*.json
+!configs/*.json
+!abi/*.json

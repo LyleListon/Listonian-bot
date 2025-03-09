@@ -1,0 +1,25 @@
+# Include ABI files
+include abi/*.json
+
+# Include configuration files
+include configs/*.json
+
+# Include documentation
+include *.md
+include docs/*.md
+
+# Include license
+include LICENSE
+
+# Include requirements
+include requirements*.txt
+
+# Include test files
+recursive-include tests *.py
+
+# Exclude development files
+exclude .gitignore
+exclude .prettierrc
+exclude *.bat
+exclude *.ps1
+exclude *.sh

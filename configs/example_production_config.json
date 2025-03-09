@@ -1,0 +1,85 @@
+{
+  "provider_url": "https://eth-mainnet.alchemyapi.io/v2/YOUR_API_KEY",
+  "chain_id": 1,
+  "private_key": "0000000000000000000000000000000000000000000000000000000000000000",
+  "network": {
+    "rpc_url": "https://eth-mainnet.alchemyapi.io/v2/YOUR_API_KEY"
+  },
+  "trading": {
+    "min_profit": 0.25,
+    "gas_limit": 500000,
+    "slippage": 0.3,
+    "max_trades_per_block": 2,
+    "pairs": [
+      {
+        "token0": "WETH",
+        "token1": "USDC",
+        "min_amount": 0.5,
+        "max_amount": 5.0
+      },
+      {
+        "token0": "USDC",
+        "token1": "DAI",
+        "min_amount": 5000,
+        "max_amount": 50000
+      }
+    ]
+  },
+  "flash_loans": {
+    "enabled": true,
+    "use_flashbots": true,
+    "min_profit_basis_points": 200,
+    "max_trade_size": "1",
+    "slippage_tolerance": 50,
+    "transaction_timeout": 180,
+    "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+    "contract_address": {
+      "mainnet": "0x0000000000000000000000000000000000000000"
+    }
+  },
+  "dynamic_allocation": {
+    "enabled": true,
+    "min_percentage": 5,
+    "max_percentage": 50,
+    "absolute_min_eth": 0.05,
+    "absolute_max_eth": 10.0,
+    "concurrent_trades": 2,
+    "reserve_percentage": 10
+  },
+  "mev_protection": {
+    "enabled": true,
+    "use_flashbots": true,
+    "max_bundle_size": 5,
+    "max_blocks_ahead": 3,
+    "min_priority_fee": "1.5",
+    "max_priority_fee": "3",
+    "sandwich_detection": true,
+    "frontrun_detection": true,
+    "adaptive_gas": true
+  },
+  "monitoring": {
+    "log_level": "INFO",
+    "metrics_enabled": true,
+    "alert_threshold": 85.0,
+    "collection_interval": 10000,
+    "log_rotation": {
+      "max_size": "500MB",
+      "backup_count": 10
+    }
+  },
+  "dashboard": {
+    "auth_enabled": true,
+    "cors": {
+      "enabled": true,
+      "origins": [
+        "https://dashboard.example.com",
+        "http://localhost:8080"
+      ]
+    },
+    "rate_limit": {
+      "enabled": true,
+      "max_requests": 50,
+      "window_seconds": 60
+    }
+  }
+}

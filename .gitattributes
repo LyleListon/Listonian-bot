@@ -1,0 +1,74 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Python files
+*.py text diff=python
+*.pyi text diff=python
+*.pyx text diff=python
+*.pxd text diff=python
+
+# Documentation
+*.md text diff=markdown
+*.rst text
+*.txt text
+*.html text diff=html
+*.css text diff=css
+*.js text
+*.json text
+
+# Configuration files
+*.ini text
+*.cfg text
+*.conf text
+*.yml text
+*.yaml text
+*.toml text
+
+# Scripts
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files
+*.db binary
+*.p binary
+*.pkl binary
+*.pickle binary
+*.pyc binary
+*.pyd binary
+*.pyo binary
+*.pdb binary
+*.dll binary
+*.so binary
+*.egg binary
+*.whl binary
+
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text
+
+# Fonts
+*.ttf binary
+*.eot binary
+*.woff binary
+*.woff2 binary
+
+# Archives
+*.zip binary
+*.tar binary
+*.gz binary
+*.tgz binary
+*.bz2 binary
+*.xz binary
+*.7z binary
+*.rar binary
+
+# Git specific
+.gitattributes text
+.gitignore text
+.gitmodules text

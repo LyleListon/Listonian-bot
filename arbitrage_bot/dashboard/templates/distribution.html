@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Distribution Management</h3>
+    </div>
+    <div class="card-body">
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h4>Active Pairs</h4>
+                <div class="metric-value" id="active-pairs">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Total Liquidity</h4>
+                <div class="metric-value" id="total-liquidity">$0.00</div>
+            </div>
+            <div class="metric-card">
+                <h4>Rebalance Status</h4>
+                <div class="metric-value" id="rebalance-status">Stable</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h4>Pair Distribution</h4>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Pair</th>
+                            <th>DEX</th>
+                            <th>Liquidity</th>
+                            <th>24h Volume</th>
+                            <th>Allocation</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="distribution-list">
+                        <!-- Distribution items will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <h4>Liquidity Distribution</h4>
+                <div id="liquidity-distribution-chart"></div>
+            </div>
+            <div class="chart-card">
+                <h4>Volume Distribution</h4>
+                <div id="volume-distribution-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    socket.on('distribution_update', (data) => {
+        if (!data) return;
+        
+        // Update metrics
+        document.getElementById('active-pairs').textContent = data.active_pairs;
+        document.getElementById('total-liquidity').textContent = `$${formatNumber(data.total_liquidity)}`;
+        document.getElementById('rebalance-status').textContent = data.rebalance_status;
+        
+        // Update distribution list
+        const distributionList = document.getElementById('distribution-list');
+        if (!distributionList || !data.pairs) return;
+        
+        distributionList.innerHTML = data.pairs.map(pair => `
+            <tr>
+                <td>${pair.token0}/${pair.token1}</td>
+                <td>${pair.dex}</td>
+                <td>$${formatNumber(pair.liquidity)}</td>
+                <td>$${formatNumber(pair.volume_24h)}</td>
+                <td>${(pair.allocation * 100).toFixed(1)}%</td>
+                <td>
+                    <span class="badge ${pair.status === 'active' ? 'badge-success' : 'badge-secondary'}">
+                        ${pair.status}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
+
+        // Update charts
+        if (data.liquidity_distribution) {
+            updateLiquidityChart(data.liquidity_distribution);
+        }
+        if (data.volume_distribution) {
+            updateVolumeChart(data.volume_distribution);
+        }
+    });
+
+    function updateLiquidityChart(data) {
+        const trace = {
+            labels: Object.keys(data),
+            values: Object.values(data),
+            type: 'pie',
+            marker: {
+                colors: ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800']
+            }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: true,
+            legend: {
+                font: { color: '#e0e0e0' }
+            },
+            margin: { t: 20, l: 20, r: 20, b: 20 }
+        };
+        
+        Plotly.newPlot('liquidity-distribution-chart', [trace], layout);
+    }
+
+    function updateVolumeChart(data) {
+        const trace = {
+            labels: Object.keys(data),
+            values: Object.values(data),
+            type: 'pie',
+            marker: {
+                colors: ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800']
+            }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: true,
+            legend: {
+                font: { color: '#e0e0e0' }
+            },
+            margin: { t: 20, l: 20, r: 20, b: 20 }
+        };
+        
+        Plotly.newPlot('volume-distribution-chart', [trace], layout);
+    }
+
+    function formatNumber(num) {
+        if (num >= 1e9) {
+            return `${(num / 1e9).toFixed(2)}B`;
+        } else if (num >= 1e6) {
+            return `${(num / 1e6).toFixed(2)}M`;
+        } else if (num >= 1e3) {
+            return `${(num / 1e3).toFixed(2)}K`;
+        }
+        return num.toFixed(2);
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Analytics</h3>
+    </div>
+    <div class="card-body">
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h4>Success Rate</h4>
+                <div class="metric-value" id="success-rate">0%</div>
+            </div>
+            <div class="metric-card">
+                <h4>Average Profit</h4>
+                <div class="metric-value" id="avg-profit">$0.00</div>
+            </div>
+            <div class="metric-card">
+                <h4>Total Volume</h4>
+                <div class="metric-value" id="total-volume">$0.00</div>
+            </div>
+        </div>
+        
+        <div class="charts-container">
+            <div class="chart-card">
+                <h4>Profit Distribution</h4>
+                <div id="profit-distribution-chart"></div>
+            </div>
+            <div class="chart-card">
+                <h4>Volume by DEX</h4>
+                <div id="volume-by-dex-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    socket.on('analytics_update', (data) => {
+        if (!data) return;
+        
+        // Update metrics
+        document.getElementById('success-rate').textContent = `${(data.success_rate * 100).toFixed(1)}%`;
+        document.getElementById('avg-profit').textContent = `$${data.avg_profit.toFixed(2)}`;
+        document.getElementById('total-volume').textContent = `$${formatNumber(data.total_volume)}`;
+        
+        // Update charts
+        if (data.profit_distribution) {
+            updateProfitDistributionChart(data.profit_distribution);
+        }
+        if (data.volume_by_dex) {
+            updateVolumeByDexChart(data.volume_by_dex);
+        }
+    });
+
+    function updateProfitDistributionChart(data) {
+        const trace = {
+            x: data.ranges,
+            y: data.counts,
+            type: 'bar',
+            marker: {
+                color: '#4CAF50'
+            }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: false,
+            margin: { t: 20, l: 50, r: 20, b: 30 },
+            xaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Profit Range (USD)'
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: 'rgba(255,255,255,0.1)',
+                title: 'Number of Trades'
+            }
+        };
+        
+        Plotly.newPlot('profit-distribution-chart', [trace], layout);
+    }
+
+    function updateVolumeByDexChart(data) {
+        const trace = {
+            labels: Object.keys(data),
+            values: Object.values(data),
+            type: 'pie',
+            marker: {
+                colors: ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800']
+            }
+        };
+        
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#e0e0e0' },
+            showlegend: true,
+            legend: {
+                font: { color: '#e0e0e0' }
+            },
+            margin: { t: 20, l: 20, r: 20, b: 20 }
+        };
+        
+        Plotly.newPlot('volume-by-dex-chart', [trace], layout);
+    }
+
+    function formatNumber(num) {
+        if (num >= 1e9) {
+            return `${(num / 1e9).toFixed(2)}B`;
+        } else if (num >= 1e6) {
+            return `${(num / 1e6).toFixed(2)}M`;
+        } else if (num >= 1e3) {
+            return `${(num / 1e3).toFixed(2)}K`;
+        }
+        return num.toFixed(2);
+    }
+</script>
+{% endblock %}

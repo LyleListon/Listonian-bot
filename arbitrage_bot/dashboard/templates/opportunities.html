@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Current Opportunities</h3>
+    </div>
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Route</th>
+                    <th>Profit</th>
+                    <th>Gas Cost</th>
+                    <th>Net Profit</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="opportunities-list">
+                <!-- Opportunities will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize with empty state
+    const list = document.getElementById('opportunities-list');
+    if (list) {
+        list.innerHTML = '<tr><td colspan="5" class="text-center">No active opportunities</td></tr>';
+    }
+
+    // Listen for opportunities updates
+    socket.on('opportunities_update', (data) => {
+        if (!data || !data.opportunities) return;
+        
+        const opportunities = data.opportunities;
+        if (!opportunities.length) {
+            list.innerHTML = '<tr><td colspan="5" class="text-center">No active opportunities</td></tr>';
+            return;
+        }
+        
+        list.innerHTML = opportunities.map(opp => `
+            <tr>
+                <td>${opp.route.join(' → ')}</td>
+                <td>$${opp.profit.toFixed(2)}</td>
+                <td>$${opp.gas_cost.toFixed(2)}</td>
+                <td>$${(opp.profit - opp.gas_cost).toFixed(2)}</td>
+                <td>
+                    <span class="badge ${opp.status === 'active' ? 'badge-success' : 'badge-secondary'}">
+                        ${opp.status}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
+    });
+</script>
+{% endblock %}

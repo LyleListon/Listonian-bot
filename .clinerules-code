@@ -1,0 +1,89 @@
+# Listonian Arbitrage Bot - Project Rules and Intelligence
+
+## Memory Bank Management
+- Memory bank is the SINGLE SOURCE OF TRUTH for project context
+- ALWAYS read ALL memory bank files at session start
+- Maintain memory bank with precision - it's the only link after reset
+- Key files: projectbrief.md, activeContext.md, techContext.md, systemPatterns.md, productContext.md, progress.md
+- Begin every session with "Do you have any questions/concerns/suggestions?"
+- Document ALL file changes, decisions, and challenges faced
+
+## Architecture Patterns
+- Use inheritance patterns for DEX implementations (BaseDEX → BaseDEXV2/V3 → Specific DEXs)
+- All DEX interactions MUST be async/await (NO eventlet/gevent)
+- Use proper lock management for thread safety
+- Implement standardized error handling with retry mechanisms
+- Always use checksummed addresses for all tokens
+- Follow resource management patterns for initialization and cleanup
+
+## Current Priority: Flashbots Integration
+- Focus on completing Flashbots RPC integration
+- Optimize flash loan execution through Balancer
+- Enhance bundle submission and MEV protection
+- Implement multi-path arbitrage optimization
+- Test bundle simulation and validate profit calculation
+
+## Critical Implementation Rules
+- All methods MUST be async/await - project uses pure asyncio
+- Proper error handling with context preservation
+- Implement thread safety with locks and atomic operations
+- Use resource management patterns for initialization and cleanup
+- Standardize logging format across components
+- Token addresses must always be checksummed
+- Always include slippage protection and balance verification
+
+## Profit Maximization Strategies
+- Batch price fetches across multiple pools simultaneously
+- Use parallel processing to scan DEXs concurrently
+- Implement Flashbots Protect RPC to avoid MEV attacks
+- Optimize gas usage for each transaction
+- Use bundle submissions for atomic execution
+- Implement multi-path arbitrage for better returns
+- Focus on price impact and liquidity depth analysis
+
+## Security Measures
+- Protect against Oracle Manipulation Attacks:
+  - Monitor for suspicious liquidity shifts
+  - Validate prices across multiple sources
+  - Implement slippage protection
+  - Use custom price feeds instead of solely chain oracles
+  - Verify potential profit before execution
+- Use Flashbots for MEV protection:
+  - Private transaction routing
+  - Bundle submission
+  - Front-running protection
+  - Sandwich attack prevention
+
+## Code Quality Standards
+- Before changing code, consider all potential side effects
+- Before fixing errors, analyze all possible causes
+- Document all files with comprehensive comments
+- Follow async/await patterns consistently
+- Implement proper error handling and recovery
+- Use type hints throughout the codebase
+- Add appropriate logging for monitoring and debugging
+
+## Technical Requirements
+- Python 3.12+ for improved async support
+- Pure asyncio with proper resource management
+- Thread safety with lock management
+- DEX-specific contract interactions
+- Flash loan integration for capital efficiency
+- Flashbots integration for MEV protection
+
+## Performance Optimization
+- Use multi-threading or async I/O for parallel market scanning
+- Implement efficient caching with TTL for price data
+- Optimize gas usage for higher net profits
+- Monitor execution time for critical operations
+- Track resource usage for optimization opportunities
+
+## Testing Approach
+- Unit tests for base classes
+- Integration tests for DEX implementations
+- Contract interaction tests
+- Async implementation tests
+- Thread safety tests
+- Performance benchmarking
+
+Remember: The primary goal is to maximize arbitrage profits through efficient price discovery, quick execution, optimal gas usage, and MEV protection.

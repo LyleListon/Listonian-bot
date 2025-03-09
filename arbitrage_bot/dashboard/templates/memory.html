@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Memory Bank</h3>
+    </div>
+    <div class="card-body">
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h4>Memory Usage</h4>
+                <div class="metric-value" id="memory-usage">0%</div>
+            </div>
+            <div class="metric-card">
+                <h4>Stored Items</h4>
+                <div class="metric-value" id="stored-items">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Last Update</h4>
+                <div class="metric-value" id="last-update">Never</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h4>Memory Contents</h4>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Key</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Last Access</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="memory-list">
+                        <!-- Memory items will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    socket.on('memory_update', (data) => {
+        if (!data) return;
+        
+        // Update metrics
+        document.getElementById('memory-usage').textContent = `${(data.usage * 100).toFixed(1)}%`;
+        document.getElementById('stored-items').textContent = data.item_count;
+        document.getElementById('last-update').textContent = new Date(data.last_update).toLocaleTimeString();
+        
+        // Update memory list
+        const memoryList = document.getElementById('memory-list');
+        if (!memoryList || !data.items) return;
+        
+        memoryList.innerHTML = data.items.map(item => `
+            <tr>
+                <td>${item.key}</td>
+                <td>${item.type}</td>
+                <td>${formatSize(item.size)}</td>
+                <td>${new Date(item.last_access).toLocaleTimeString()}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="clearMemoryItem('${item.key}')">
+                        Clear
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    });
+
+    function clearMemoryItem(key) {
+        socket.emit('clear_memory_item', { key });
+    }
+
+    function formatSize(bytes) {
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        } else if (bytes >= 1024) {
+            return `${(bytes / 1024).toFixed(2)} KB`;
+        }
+        return `${bytes} B`;
+    }
+</script>
+{% endblock %}
