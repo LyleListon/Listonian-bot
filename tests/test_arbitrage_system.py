@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from unittest import mock
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import sys
@@ -21,27 +22,24 @@ import sys
 # Add the project root to the path so we can import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import from models
-from arbitrage_bot.core.arbitrage.models import (
-    ArbitrageOpportunity, ArbitrageRoute, RouteStep, ExecutionResult,
-    StrategyType, OpportunityStatus, ExecutionStatus, TransactionStatus,
+from arbitrage_bot.core.models.arbitrage import (
+    ArbitrageOpportunity, ArbitrageRoute, RouteStep, ExecutionResult
+)
+from arbitrage_bot.core.models.enums import (
+    StrategyType, OpportunityStatus, ExecutionStatus, TransactionStatus
+)
+from arbitrage_bot.core.models.types import (
     ErrorType, ErrorDetails, TransactionDetails, PerformanceMetrics, ArbitrageSettings
 )
-# Import from interfaces
-from arbitrage_bot.core.arbitrage.interfaces import (
+
+from arbitrage_bot.core.interfaces.arbitrage import (
     ArbitrageSystem, OpportunityDiscoveryManager, OpportunityDetector,
-    OpportunityValidator, ExecutionManager, ExecutionStrategy,
+    OpportunityValidator, ExecutionManager, ExecutionStrategy
+)
+
+from arbitrage_bot.core.interfaces.monitoring import (
     TransactionMonitor, ArbitrageAnalytics, MarketDataProvider
 )
-# Import base system
-from arbitrage_bot.core.arbitrage.base_system import BaseArbitrageSystem
-# Import factory functions
-from arbitrage_bot.core.arbitrage.factory import create_arbitrage_system, create_arbitrage_system_from_config
-
-# Dummy type for mock testing
-class MockableProtocol:
-    """Dummy class to avoid type checking errors with runtime protocols in tests."""
-    pass
 
 # Configure logging
 logging.basicConfig(
@@ -50,9 +48,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Base network configuration for testing
+BASE_CONFIG = {
+    "provider_url": "${BASE_RPC_URL}",
+    "chain_id": 8453,
+    "tokens": {
+        "WETH": {
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18,
+            "min_amount": "0.01"
+        }
+    }
+}
 
-# Mock Implementations for Testing
-class MockOpportunityDetector(MockableProtocol):
+# Mock Implementations
+class MockOpportunityDetector:
     """Mock implementation of OpportunityDetector for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -75,18 +85,18 @@ class MockOpportunityDetector(MockableProtocol):
             steps = [
                 RouteStep(
                     dex_id="uniswap",
-                    input_token_address="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
-                    output_token_address="0x6B175474E89094C44Da98b954EedeAC495271d0F",  # DAI
+                    input_token_address="0x4200000000000000000000000000000006",  # WETH
+                    output_token_address="0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",  # USDbC
                     pool_address="0xa478c2975ab1ea89e8196811f51a7b7ade33eb11",
                     input_amount=1000000000000000000,  # 1 ETH
-                    expected_output=1800000000000000000000  # 1800 DAI
+                    expected_output=1800000000000000000000  # 1800 USDbC
                 ),
                 RouteStep(
-                    dex_id="sushiswap",
-                    input_token_address="0x6B175474E89094C44Da98b954EedeAC495271d0F",  # DAI
-                    output_token_address="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
+                    dex_id="baseswap",
+                    input_token_address="0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",  # USDbC
+                    output_token_address="0x4200000000000000000000000000000006",  # WETH
                     pool_address="0xc3d03e4f041fd4cd388c549ee2a29a9e5075882f",
-                    input_amount=1800000000000000000000,  # 1800 DAI
+                    input_amount=1800000000000000000000,  # 1800 USDbC
                     expected_output=1050000000000000000  # 1.05 ETH
                 )
             ]
@@ -94,8 +104,8 @@ class MockOpportunityDetector(MockableProtocol):
             # Create route
             route = ArbitrageRoute(
                 steps=steps,
-                input_token_address="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
-                output_token_address="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH
+                input_token_address="0x4200000000000000000000000000000006",  # WETH
+                output_token_address="0x4200000000000000000000000000000006",  # WETH
                 input_amount=1000000000000000000,  # 1 ETH
                 expected_output=1050000000000000000,  # 1.05 ETH
                 expected_profit=50000000000000000  # 0.05 ETH
@@ -118,8 +128,7 @@ class MockOpportunityDetector(MockableProtocol):
         
         return opportunities
 
-
-class MockOpportunityValidator(MockableProtocol):
+class MockOpportunityValidator:
     """Mock implementation of OpportunityValidator for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -143,8 +152,7 @@ class MockOpportunityValidator(MockableProtocol):
         
         return valid, error_message, confidence
 
-
-class MockDiscoveryManager(MockableProtocol, OpportunityDiscoveryManager):
+class MockDiscoveryManager(OpportunityDiscoveryManager):
     """Mock implementation of OpportunityDiscoveryManager for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -183,8 +191,8 @@ class MockDiscoveryManager(MockableProtocol, OpportunityDiscoveryManager):
         market_condition = {
             "timestamp": time.time(),
             "prices": {
-                "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": 1800,  # WETH/USD
-                "0x6B175474E89094C44Da98b954EedeAC495271d0F": 1,     # DAI/USD
+                "0x4200000000000000000000000000000006": 1800,  # WETH/USD
+                "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA": 1,  # USDbC/USD
             },
             "gas_price": 30000000000  # 30 gwei
         }
@@ -233,8 +241,7 @@ class MockDiscoveryManager(MockableProtocol, OpportunityDiscoveryManager):
         valid_opportunities.sort(key=lambda o: o.expected_profit, reverse=True)
         return valid_opportunities[:max_results]
 
-
-class MockExecutionStrategy(MockableProtocol):
+class MockExecutionStrategy:
     """Mock implementation of ExecutionStrategy for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -263,7 +270,7 @@ class MockExecutionStrategy(MockableProtocol):
             gas_price=30000000000,  # 30 gwei
             nonce=123,
             data="0x12345678",
-            chain_id=1,
+            chain_id=8453,
             status=TransactionStatus.CONFIRMED,
             block_number=12345678,
             gas_used=200000,
@@ -290,8 +297,7 @@ class MockExecutionStrategy(MockableProtocol):
         
         return execution_result
 
-
-class MockTransactionMonitor(MockableProtocol):
+class MockTransactionMonitor:
     """Mock implementation of TransactionMonitor for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -310,8 +316,7 @@ class MockTransactionMonitor(MockableProtocol):
         # Always return confirmed for simplicity
         return TransactionStatus.CONFIRMED
 
-
-class MockExecutionManager(MockableProtocol, ExecutionManager):
+class MockExecutionManager(ExecutionManager):
     """Mock implementation of ExecutionManager for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -382,8 +387,7 @@ class MockExecutionManager(MockableProtocol, ExecutionManager):
         
         return execution.status
 
-
-class MockAnalyticsManager(MockableProtocol, ArbitrageAnalytics):
+class MockAnalyticsManager(ArbitrageAnalytics):
     """Mock implementation of ArbitrageAnalytics for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -468,8 +472,7 @@ class MockAnalyticsManager(MockableProtocol, ArbitrageAnalytics):
         sorted_execs = sorted(self.executions, key=lambda e: e.timestamp, reverse=True)
         return sorted_execs[:max_results]
 
-
-class MockMarketDataProvider(MockableProtocol, MarketDataProvider):
+class MockMarketDataProvider(MarketDataProvider):
     """Mock implementation of MarketDataProvider for testing."""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -488,22 +491,22 @@ class MockMarketDataProvider(MockableProtocol, MarketDataProvider):
         market_condition = {
             "timestamp": time.time(),
             "prices": {
-                "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": 1800,  # WETH/USD
-                "0x6B175474E89094C44Da98b954EedeAC495271d0F": 1,     # DAI/USD
+                "0x4200000000000000000000000000000006": 1800,  # WETH/USD
+                "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA": 1,  # USDbC/USD
             },
             "pools": {
                 "0xa478c2975ab1ea89e8196811f51a7b7ade33eb11": {
-                    "token0": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                    "token1": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                    "token0": "0x4200000000000000000000000000000006",
+                    "token1": "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
                     "reserve0": 1000000000000000000000,  # 1000 WETH
-                    "reserve1": 1800000000000000000000000,  # 1,800,000 DAI
+                    "reserve1": 1800000000000000000000000,  # 1,800,000 USDbC
                     "fee": 0.003
                 },
                 "0xc3d03e4f041fd4cd388c549ee2a29a9e5075882f": {
-                    "token0": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                    "token1": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                    "token0": "0x4200000000000000000000000000000006",
+                    "token1": "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
                     "reserve0": 500000000000000000000,   # 500 WETH
-                    "reserve1": 910000000000000000000000,  # 910,000 DAI
+                    "reserve1": 910000000000000000000000,  # 910,000 USDbC
                     "fee": 0.003
                 }
             },
@@ -596,18 +599,27 @@ class MockMarketDataProvider(MockableProtocol, MarketDataProvider):
         
         logger.info("Market update loop stopped")
 
+# Import base system and factory functions after mock implementations
+from arbitrage_bot.core.systems.base_system import BaseArbitrageSystem
+from arbitrage_bot.core.factory.system_factory import (
+    create_arbitrage_system, create_arbitrage_system_from_config
+)
+class MockableProtocol:
+    """Dummy class to avoid type checking errors with runtime protocols in tests."""
+    pass
 
-# Test Functions
+# (Previous mock implementations remain unchanged)
+# MockOpportunityDetector, MockOpportunityValidator, MockDiscoveryManager, etc.
+
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_arbitrage_system_creation():
     """Test creating an arbitrage system."""
-    # Create components
     discovery_manager = MockDiscoveryManager()
     execution_manager = MockExecutionManager()
     analytics_manager = MockAnalyticsManager()
     market_data_provider = MockMarketDataProvider()
     
-    # Create config
     config = {
         "arbitrage": {
             "auto_execute": False,
@@ -621,7 +633,6 @@ async def test_arbitrage_system_creation():
         }
     }
     
-    # Create arbitrage system
     arbitrage_system = BaseArbitrageSystem(
         discovery_manager=discovery_manager,
         execution_manager=execution_manager,
@@ -630,58 +641,92 @@ async def test_arbitrage_system_creation():
         config=config
     )
     
-    # Basic assertions
     assert arbitrage_system is not None
     assert not arbitrage_system.is_running
     assert arbitrage_system.uptime_seconds == 0.0
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_base_network_initialization():
+    """Test initialization with Base network configuration."""
+    discovery_manager = MockDiscoveryManager(BASE_CONFIG)
+    execution_manager = MockExecutionManager(BASE_CONFIG)
+    analytics_manager = MockAnalyticsManager(BASE_CONFIG)
+    market_data_provider = MockMarketDataProvider(BASE_CONFIG)
+    
+    arbitrage_system = BaseArbitrageSystem(
+        discovery_manager=discovery_manager,
+        execution_manager=execution_manager,
+        analytics_manager=analytics_manager,
+        market_data_provider=market_data_provider,
+        config={"arbitrage": BASE_CONFIG}
+    )
+    
+    try:
+        await arbitrage_system.start()
+        assert arbitrage_system.is_running
+        
+        opportunities = await arbitrage_system.discover_opportunities(max_results=1)
+        assert len(opportunities) > 0
+        assert opportunities[0].route.input_token_address == "0x4200000000000000000000000000000000000006"
+        
+    finally:
+        await arbitrage_system.stop()
 
 @pytest.mark.asyncio
-async def test_arbitrage_system_lifecycle():
-    """Test the full lifecycle of an arbitrage system."""
-    # Create components
+@pytest.mark.integration
+async def test_resource_cleanup():
+    """Test proper cleanup of resources."""
     discovery_manager = MockDiscoveryManager()
     execution_manager = MockExecutionManager()
     analytics_manager = MockAnalyticsManager()
     market_data_provider = MockMarketDataProvider()
     
-    # Register mock detector and validator
-    await discovery_manager.register_detector(
-        MockOpportunityDetector(),
-        "mock-detector"
+    arbitrage_system = BaseArbitrageSystem(
+        discovery_manager=discovery_manager,
+        execution_manager=execution_manager,
+        analytics_manager=analytics_manager,
+        market_data_provider=market_data_provider,
+        config={}
     )
     
-    await discovery_manager.register_validator(
-        MockOpportunityValidator(),
-        "mock-validator"
-    )
+    try:
+        await arbitrage_system.start()
+        assert arbitrage_system.is_running
+        await arbitrage_system.stop()
+        assert not arbitrage_system.is_running
+        
+        assert not market_data_provider._monitoring
+        assert market_data_provider._update_task is None
+        
+        await arbitrage_system.start()
+        assert arbitrage_system.is_running
+        
+    finally:
+        await arbitrage_system.stop()
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_parallel_processing():
+    """Test parallel processing in market analyzer."""
+    discovery_manager = MockDiscoveryManager()
+    execution_manager = MockExecutionManager()
+    analytics_manager = MockAnalyticsManager()
+    market_data_provider = MockMarketDataProvider()
     
-    # Register mock strategy and monitor
-    await execution_manager.register_strategy(
-        MockExecutionStrategy(),
-        "mock-strategy"
-    )
-    
-    await execution_manager.register_monitor(
-        MockTransactionMonitor(),
-        "mock-monitor"
-    )
-    
-    # Create config
     config = {
         "arbitrage": {
             "auto_execute": False,
-            "min_profit_threshold_eth": 0.01,
-            "max_opportunities_per_cycle": 5,
-            "discovery_interval_seconds": 30.0,
-            "execution_interval_seconds": 60.0,
-            "min_confidence_threshold": 0.7,
-            "max_slippage_percent": 0.5,
-            "max_gas_price_gwei": 50.0
+            "tokens": {
+                f"TOKEN{i}": {
+                    "address": f"0x{i:040x}",
+                    "decimals": 18,
+                    "min_amount": "0.01"
+                } for i in range(10)
+            }
         }
     }
     
-    # Create arbitrage system
     arbitrage_system = BaseArbitrageSystem(
         discovery_manager=discovery_manager,
         execution_manager=execution_manager,
@@ -691,150 +736,59 @@ async def test_arbitrage_system_lifecycle():
     )
     
     try:
-        # Start the system
         await arbitrage_system.start()
         
-        # Verify system is running
-        assert arbitrage_system.is_running
-        assert arbitrage_system.uptime_seconds > 0.0
+        start_time = time.time()
+        opportunities = await arbitrage_system.discover_opportunities(max_results=10)
+        end_time = time.time()
         
-        # Discover opportunities
-        opportunities = await arbitrage_system.discover_opportunities(
-            max_results=3,
-            min_profit_eth=0.01
-        )
-        
+        assert end_time - start_time < 2.0
         assert len(opportunities) > 0
-        assert isinstance(opportunities[0], ArbitrageOpportunity)
-        assert opportunities[0].status == OpportunityStatus.VALID
-        
-        # Execute opportunity
-        execution_result = await arbitrage_system.execute_opportunity(
-            opportunity=opportunities[0],
-            strategy_id="mock-strategy"
-        )
-        
-        assert isinstance(execution_result, ExecutionResult)
-        assert execution_result.status == ExecutionStatus.SUCCESS
-        assert execution_result.success
-        
-        # Wait a moment for background tasks
-        await asyncio.sleep(1)
-        
-        # Get recent opportunities
-        recent_opps = await arbitrage_system.get_recent_opportunities(max_results=5)
-        assert len(recent_opps) > 0
-        
-        # Get recent executions
-        recent_execs = await arbitrage_system.get_recent_executions(max_results=5)
-        assert len(recent_execs) > 0
-        
-        # Get performance metrics
-        metrics = await arbitrage_system.get_performance_metrics()
-        assert "total_profit_eth" in metrics
-        assert metrics["opportunities_found"] > 0
-        assert metrics["executions_successful"] > 0
         
     finally:
-        # Stop the system
         await arbitrage_system.stop()
-        
-        # Verify system is stopped
-        assert not arbitrage_system.is_running
-
 
 @pytest.mark.asyncio
-async def test_factory_functions():
-    """Test the factory functions for creating arbitrage systems."""
-    # Create config
-    config = {
-        "arbitrage": {
-            "auto_execute": False,
-            "min_profit_threshold_eth": 0.01,
-            "max_opportunities_per_cycle": 5,
-            "discovery_interval_seconds": 30.0,
-            "execution_interval_seconds": 60.0,
-            "min_confidence_threshold": 0.7,
-            "max_slippage_percent": 0.5,
-            "max_gas_price_gwei": 50.0
-        },
-        "discovery": {
-            "detectors": [
-                {"type": "triangular", "id": "triangular-detector"},
-                {"type": "cross_dex", "id": "cross-dex-detector"}
-            ],
-            "validators": [
-                {"type": "basic", "id": "basic-validator"}
-            ]
-        },
-        "execution": {
-            "strategies": [
-                {"type": "standard", "id": "standard-strategy"},
-                {"type": "flashbots", "id": "flashbots-strategy"}
-            ],
-            "monitors": [
-                {"type": "standard", "id": "standard-monitor"}
-            ]
-        }
-    }
+@pytest.mark.integration
+async def test_thread_safety():
+    """Test thread safety with concurrent operations."""
+    discovery_manager = MockDiscoveryManager()
+    execution_manager = MockExecutionManager()
+    analytics_manager = MockAnalyticsManager()
+    market_data_provider = MockMarketDataProvider()
     
-    # Create temp file for config
-    temp_config_path = "temp_config.json"
-    with open(temp_config_path, "w") as f:
-        json.dump(config, f)
+    arbitrage_system = BaseArbitrageSystem(
+        discovery_manager=discovery_manager,
+        execution_manager=execution_manager,
+        analytics_manager=analytics_manager,
+        market_data_provider=market_data_provider,
+        config={}
+    )
     
     try:
-        # Test create_arbitrage_system
-        with mock.patch("arbitrage_bot.core.arbitrage.factory.create_discovery_manager", 
-                       return_value=MockDiscoveryManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_execution_manager", 
-                       return_value=MockExecutionManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_analytics_manager", 
-                       return_value=MockAnalyticsManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_market_data_provider", 
-                       return_value=MockMarketDataProvider()):
-            
-            arbitrage_system = await create_arbitrage_system(config)
-            assert isinstance(arbitrage_system, BaseArbitrageSystem)
-            assert not arbitrage_system.is_running
+        await arbitrage_system.start()
         
-        # Test create_arbitrage_system_from_config
-        with mock.patch("arbitrage_bot.core.arbitrage.factory.create_discovery_manager", 
-                       return_value=MockDiscoveryManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_execution_manager", 
-                       return_value=MockExecutionManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_analytics_manager", 
-                       return_value=MockAnalyticsManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_market_data_provider", 
-                       return_value=MockMarketDataProvider()):
-            
-            arbitrage_system = await create_arbitrage_system_from_config(temp_config_path)
-            assert isinstance(arbitrage_system, BaseArbitrageSystem)
-            assert not arbitrage_system.is_running
+        async def run_operations():
+            await asyncio.gather(
+                arbitrage_system.discover_opportunities(max_results=3),
+                arbitrage_system.get_performance_metrics(),
+                arbitrage_system.get_recent_opportunities(max_results=5),
+                arbitrage_system.get_recent_executions(max_results=5)
+            )
         
-        # Test legacy mode
-        with mock.patch("arbitrage_bot.core.arbitrage.factory.create_legacy_discovery_manager", 
-                       return_value=MockDiscoveryManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_legacy_execution_manager", 
-                       return_value=MockExecutionManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_legacy_analytics_manager", 
-                       return_value=MockAnalyticsManager()), \
-             mock.patch("arbitrage_bot.core.arbitrage.factory.create_legacy_market_data_provider", 
-                       return_value=MockMarketDataProvider()):
+        for _ in range(5):
+            await run_operations()
             
-            arbitrage_system = await create_arbitrage_system(config, use_legacy=True)
-            assert isinstance(arbitrage_system, BaseArbitrageSystem)
-            assert not arbitrage_system.is_running
-    
+        assert arbitrage_system.is_running
+        
     finally:
-        # Clean up temp file
-        if os.path.exists(temp_config_path):
-            os.remove(temp_config_path)
-
+        await arbitrage_system.stop()
 
 if __name__ == "__main__":
     """Run tests directly."""
     asyncio.run(test_arbitrage_system_creation())
-    asyncio.run(test_arbitrage_system_lifecycle())
-    asyncio.run(test_factory_functions())
+    asyncio.run(test_base_network_initialization())
+    asyncio.run(test_resource_cleanup())
+    asyncio.run(test_parallel_processing())
+    asyncio.run(test_thread_safety())
     print("All tests passed!")

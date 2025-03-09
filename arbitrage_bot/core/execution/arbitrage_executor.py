@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 
-from ...utils.config_loader import load_config
+from ...utils.config_loader import load_config, ConfigurationError
 from ...utils.gas_logger import GasLogger
 from ..web3.web3_manager import Web3Manager
 from ..dex import DexManager
@@ -80,7 +80,7 @@ class ArbitrageExecutor:
         """Check and approve token for trading if needed."""
         try:
             # Get token contract
-            token_contract = self.web3_manager.get_token_contract(token_address)
+            token_contract = await self.web3_manager.get_token_contract(token_address)
             
             # Get DEX router address
             router_address = dex.get_router_address()
@@ -106,7 +106,7 @@ class ArbitrageExecutor:
                 })
                 
                 # Send and wait for approval transaction
-                receipt = self.web3_manager.send_transaction(tx)
+                receipt = await self.web3_manager.send_transaction(tx)
                 return receipt and receipt['status'] == 1
                 
             return True
@@ -121,8 +121,8 @@ class ArbitrageExecutor:
             token_in = path[0]
             token_out = path[-1]
             
-            token_in_contract = self.web3_manager.get_token_contract(token_in)
-            token_out_contract = self.web3_manager.get_token_contract(token_out)
+            token_in_contract = await self.web3_manager.get_token_contract(token_in)
+            token_out_contract = await self.web3_manager.get_token_contract(token_out)
             
             # Always send output to profit recipient for final WETH trades
             # For intermediate trades, use wallet address to maintain control
@@ -131,14 +131,14 @@ class ArbitrageExecutor:
             # For final WETH trades, check if we have enough ETH for gas
             if is_final_weth_trade:
                 # Get gas cost estimate for the transfer
-                gas_params = self.gas_optimizer.optimize_gas({'priority': 'standard'})
+                gas_params = await self.gas_optimizer.get_gas_strategy()
                 # Use actual gas estimate with 20% buffer
-                base_gas_cost = gas_params['gas'] * gas_params['maxFeePerGas']
+                base_gas_cost = gas_params['gasLimit'] * gas_params['maxFeePerGas']
                 estimated_gas_cost = int(base_gas_cost * 1.2)  # 20% buffer
                 
                 # Get current ETH balance
-                eth_balance = self.web3_manager.get_eth_balance()
-                eth_balance_wei = self.web3_manager.w3.to_wei(eth_balance, 'ether')
+                eth_balance = await self.web3_manager.get_balance()
+                eth_balance_wei = eth_balance
                 
                 # Keep enough ETH for gas with 1.5x buffer
                 if eth_balance_wei > estimated_gas_cost * 1.5:  # Reduced from 3x to 1.5x
@@ -170,7 +170,7 @@ class ArbitrageExecutor:
                 return False, "Token approval failed"
             
             # Execute the trade
-            receipt = dex.swap_exact_tokens_for_tokens(
+            receipt = await dex.swap_exact_tokens_for_tokens(
                 amount_in=amount_in,
                 amount_out_min=amount_out_min,
                 path=path,

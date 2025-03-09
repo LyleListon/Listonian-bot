@@ -10,8 +10,6 @@ import logging
 import warnings
 from typing import Dict, List, Any, Optional
 
-from .unified_flash_loan_manager import UnifiedFlashLoanManager, create_flash_loan_manager
-
 logger = logging.getLogger(__name__)
 
 # Emit deprecation warning
@@ -61,9 +59,9 @@ class AsyncFlashLoanManager:
         contract_addresses = flash_config.get('contract_address', {})
         self.contract_address = contract_addresses.get('mainnet', '')
         
-        # Create the unified manager for internal use
-        self._unified_manager = None
-        self._config = config
+        # Import UnifiedFlashLoanManager here to avoid circular imports
+        from .unified_flash_loan_manager import UnifiedFlashLoanManager
+        self._unified_manager = UnifiedFlashLoanManager(web3_manager, config, flashbots_manager)
         
         logger.info("AsyncFlashLoanManager initialized (compatibility wrapper)")
         logger.info("Flash loans enabled: %s", self.enabled)
@@ -71,19 +69,15 @@ class AsyncFlashLoanManager:
     
     async def _ensure_initialized(self):
         """Ensure the unified manager is initialized."""
-        if self._unified_manager is None:
-            self._unified_manager = await create_flash_loan_manager(
-                web3_manager=self.web3_manager,
-                config=self._config,
-                flashbots_manager=self.flashbots_manager
-            )
+        if not self._unified_manager.initialized:
+            await self._unified_manager.initialize()
     
     async def validate_arbitrage_opportunity(self, 
-                                           input_token: str, 
-                                           output_token: str, 
-                                           input_amount: int,
-                                           expected_output: int,
-                                           route: List[Dict[str, Any]]) -> Dict[str, Any]:
+                                          input_token: str, 
+                                          output_token: str, 
+                                          input_amount: int,
+                                          expected_output: int,
+                                          route: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Validate an arbitrage opportunity accounting for flash loan costs.
         
@@ -108,10 +102,10 @@ class AsyncFlashLoanManager:
         )
     
     async def prepare_flash_loan_transaction(self,
-                                           token_address: str,
-                                           amount: int,
-                                           route: List[Dict[str, Any]],
-                                           min_profit: int = 0) -> Dict[str, Any]:
+                                          token_address: str,
+                                          amount: int,
+                                          route: List[Dict[str, Any]],
+                                          min_profit: int = 0) -> Dict[str, Any]:
         """
         Prepare a flash loan transaction.
         
@@ -134,11 +128,11 @@ class AsyncFlashLoanManager:
         )
     
     async def execute_flash_loan_arbitrage(self,
-                                         token_address: str,
-                                         amount: int,
-                                         route: List[Dict[str, Any]],
-                                         min_profit: int,
-                                         use_flashbots: bool = None) -> Dict[str, Any]:
+                                        token_address: str,
+                                        amount: int,
+                                        route: List[Dict[str, Any]],
+                                        min_profit: int,
+                                        use_flashbots: bool = None) -> Dict[str, Any]:
         """
         Execute a flash loan arbitrage.
         

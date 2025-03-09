@@ -16,7 +16,7 @@
     "chai": "^4.5.0",
     "dotenv": "^16.4.7",
     "ethereum-waffle": "^4.0.10",
-    "ethers": "^5.7.2",
-    "hardhat": "^2.22.18"
+    "ethers": "^5.8.0",
+    "hardhat": "^2.22.19"
   }
 }

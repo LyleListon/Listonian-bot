@@ -20,74 +20,114 @@ wheels/
 .installed.cfg
 *.egg
 
-# Environment
-.env
-.env.*
-.venv
-env/
+# Virtual Environment
 venv/
 ENV/
-.env.mainnet
-.env.production
-.conda/
+env/
 
 # IDE
 .idea/
 .vscode/
-.vs/
 *.swp
 *.swo
 .project
 .pydevproject
-.settings
+.settings/
 
-# Logs and databases
+# Logs
 *.log
-*.sqlite
-*.db
 logs/
-historical_data/
+test_reports/
+
+# Environment variables
+.env
+.env.*
+
+# Local development
+*.db
+*.sqlite3
+.DS_Store
 
 # Test coverage
-htmlcov/
-.tox/
 .coverage
-.coverage.*
-.cache
-nosetests.xml
+htmlcov/
 coverage.xml
-*.cover
-.hypothesis/
 
-# Project specific
-models/
-simulation_results/
-backtest_results/
-benchmark_results/
-metrics/
-reports/
-temp_contracts/
-cache/
-artifacts/
-.frontmatter/
+# Cache
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
-# Node
-node_modules/
-package-lock.json
-
-# Temporary files
-*.pid
-*.tmp
-temp.txt
-output.txt
-*.temp
-MAINNET_WALLET.json
+# Build artifacts
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
 
 # Documentation
-docs/images/
-docs/failed_attempts/
+docs/_build/
+docs/api/
 
-# Deployment
-deployments - Copy/
-/Roo-Cline
-data/memory/**/status.json
+# Temporary files
+*.bak
+*.tmp
+*~
+
+# Private keys and secrets
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+*.p12
+*.pfx
+*.cer
+*.der
+*.priv
+*.pub
+*.gpg
+*.asc
+*.sig
+*.sign
+*.keystore
+*.jks
+*.truststore
+*.p7b
+*.p7c
+*.p7s
+*.p8
+*.pkcs12
+*.pkcs7
+*.pkcs8
+*.x509
+*.x509crl
+*.crl
+*.ocsp
+*.tls
+*.ssl
+*.rsa
+*.dsa
+*.ec
+*.ed25519
+*.secp256k1
+*.bip39
+*.mnemonic
+*.seed
+*.secret
+*.password
+*.token
+*.auth
+*.credentials
+*.config
+*.settings
+*.ini
+*.conf
+*.cfg
+*.properties
+*.yaml
+*.yml
+*.json
+!configs/*.json
+!abi/*.json

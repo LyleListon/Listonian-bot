@@ -47,7 +47,7 @@ contract MultiPathArbitrage is Ownable {
         address[] calldata assets,
         uint256[] calldata amounts,
         uint256[] calldata premiums,
-        address initiator,
+        address /* initiator */,
         bytes calldata params
     ) external returns (bool) {
         // Execute arbitrage trades

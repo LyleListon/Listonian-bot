@@ -363,11 +363,11 @@ def initialize_web3():
         web3 = Web3(HTTPProvider(provider_url))
         
         # Check connection
-        if not web3.isConnected():
+        if not web3.is_connected():
             error_message = "ERROR: Failed to connect to Ethereum node. Please check your provider URL."
             return
         
-        debug_info += "Connected to Web3: " + str(web3.isConnected()) + "\n"
+        debug_info += "Connected to Web3: " + str(web3.is_connected()) + "\n"
         debug_info += "Checking Web3 connection: Network ID: " + str(web3.net.version) + "\n"
         
         # Connect wallet if private key provided    
@@ -399,7 +399,7 @@ def initialize_web3():
 
 def get_network_name():
     """Get the name of the connected network."""
-    if not web3 or not web3.isConnected():
+    if not web3 or not web3.is_connected():
         return "Not Connected"
     
     try:
@@ -428,8 +428,8 @@ def get_wallet_balance():
     # Use view address if available, fall back to wallet address
     address_to_check = view_address or wallet_address
     
-    if not web3 or not web3.isConnected() or not address_to_check:
-        debug_info += "Cannot get balance: " + str(bool(web3)) + ", " + str(bool(web3.isConnected() if web3 else False)) + ", " + str(bool(address_to_check)) + "\n"
+    if not web3 or not web3.is_connected() or not address_to_check:
+        debug_info += "Cannot get balance: " + str(bool(web3)) + ", " + str(bool(web3.is_connected() if web3 else False)) + ", " + str(bool(address_to_check)) + "\n"
         return "Not Available"
     
     try:
@@ -446,7 +446,7 @@ def get_wallet_balance():
 
 def get_gas_price():
     """Get current gas price in Gwei."""
-    if not web3 or not web3.isConnected():
+    if not web3 or not web3.is_connected():
         return "Not Available"
     
     try:
@@ -459,7 +459,7 @@ def get_gas_price():
 
 def get_block_number():
     """Get latest block number."""
-    if not web3 or not web3.isConnected():
+    if not web3 or not web3.is_connected():
         return "Not Available"
     
     try:
@@ -472,7 +472,7 @@ def get_recent_transactions():
     """Get recent transactions."""
     address_to_check = wallet_address or view_address
     
-    if not web3 or not web3.isConnected() or not address_to_check:
+    if not web3 or not web3.is_connected() or not address_to_check:
         return "Not Available"
     
     try:
@@ -519,7 +519,7 @@ def index():
     reserve_percentage = dynamic_allocation.get('reserve_percentage', "N/A")
     
     # Set status based on Web3 connection
-    status = "Running" if web3 and web3.isConnected() else "Not Connected"
+    status = "Running" if web3 and web3.is_connected() else "Not Connected"
     
     return render_template_string(
         DASHBOARD_TEMPLATE,
@@ -566,7 +566,7 @@ def api_status():
     wallet_address_short = display_address[:6] + "..." + display_address[-4:] if display_address else "Not Available"
     
     # Set status based on Web3 connection
-    status = "Running" if web3 and web3.isConnected() else "Not Connected"
+    status = "Running" if web3 and web3.is_connected() else "Not Connected"
     
     return jsonify({
         'status': status,

@@ -99,8 +99,8 @@ class ArbitrageBot:
             from arbitrage_bot.core.dex.dex_manager import create_dex_manager
             from arbitrage_bot.core.gas.gas_optimizer import create_gas_optimizer
             from arbitrage_bot.core.memory import get_memory_bank
-            from arbitrage_bot.core.balance_manager import BalanceManager
-            from arbitrage_bot.core.flash_loan_manager import create_flash_loan_manager
+            from arbitrage_bot.core.unified_balance_manager import UnifiedBalanceManager
+            from arbitrage_bot.core.unified_flash_loan_manager import create_unified_flash_loan_manager
             from arbitrage_bot.core.alerts.alert_system import create_alert_system
             
             # Get config
@@ -115,8 +115,7 @@ class ArbitrageBot:
             self.web3_manager = await create_web3_manager(
                 provider_url=os.getenv('BASE_RPC_URL'),
                 chain_id=config['network']['chainId'],
-                private_key=os.getenv('PRIVATE_KEY'),
-                wallet_address=os.getenv('WALLET_ADDRESS')
+                private_key=os.getenv('PRIVATE_KEY')
             )
             logger.info("Web3 manager created")
             
@@ -133,7 +132,7 @@ class ArbitrageBot:
             self.ml_system = await create_ml_system(None, self.market_analyzer, config)
             
             # Initialize portfolio tracker (serves as performance tracker)
-            self.portfolio_tracker = create_portfolio_tracker(
+            self.portfolio_tracker = await create_portfolio_tracker(
                 web3_manager=self.web3_manager,
                 wallet_address=self.web3_manager.wallet_address,
                 config=config
@@ -151,7 +150,7 @@ class ArbitrageBot:
             logger.info("Gas optimizer initialized")
             
             # Initialize analytics system
-            self.analytics_system = create_analytics_system(config)
+            self.analytics_system = await create_analytics_system(config)
             self.analytics_system.web3_manager = self.web3_manager
             self.analytics_system.wallet_address = self.web3_manager.wallet_address
             
@@ -172,7 +171,7 @@ class ArbitrageBot:
             
             # Initialize balance manager
             logger.info("Initializing balance manager...")
-            self.balance_manager = await BalanceManager.get_instance(
+            self.balance_manager = await UnifiedBalanceManager.get_instance(
                 web3_manager=self.web3_manager,
                 dex_manager=self.dex_manager,
                 config=config
@@ -188,7 +187,7 @@ class ArbitrageBot:
             )
 
             # Initialize flash loan manager
-            self.flash_loan_manager = create_flash_loan_manager(
+            self.flash_loan_manager = await create_unified_flash_loan_manager(
                 web3_manager=self.web3_manager,
                 config=config
             )

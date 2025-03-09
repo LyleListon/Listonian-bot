@@ -87,7 +87,7 @@ contract MEVProtectedArbitrage is FlashLoanArbitrage {
         require(amount <= maxTradeSize, "Amount exceeds max trade size");
         
         // Decode expected profit from params
-        (address[] memory dexPaths, uint256[] memory amounts, bool[] memory isV3, uint256 expectedProfit) = abi.decode(
+        (, , , uint256 expectedProfit) = abi.decode(
             params,
             (address[], uint256[], bool[], uint256)
         );
@@ -112,7 +112,7 @@ contract MEVProtectedArbitrage is FlashLoanArbitrage {
         address asset,
         uint256 amount,
         uint256 premium,
-        address initiator,
+        address /* initiator */,
         bytes calldata params
     ) public virtual override returns (bool) {
         require(
@@ -120,7 +120,7 @@ contract MEVProtectedArbitrage is FlashLoanArbitrage {
             "Gas price exceeded during execution"
         );
 
-        return super.executeOperation(asset, amount, premium, initiator, params);
+        return super.executeOperation(asset, amount, premium, address(0), params);
     }
 
     // Enhanced trade execution with MEV protection

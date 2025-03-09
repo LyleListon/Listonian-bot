@@ -34,6 +34,7 @@ class MarketAnalyzer:
         self.dex_manager = None  # Will be set by DEX manager
         self._init_lock = asyncio.Lock()
         self._cache_lock = asyncio.Lock()
+        self._cleanup_lock = asyncio.Lock()
         self.initialized = False
         logger.debug("Market analyzer initialized")
 
@@ -67,6 +68,21 @@ class MarketAnalyzer:
             except Exception as e:
                 logger.error("Failed to initialize market analyzer: %s", str(e))
                 return False
+
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
+        if not self.initialized:
+            return
+
+        async with self._cleanup_lock:
+            try:
+                # Clear caches
+                self._price_cache.clear()
+                self.market_conditions.clear()
+                self.initialized = False
+                logger.debug("Market analyzer cleaned up")
+            except Exception as e:
+                logger.error("Error during cleanup: %s", str(e))
 
     def _validate_token_data(self, token_data: Optional[Dict[str, Any]]) -> bool:
         """Validate token data structure."""
@@ -126,11 +142,11 @@ class MarketAnalyzer:
             logger.error("Failed to get market condition: %s", str(e))
             return None
 
-    def _get_dex_instance(self, dex_name: str) -> Any:
+    async def _get_dex_instance(self, dex_name: str) -> Any:
         """Get DEX instance by name."""
         if not self.dex_manager:
             raise ValueError("DEX manager not set")
-        return self.dex_manager.get_dex(dex_name)
+        return await self.dex_manager.get_dex(dex_name)
 
     async def _fetch_real_price(self, token: Dict[str, Any]) -> Optional[float]:
         """Fetch real price data from all enabled DEXes."""
@@ -162,7 +178,7 @@ class MarketAnalyzer:
             logger.error("Error fetching real price for %s: %s", token.get('address', 'unknown'), str(e))
             return None
 
-    def validate_price(self, price: float) -> bool:
+    async def validate_price(self, price: float) -> bool:
         """Validate if a price is valid."""
         if not isinstance(price, (int, float, Decimal)):
             return False
@@ -199,7 +215,7 @@ class MarketAnalyzer:
         if price is None:
             raise ValueError("Could not fetch price for token {}".format(token))
             
-        if not self.validate_price(price):
+        if not await self.validate_price(price):
             raise ValueError("Invalid price received for {}: {}".format(token, price))
 
         async with self._cache_lock:
@@ -208,7 +224,7 @@ class MarketAnalyzer:
 
     def calculate_price_difference(self, price1: float, price2: float) -> float:
         """Calculate percentage difference between two prices."""
-        if not (self.validate_price(price1) and self.validate_price(price2)):
+        if not all(await asyncio.gather(self.validate_price(price1), self.validate_price(price2))):
             raise ValueError("Invalid prices provided")
         return abs(float(price2) - float(price1)) / float(price1)
 
@@ -221,40 +237,47 @@ class MarketAnalyzer:
             opportunities = []
             tokens = self.config.get("tokens", {})
             
-            for token_id, token_data in tokens.items():
-                if not token_data or 'address' not in token_data:
-                    logger.debug("Invalid token data for %s", token_id)
-                    continue
+            async def process_token(token_id: str, token_data: Dict[str, Any]) -> Optional[Opportunity]:
+                try:
+                    if not token_data or 'address' not in token_data:
+                        logger.debug("Invalid token data for %s", token_id)
+                        return None
 
+    
                 # Get prices from enabled DEXes
-                prices = await self.dex_manager.get_token_price(token_data['address'])
-                if not prices:
-                    logger.debug("No prices found for token %s", token_id)
-                    continue
+                    prices = await self.dex_manager.get_token_price(token_data['address'])
+                    if not prices:
+                        logger.debug("No prices found for token %s", token_id)
+                        return None
                     
-                # Find arbitrage opportunities
-                if len(prices) >= 2:
-                    min_price = min(prices.values())
-                    max_price = max(prices.values())
-                    price_diff = (max_price - min_price) / min_price
+                    # Find arbitrage opportunities
+                    if len(prices) >= 2:
+                        min_price = min(prices.values())
+                        max_price = max(prices.values())
+                        price_diff = (max_price - min_price) / min_price
                     
-                    # If price difference > 0.5%
-                    if price_diff > Decimal("0.005"):
-                        buy_dex = min(prices.items(), key=lambda x: x[1])[0]
-                        sell_dex = max(prices.items(), key=lambda x: x[1])[0]
+                        # If price difference > 0.5%
+                        if price_diff > Decimal("0.005"):
+                            buy_dex = min(prices.items(), key=lambda x: x[1])[0]
+                            sell_dex = max(prices.items(), key=lambda x: x[1])[0]
                         
-                        opportunity = Opportunity(
-                            token_id=token_id,
-                            token_address=token_data['address'],
-                            buy_dex=buy_dex,
-                            sell_dex=sell_dex,
-                            buy_price=min_price,
-                            sell_price=max_price,
-                            profit_margin=price_diff,
-                            market_condition=None,  # No market condition needed for opportunities
-                            timestamp=datetime.now().timestamp()
-                        )
-                        opportunities.append(opportunity)
+                            return Opportunity(
+                                token_id=token_id,
+                                token_address=token_data['address'],
+                                buy_dex=buy_dex,
+                                sell_dex=sell_dex,
+                                buy_price=min_price,
+                                sell_price=max_price,
+                                profit_margin=price_diff,
+                                market_condition=None,  # No market condition needed for opportunities
+                                timestamp=datetime.now().timestamp()
+                            )
+                    return None
+                except Exception as e:
+                    logger.error("Error processing token %s: %s", token_id, str(e))
+                    return None
+
+            opportunities = [opp for opp in await asyncio.gather(*[process_token(token_id, token_data) for token_id, token_data in tokens.items()]) if opp is not None]
             
             return opportunities
             
@@ -262,7 +285,7 @@ class MarketAnalyzer:
             logger.error("Failed to get opportunities: %s", str(e))
             return []
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    async def get_performance_metrics(self) -> Dict[str, Any]:
         """Get current performance metrics."""
         try:
             return {
@@ -300,6 +323,7 @@ async def create_market_analyzer(
             
         # Initialize the analyzer
         if not await analyzer.initialize():
+            await analyzer.cleanup()
             raise RuntimeError("Failed to initialize market analyzer")
             
         logger.debug("Market analyzer created and initialized successfully")

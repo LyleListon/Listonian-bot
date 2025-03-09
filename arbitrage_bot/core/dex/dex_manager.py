@@ -1,240 +1,382 @@
 """
 DEX Manager Module
 
-This module manages interactions with different decentralized exchanges (DEXs).
+This module provides functionality for:
+- DEX interactions
+- Pool discovery
+- Price fetching
 """
 
+import json
 import logging
-import asyncio
-from typing import Dict, List, Any, Optional
+import os
+from typing import Any, Dict, List, Optional, Set
+from eth_typing import ChecksumAddress
+from eth_utils import to_checksum_address
+
+from ...utils.async_manager import with_retry
+from ..web3.interfaces import Web3Client
 
 logger = logging.getLogger(__name__)
 
-class DexManager:
-    """Manages interactions with multiple DEXs."""
-    
-    def __init__(self, web3_manager, config: Dict[str, Any] = None):
+def load_abi(filename: str) -> Optional[Dict[str, Any]]:
+    """
+    Load ABI from file.
+
+    Args:
+        filename: ABI filename
+
+    Returns:
+        ABI dictionary or None if file not found
+    """
+    try:
+        with open(os.path.join('abi', filename), 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.debug(f"ABI file not found: {filename}")
+        return None
+
+def get_dex_abi(name: str, contract_type: str) -> Optional[Dict[str, Any]]:
+    """
+    Get DEX ABI by trying different naming patterns.
+
+    Args:
+        name: DEX name
+        contract_type: Contract type (factory, pool, router)
+
+    Returns:
+        ABI dictionary or None if not found
+    """
+    # Try different naming patterns
+    patterns = [
+        f"{name}_{contract_type}.json",  # baseswap_pool.json
+        f"{name}_v3_{contract_type}.json",  # baseswap_v3_pool.json
+        f"{name}_v2_{contract_type}.json",  # baseswap_v2_pool.json
+        f"I{name.capitalize()}V3{contract_type.capitalize()}.json",  # IBaseswapV3Pool.json
+        f"I{name.capitalize()}V2{contract_type.capitalize()}.json",  # IBaseswapV2Pool.json
+        f"I{contract_type.capitalize()}.json"  # IPool.json
+    ]
+
+    for pattern in patterns:
+        abi = load_abi(pattern)
+        if abi:
+            return abi
+
+    # Try generic interfaces
+    generic_patterns = {
+        'factory': ['IUniswapV3Factory.json', 'IUniswapV2Factory.json'],
+        'pool': ['IUniswapV3Pool.json', 'IUniswapV2Pair.json'],
+        'router': ['IUniswapV3Router.json', 'IUniswapV2Router.json']
+    }
+
+    for pattern in generic_patterns.get(contract_type, []):
+        abi = load_abi(pattern)
+        if abi:
+            return abi
+
+    return None
+
+class DexInfo:
+    """DEX information container."""
+
+    def __init__(
+        self,
+        name: str,
+        factory_address: str,
+        router_address: str,
+        fee_tiers: List[int]
+    ):
         """
-        Initialize the DexManager.
-        
+        Initialize DEX info.
+
         Args:
-            web3_manager: Web3Manager instance
-            config: Configuration dictionary
+            name: DEX name
+            factory_address: Factory contract address
+            router_address: Router contract address
+            fee_tiers: List of fee tiers (in basis points)
+        """
+        self.name = name
+        self.factory_address = to_checksum_address(factory_address)
+        self.router_address = to_checksum_address(router_address)
+        self.fee_tiers = fee_tiers
+        self.pools: Set[ChecksumAddress] = set()
+
+        # Load ABIs
+        self.factory_abi = get_dex_abi(name, 'factory')
+        self.pool_abi = get_dex_abi(name, 'pool')
+
+        if not self.factory_abi:
+            logger.warning(f"No factory ABI found for {name}")
+        if not self.pool_abi:
+            logger.warning(f"No pool ABI found for {name}")
+
+class DexManager:
+    """Manages DEX interactions."""
+
+    def __init__(
+        self,
+        web3_manager: Web3Client,
+        dexes: Dict[str, DexInfo]
+    ):
+        """
+        Initialize DEX manager.
+
+        Args:
+            web3_manager: Web3 client instance
+            dexes: Dictionary of DEX info objects
         """
         self.web3_manager = web3_manager
-        self.config = config or {}
-        self.dexes = {}
-        
-        logger.info("DexManager initialized")
-    
-    @classmethod
-    async def create(cls, web3_manager, config: Dict[str, Any] = None):
-        """
-        Create and initialize a DexManager instance.
-        
-        Args:
-            web3_manager: Web3Manager instance
-            config: Configuration dictionary
-            
-        Returns:
-            Initialized DexManager instance
-        """
-        # Create instance
-        instance = cls(web3_manager, config)
-        
-        # Load DEX configurations
-        await instance._load_dexes()
-        
-        return instance
-    
-    async def _load_dexes(self):
-        """Load and initialize DEX interfaces based on configuration."""
-        # Get DEX config
-        dex_config = self.config.get('dex_config', {})
-        
-        # For simulation, add some default DEXs
-        default_dexes = {
-            'uniswap_v2': {
-                'enabled': True,
-                'factory_address': '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
-                'router_address': '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D',
-                'init_code_hash': '0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f',
-                'fee': 30  # 0.3%
-            },
-            'sushiswap': {
-                'enabled': True,
-                'factory_address': '0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac',
-                'router_address': '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F',
-                'init_code_hash': '0xe18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303',
-                'fee': 30  # 0.3%
-            },
-            'uniswap_v3': {
-                'enabled': True,
-                'factory_address': '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-                'quoter_address': '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6',
-                'router_address': '0xE592427A0AEce92De3Edee1F18E0157C05861564',
-                'fee_tiers': [100, 500, 3000, 10000]
-            },
-            'pancakeswap': {
-                'enabled': True,
-                'factory_address': '0x1097053Fd2ea711dad45caCcc45EfF7548fCB362',
-                'router_address': '0x10ED43C718714eb63d5aA57B78B54704E256024E',
-                'init_code_hash': '0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5',
-                'fee': 25  # 0.25%
-            },
-            'baseswap': {
-                'enabled': True,
-                'factory_address': '0xf5d7d97b33c4090a8cace5f7c5a1cc54c5740930',
-                'router_address': '0x327df1e6de05895d2ab08513aadd9313fe505700',
-                'init_code_hash': '0xb618a2730fae167f5f8ac7bd659dd8436d571872655bcb6fd11f2158c8a64a3b',
-                'fee': 30  # 0.3%
-            }
-        }
-        
-        # Merge with config if provided
-        if dex_config:
-            # Use config values but fall back to defaults
-            for dex_name, dex_settings in default_dexes.items():
-                if dex_name in dex_config:
-                    # Update with config values
-                    dex_settings.update(dex_config.get(dex_name, {}))
-        
-        # In a real implementation, this would initialize actual DEX interfaces
-        # For this example, we'll create simulated DEX objects
-        
-        for dex_name, dex_settings in default_dexes.items():
-            if dex_settings.get('enabled', True):
-                # Create a simulated DEX object
-                self.dexes[dex_name] = {
-                    'name': dex_name,
-                    'settings': dex_settings,
-                    'enabled': True
-                }
-        
-        logger.info("Loaded %d DEXs", len(self.dexes))
-    
-    async def get_price(self, dex_name: str, token_in: str, token_out: str, amount_in: int) -> int:
-        """
-        Get price quote from a DEX.
-        
-        Args:
-            dex_name: Name of the DEX
-            token_in: Address of input token
-            token_out: Address of output token
-            amount_in: Amount of input token in wei
-            
-        Returns:
-            Expected amount out in wei
-        """
-        # This is a simulation implementation
-        # In a real implementation, this would query the actual DEX
-        
-        # Check if DEX exists
-        if dex_name not in self.dexes:
-            raise ValueError("DEX not found: " + dex_name)
-        
-        # Simulate a price quote with a random spread
-        import random
-        
-        # Base conversion rate (simulated)
-        base_rates = {
-            '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': 1800,  # USDC: 1 ETH = 1800 USDC
-            '0xdAC17F958D2ee523a2206206994597C13D831ec7': 1805,  # USDT: 1 ETH = 1805 USDT
-            '0x6B175474E89094C44Da98b954EedeAC495271d0F': 1802,  # DAI: 1 ETH = 1802 DAI
-            '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': 0.055   # WBTC: 1 ETH = 0.055 WBTC
-        }
-        
-        # Token decimals
-        decimals = {
-            '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2': 18,     # WETH = 18 decimals
-            '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': 6,      # USDC = 6 decimals
-            '0xdAC17F958D2ee523a2206206994597C13D831ec7': 6,      # USDT = 6 decimals
-            '0x6B175474E89094C44Da98b954EedeAC495271d0F': 18,     # DAI = 18 decimals
-            '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': 8       # WBTC = 8 decimals
-        }
-        
-        # Apply a random spread -5% to +5%
-        spread = random.uniform(0.95, 1.05)
-        
-        # Normalize addresses to lowercase
-        token_in = token_in.lower()
-        token_out = token_out.lower()
-        weth_address = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'.lower()
-        
-        # WETH to another token
-        if token_in == weth_address and token_out in base_rates:
-            base_rate = base_rates[token_out]
-            decimal_diff = decimals[weth_address] - decimals[token_out]
-            amount_out = int(amount_in * base_rate * spread / (10**decimal_diff))
-        # Another token to WETH
-        elif token_out == weth_address and token_in in base_rates:
-            base_rate = base_rates[token_in]
-            decimal_diff = decimals[token_in] - decimals[weth_address]
-            amount_out = int(amount_in * (1 / base_rate) * spread * (10**decimal_diff))
-        else:  # Fallback for unsupported pairs
-            # Other token pairs - simulate a random conversion
-            amount_out = int(amount_in * random.uniform(0.9, 1.1))
-        
-        logger.info("Price quote from %s: %s -> %s = %s", dex_name, amount_in, amount_out, amount_out / amount_in)
-        
-        return amount_out
-    
-    async def get_supported_tokens(self, dex_name: str = None) -> List[str]:
-        """
-        Get list of supported tokens for a DEX or all DEXs.
-        
-        Args:
-            dex_name: Name of the DEX (optional)
-            
-        Returns:
-            List of token addresses
-        """
-        # This is a simulation implementation
-        # In a real implementation, this would query the actual DEX(s)
-        
-        # Common tokens
-        tokens = [
-            '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',  # WETH
-            '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',  # USDC
-            '0xdAC17F958D2ee523a2206206994597C13D831ec7',  # USDT
-            '0x6B175474E89094C44Da98b954EedeAC495271d0F',  # DAI
-            '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'   # WBTC
-        ]
-        
-        return tokens
-    
-    async def check_pool_exists(self, dex_name: str, token_a: str, token_b: str) -> bool:
-        """
-        Check if a liquidity pool exists for a token pair on a DEX.
-        
-        Args:
-            dex_name: Name of the DEX
-            token_a: Address of first token
-            token_b: Address of second token
-            
-        Returns:
-            True if pool exists, False otherwise
-        """
-        # This is a simulation implementation
-        # In a real implementation, this would check if the pool exists
-        
-        # For simulation, assume common token pairs exist
-        common_tokens = await self.get_supported_tokens()
-        
-        # Check if both tokens are in the common list
-        return token_a in common_tokens and token_b in common_tokens
+        self.dexes = dexes
 
+        logger.info(
+            f"DEX manager initialized with {len(dexes)} DEXs: "
+            f"{', '.join(dexes.keys())}"
+        )
 
-async def create_dex_manager(web3_manager, config: Dict[str, Any] = None) -> DexManager:
+    async def discover_pools_v2(
+        self,
+        factory_contract: Any,
+        dex: DexInfo,
+        token_addresses: Optional[List[ChecksumAddress]] = None
+    ) -> Set[ChecksumAddress]:
+        """
+        Discover pools for Uniswap V2 style DEX.
+
+        Args:
+            factory_contract: Factory contract instance
+            dex: DEX info instance
+            token_addresses: Optional list of token addresses to filter by
+
+        Returns:
+            Set of pool addresses
+        """
+        if token_addresses:
+            # Filter by tokens
+            for token0 in token_addresses:
+                for token1 in token_addresses:
+                    if token0 != token1:
+                        try:
+                            pool = await factory_contract.functions.getPair(
+                                token0,
+                                token1
+                            ).call()
+
+                            if pool != "0x0000000000000000000000000000000000000000":
+                                dex.pools.add(to_checksum_address(pool))
+
+                        except Exception as e:
+                            logger.debug(
+                                f"Failed to get pair for {token0}/{token1}: {e}"
+                            )
+        else:
+            # Get all pools
+            try:
+                pool_count = await factory_contract.functions.allPairsLength().call()
+
+                for i in range(pool_count):
+                    try:
+                        pool = await factory_contract.functions.allPairs(i).call()
+                        dex.pools.add(to_checksum_address(pool))
+
+                    except Exception as e:
+                        logger.debug(f"Failed to get pair {i}: {e}")
+
+            except Exception as e:
+                logger.debug(f"Failed to get pair count: {e}")
+
+        return dex.pools
+
+    async def discover_pools_v3(
+        self,
+        factory_contract: Any,
+        dex: DexInfo,
+        token_addresses: Optional[List[ChecksumAddress]] = None
+    ) -> Set[ChecksumAddress]:
+        """
+        Discover pools for Uniswap V3 style DEX.
+
+        Args:
+            factory_contract: Factory contract instance
+            dex: DEX info instance
+            token_addresses: Optional list of token addresses to filter by
+
+        Returns:
+            Set of pool addresses
+        """
+        if token_addresses:
+            # Filter by tokens
+            for token0 in token_addresses:
+                for token1 in token_addresses:
+                    if token0 != token1:
+                        for fee in dex.fee_tiers:
+                            try:
+                                pool = await factory_contract.functions.getPool(
+                                    token0,
+                                    token1,
+                                    fee
+                                ).call()
+
+                                if pool != "0x0000000000000000000000000000000000000000":
+                                    dex.pools.add(to_checksum_address(pool))
+
+                            except Exception as e:
+                                logger.debug(
+                                    f"Failed to get pool for {token0}/{token1}: {e}"
+                                )
+        else:
+            # Get all pools
+            try:
+                pool_count = await factory_contract.functions.allPoolsLength().call()
+
+                for i in range(pool_count):
+                    try:
+                        pool = await factory_contract.functions.allPools(i).call()
+                        dex.pools.add(to_checksum_address(pool))
+
+                    except Exception as e:
+                        logger.debug(f"Failed to get pool {i}: {e}")
+
+            except Exception as e:
+                logger.debug(f"Failed to get pool count: {e}")
+
+        return dex.pools
+
+    @with_retry(retries=3, delay=1.0)
+    async def discover_pools(
+        self,
+        dex_name: str,
+        token_addresses: Optional[List[ChecksumAddress]] = None
+    ) -> Set[ChecksumAddress]:
+        """
+        Discover pools for DEX.
+
+        Args:
+            dex_name: DEX name
+            token_addresses: Optional list of token addresses to filter by
+
+        Returns:
+            Set of pool addresses
+
+        Raises:
+            ValueError: If DEX not found
+        """
+        try:
+            if dex_name not in self.dexes:
+                raise ValueError(f"DEX not found: {dex_name}")
+
+            dex = self.dexes[dex_name]
+
+            if not dex.factory_abi:
+                logger.warning(f"No factory ABI for {dex_name}, skipping pool discovery")
+                return set()
+
+            # Create factory contract
+            factory_contract = self.web3_manager.w3.eth.contract(
+                address=dex.factory_address,
+                abi=dex.factory_abi
+            )
+
+            # Try V3 style first
+            try:
+                await factory_contract.functions.getPool(
+                    "0x0000000000000000000000000000000000000000",
+                    "0x0000000000000000000000000000000000000000",
+                    3000
+                ).call()
+                return await self.discover_pools_v3(
+                    factory_contract,
+                    dex,
+                    token_addresses
+                )
+            except Exception:
+                # Try V2 style
+                try:
+                    await factory_contract.functions.getPair(
+                        "0x0000000000000000000000000000000000000000",
+                        "0x0000000000000000000000000000000000000000"
+                    ).call()
+                    return await self.discover_pools_v2(
+                        factory_contract,
+                        dex,
+                        token_addresses
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to discover pools for {dex_name}: {e}"
+                    )
+                    return set()
+
+        except Exception as e:
+            logger.warning(f"Failed to discover pools for {dex_name}: {e}")
+            return set()
+
+    @with_retry(retries=3, delay=1.0)
+    async def get_pool_liquidity(
+        self,
+        token_address: ChecksumAddress
+    ) -> int:
+        """
+        Get total liquidity for token across all pools.
+
+        Args:
+            token_address: Token address
+
+        Returns:
+            Total liquidity in wei
+        """
+        total_liquidity = 0
+
+        for dex in self.dexes.values():
+            if not dex.pool_abi:
+                logger.debug(f"No pool ABI for {dex.name}, skipping liquidity check")
+                continue
+
+            for pool in dex.pools:
+                try:
+                    # Create pool contract
+                    pool_contract = self.web3_manager.w3.eth.contract(
+                        address=pool,
+                        abi=dex.pool_abi
+                    )
+
+                    # Get token balance
+                    balance = await pool_contract.functions.balanceOf(token_address).call()
+                    total_liquidity += balance
+
+                except Exception as e:
+                    logger.debug(f"Failed to get liquidity for pool {pool}: {e}")
+
+        return total_liquidity
+
+    async def close(self):
+        """Clean up resources."""
+        pass
+
+async def create_dex_manager(
+    web3_manager: Web3Client,
+    config: Dict[str, Any]
+) -> DexManager:
     """
-    Create and initialize a DexManager instance.
-    
+    Create a new DEX manager.
+
     Args:
-        web3_manager: Web3Manager instance
+        web3_manager: Web3 client instance
         config: Configuration dictionary
-        
+
     Returns:
-        Initialized DexManager instance
+        DexManager instance
     """
-    # Use the class method to create and initialize the instance
-    return await DexManager.create(web3_manager, config)
+    dexes = {}
+
+    for name, dex_config in config['dexes'].items():
+        dexes[name] = DexInfo(
+            name=name,
+            factory_address=dex_config['factory'],
+            router_address=dex_config['router'],
+            fee_tiers=dex_config.get('fee_tiers', [30, 100, 500, 3000, 10000])
+        )
+
+    return DexManager(
+        web3_manager=web3_manager,
+        dexes=dexes
+    )

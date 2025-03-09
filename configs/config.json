@@ -1,291 +1,67 @@
 {
-    "network": {
-        "chainId": 8453,
-        "name": "Base",
-        "rpc_url": "$SECURE:BASE_RPC_URL",
-        "provider_url": "https://mainnet.base.org"
+  "provider_url": "https://mainnet.base.org",
+  "chain_id": 8453,
+  "private_key": "",
+  "tokens": {
+    "WETH": "0x4200000000000000000000000000000000000006",
+    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "USDT": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+    "DAI": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+  },
+  "dexes": {
+    "aerodrome": {
+      "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+      "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+      "enabled": true
     },
-    "wallet": {
-        "wallet_address": "$SECURE:WALLET_ADDRESS",
-        "profit_recipient": "$SECURE:PROFIT_RECIPIENT"
+    "baseswap": {
+      "factory": "0xFDa619b6d20975be80a10332cD39b9a4b0FAa8BB",
+      "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+      "enabled": true
     },
-    "arbitrage": {
-        "min_profit_usd": 0.05,
-        "max_price_impact": 0.01,
-        "slippage_tolerance": 0.001,
-        "max_trade_size_usd": 1000.0,
-        "max_hops": 2,
-        "gas_limit": 300000,
-        "deadline_seconds": 300,
-        "flash_loans": {
-            "enabled": true,
-            "min_profit_basis_points": 200,
-            "max_trade_size": "0.1",
-            "pool_address": "0x0c3c1c532F1e39EdF36BE9Fe0bE1410313E074Bf",
-            "weth_address": "0x4200000000000000000000000000000000000006",
-            "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-        }
-    },
-    "monitoring": {
-        "price_update_interval": 1,
-        "opportunity_scan_interval": 1,
-        "gas_update_interval": 10,
-        "health_check_interval": 60
-    },
-    "dexes": {
-        "uniswap_v3": {
-            "enabled": false,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
-            "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
-            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
-            "fee": 3000,
-            "pools": {
-                "WETH/USDC": {
-                    "fee_3000": true
-                },
-                "WETH/DAI": {
-                    "fee_3000": true
-                }
-            }
-        },
-        "baseswap": {
-            "enabled": true,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
-            "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
-            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
-            "fee": 3000,
-            "weth_address": "0x4200000000000000000000000000000000000006",
-            "tokens": {
-                "WETH": {
-                    "address": "0x4200000000000000000000000000000000000006"
-                },
-                "USDC": {
-                    "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                },
-                "DAI": {
-                    "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
-                }
-            },
-            "pools": {
-                "WETH/USDC": true,
-                "WETH/DAI": true
-            }
-        },
-        "swapbased": {
-            "enabled": true,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
-            "factory": "0xB5620F90e803C7F957a9EF351B8DB3C746021BEa",
-            "fee": 3000,
-            "tick_spacing": 60,
-            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
-            "weth_address": "0x4200000000000000000000000000000000000006",
-            "tokens": {
-                "WETH": {
-                    "address": "0x4200000000000000000000000000000000000006"
-                },
-                "USDC": {
-                    "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                },
-                "DAI": {
-                    "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
-                }
-            },
-            "pools": {
-                "WETH/USDC": true,
-                "WETH/DAI": true
-            }
-        },
-        "rocketswap_v3": {
-            "enabled": true,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
-            "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
-            "fee": 3000,
-            "weth_address": "0x4200000000000000000000000000000000000006",
-            "pools": {
-                "WETH/USDC": {
-                    "fee_100": true,
-                    "fee_500": true,
-                    "fee_3000": true,
-                    "fee_10000": true
-                },
-                "WETH/DAI": {
-                    "fee_100": true,
-                    "fee_500": true,
-                    "fee_3000": true,
-                    "fee_10000": true
-                }
-            }
-        },
-        "rocketswap": {
-            "enabled": false,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0x0Bf5DE1BeA878f70808DC014e3B0dbB6BF9F0b6f",
-            "factory": "0xD9B9E9b5E77dd51915FC96Aa0c3F6E7fA1c9e6e6",
-            "fee": 2500,
-            "pools": {
-                "WETH/USDC": true,
-                "WETH/DAI": true
-            }
-        },
-        "pancakeswap": {
-            "enabled": true,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
-            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
-            "fee": 2500,
-            "pools": {
-                "WETH/USDC": {
-                    "fee_2500": true
-                },
-                "WETH/DAI": {
-                    "fee_2500": true
-                }
-            }
-        },
-        "aerodrome": {
-            "enabled": false,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
-            "voter": "0x16613524e02ad97eDfeF371bC883F2F5d6C480A5",
-            "supports_stable_pools": true,
-            "fee": 3000,
-            "pools": {
-                "WETH/USDC": {
-                    "stable": "0x0D7c4b40018969f81750D0A164c3839A77353EFB",
-                    "volatile": "0x9C454510848906FDDc846607E4baa27Ca999FBB6"
-                },
-                "WETH/DAI": {
-                    "stable": false,
-                    "volatile": true
-                }
-            }
-        },
-        "aerodrome_v3": {
-            "enabled": false,
-            "priority": 1,
-            "min_liquidity_usd": 10000,
-            "router": "0x9aD4969A8f8b17E85a6a6c35C0961A3cCB675fD5",
-            "factory": "0x0BE808376Ecb75a5CF9bB6D237d16cd37893d904",
-            "quoter": "0x0F85A912448279111694F4Ba4F85dC641c54b594",
-            "pools": {
-                "WETH/USDC": {
-                    "fee_100": "0x4C36388bE6F416A29C8d8Eee81C771cE6bE14B18",
-                    "fee_500": "0x2213FaB144B75f150Cd9a6B2CDCD0E9F6773B6C8",
-                    "fee_3000": "0x1C3A76E9A44922E2ACA901E0BE2CAEE5C47B3663"
-                },
-                "WETH/DAI": {
-                    "fee_100": true,
-                    "fee_500": true,
-                    "fee_3000": true
-                }
-            }
-        }
-    },
-    "pairs": [
-        {
-            "token0": "WETH",
-            "token1": "USDC",
-            "priority": 1,
-            "historical_profit": 0.0
-        },
-        {
-            "token0": "WETH",
-            "token1": "DAI",
-            "priority": 2,
-            "historical_profit": 0.0
-        }
-    ],
-    "trading": {
-        "min_profit_usd": 0.05,
-        "max_price_impact": 0.01,
-        "slippage_tolerance": 0.001,
-        "max_trade_size_usd": 1000.0,
-        "safety": {
-            "protection_limits": {
-                "max_slippage_percent": 0.1
-            }
-        }
-    },
-    "tokens": {
-        "weth": "0x4200000000000000000000000000000000000006",
-        "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "dai": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-        "WETH": {
-            "address": "0x4200000000000000000000000000000000000006",
-            "decimals": 18,
-            "min_amount": "0.001",
-            "max_amount": "10.0",
-            "symbol": "WETH"
-        },
-        "USDC": {
-            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-            "decimals": 6,
-            "min_amount": "1.0",
-            "max_amount": "50000.0",
-            "symbol": "USDC"
-        },
-        "DAI": {
-            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-            "decimals": 18,
-            "min_amount": "1.0",
-            "max_amount": "50000.0",
-            "symbol": "DAI"
-        }
-    },
-    "gas": {
-        "max_priority_fee": 5,
-        "max_fee": 200,
-        "min_base_fee": 0.05
-    },
-    "process": {
-        "max_instances": 3,
-        "max_memory_mb": 1024,
-        "max_cpu_percent": 50,
-        "heartbeat_timeout": 30,
-        "max_tasks": 100,
-        "port_ranges": {
-            "dashboard": {
-                "start": 5000,
-                "end": 5010
-            },
-            "websocket": {
-                "start": 8771,
-                "end": 8780
-            }
-        },
-        "state_dir": "data/process",
-        "log_dir": "logs/instances"
-    },
-    "optimization": {
-        "cache_size": 1000,
-        "cache_ttl": 10,
-        "network_thresholds": {
-            "rx_mb_per_sec": 50,
-            "tx_mb_per_sec": 50
-        },
-        "task_priorities": {
-            "market_analysis": 100,
-            "arbitrage_execution": 90,
-            "price_update": 80,
-            "monitoring": 70,
-            "dashboard": 60
-        },
-        "metrics": {
-            "history_size": 1000,
-            "update_interval": 1
-        }
+    "swapbased": {
+      "factory": "0x36218B2F7b672A41f0B76fc1D5E7F88355a8bC25",
+      "router": "0xBb5e1777A331ED93E07cF043363e48d320eb96c4",
+      "enabled": true
     }
+  },
+  "flashbots": {
+    "relay_url": "https://relay.flashbots.net",
+    "auth_signer_key": ""
+  },
+  "flash_loan": {
+    "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+    "min_profit": "0.01",
+    "max_paths": 3,
+    "max_hops": 3
+  },
+  "gas": {
+    "max_priority_fee": "3.0",
+    "max_fee": "100.0",
+    "buffer_percent": 20
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "logs/arbitrage.log",
+    "max_size": 10485760,
+    "backup_count": 5
+  },
+  "monitoring": {
+    "enabled": true,
+    "interval": 60,
+    "metrics_port": 9090
+  },
+  "security": {
+    "slippage_tolerance": 0.5,
+    "min_liquidity": "10000",
+    "price_impact_limit": 1.0,
+    "sandwich_protection": true,
+    "frontrun_protection": true
+  },
+  "performance": {
+    "cache_ttl": 300,
+    "max_concurrent_paths": 10,
+    "batch_size": 100
+  }
 }

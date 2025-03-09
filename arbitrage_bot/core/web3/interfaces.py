@@ -1,210 +1,129 @@
 """
-Web3 Interface Definitions
+Web3 Interfaces Module
 
-This module defines the core interfaces for Web3 interactions, including the
-Web3Client interface and the Transaction data structure.
+This module provides interfaces for:
+- Transaction types
+- Web3 client interactions
+- Contract interactions
 """
 
-import asyncio
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Union
-
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Protocol
+from eth_typing import ChecksumAddress, HexStr
 
 @dataclass
 class Transaction:
-    """
-    Represents an Ethereum transaction.
-    
-    This class encapsulates all the data needed to construct and send
-    a transaction on the Ethereum network.
-    """
-    
-    from_address: str
-    """The address sending the transaction (checksummed)."""
-    
-    to_address: str
-    """The address receiving the transaction (checksummed)."""
-    
-    data: str = "0x"
-    """The transaction data (hex-encoded)."""
-    
+    """Transaction data structure."""
+
+    to: ChecksumAddress
     value: int = 0
-    """The amount of ETH to send in wei."""
-    
-    gas: Optional[int] = None
-    """Gas limit for the transaction."""
-    
-    gas_price: Optional[int] = None
-    """Gas price for the transaction in wei."""
-    
+    data: bytes = b""
     nonce: Optional[int] = None
-    """Transaction nonce."""
+    gas: Optional[int] = None
+    maxFeePerGas: Optional[int] = None
+    maxPriorityFeePerGas: Optional[int] = None
+    chainId: Optional[int] = None
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format."""
+        tx_dict = {
+            "to": self.to,
+            "value": self.value,
+            "data": self.data
+        }
 
-class Web3Client:
-    """
-    Interface for interacting with the Ethereum blockchain.
-    
-    This class defines the methods that any Web3 client implementation
-    must provide for interacting with the Ethereum network.
-    """
-    
-    async def connect(self) -> bool:
+        if self.nonce is not None:
+            tx_dict["nonce"] = self.nonce
+        if self.gas is not None:
+            tx_dict["gas"] = self.gas
+        if self.maxFeePerGas is not None:
+            tx_dict["maxFeePerGas"] = self.maxFeePerGas
+        if self.maxPriorityFeePerGas is not None:
+            tx_dict["maxPriorityFeePerGas"] = self.maxPriorityFeePerGas
+        if self.chainId is not None:
+            tx_dict["chainId"] = self.chainId
+
+        return tx_dict
+
+@dataclass
+class TransactionReceipt:
+    """Transaction receipt data structure."""
+
+    transactionHash: HexStr
+    blockHash: HexStr
+    blockNumber: int
+    from_: ChecksumAddress
+    to: Optional[ChecksumAddress]
+    status: int
+    gasUsed: int
+    effectiveGasPrice: int
+    logs: List[Dict[str, Any]]
+
+    @classmethod
+    def from_dict(cls, receipt: Dict[str, Any]) -> "TransactionReceipt":
+        """Create from dictionary format."""
+        return cls(
+            transactionHash=receipt["transactionHash"].hex(),
+            blockHash=receipt["blockHash"].hex(),
+            blockNumber=receipt["blockNumber"],
+            from_=receipt["from"],
+            to=receipt.get("to"),
+            status=receipt["status"],
+            gasUsed=receipt["gasUsed"],
+            effectiveGasPrice=receipt["effectiveGasPrice"],
+            logs=receipt["logs"]
+        )
+
+class Web3Client(Protocol):
+    """Protocol for Web3 client interface."""
+
+    async def get_balance(
+        self,
+        address: Optional[ChecksumAddress] = None
+    ) -> int:
         """
-        Connect to the Ethereum network.
-        
-        Returns:
-            True if the connection was successful, False otherwise
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def is_connected(self) -> bool:
-        """
-        Check if the client is connected to the Ethereum network.
-        
-        Returns:
-            True if connected, False otherwise
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def get_accounts(self) -> List[str]:
-        """
-        Get the list of accounts controlled by the client.
-        
-        Returns:
-            List of account addresses (checksummed)
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def get_balance(self, address: str, block: str = "latest") -> int:
-        """
-        Get the balance of an address.
-        
+        Get ETH balance for address.
+
         Args:
-            address: Address to get balance for (checksummed)
-            block: Block number or hash, or "latest", "pending", "earliest"
-            
+            address: Optional address to check
+
         Returns:
             Balance in wei
         """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def get_transaction_count(
+        ...
+
+    async def get_token_balance(
         self,
-        address: str,
-        block: str = "latest"
+        token_address: ChecksumAddress,
+        address: Optional[ChecksumAddress] = None
     ) -> int:
         """
-        Get the transaction count (nonce) for an address.
-        
+        Get token balance for address.
+
         Args:
-            address: Address to get nonce for (checksummed)
-            block: Block number or hash, or "latest", "pending", "earliest"
-            
+            token_address: Token contract address
+            address: Optional address to check
+
         Returns:
-            Transaction count (nonce)
+            Token balance
         """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def get_block_number(self) -> int:
-        """
-        Get the latest block number.
-        
-        Returns:
-            Latest block number
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def get_gas_price(self) -> int:
-        """
-        Get the current gas price.
-        
-        Returns:
-            Gas price in wei
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def get_chain_id(self) -> int:
-        """
-        Get the chain ID.
-        
-        Returns:
-            Chain ID
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def estimate_gas(self, transaction: Transaction) -> int:
-        """
-        Estimate the gas needed for a transaction.
-        
-        Args:
-            transaction: Transaction to estimate gas for
-            
-        Returns:
-            Estimated gas amount
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def send_transaction(self, transaction: Transaction) -> str:
-        """
-        Send a transaction.
-        
-        Args:
-            transaction: Transaction to send
-            
-        Returns:
-            Transaction hash
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def call_contract_method(
+        ...
+
+    async def get_nonce(
         self,
-        method_name: str,
-        args: List[Any] = None,
-        contract_address: Optional[str] = None,
-        contract_abi: Optional[List[Dict[str, Any]]] = None,
-        transaction: Optional[Transaction] = None,
-        block: str = "latest"
-    ) -> Any:
+        address: Optional[ChecksumAddress] = None
+    ) -> int:
         """
-        Call a contract method.
-        
+        Get next nonce for address.
+
         Args:
-            method_name: Name of the method to call
-            args: Arguments to pass to the method
-            contract_address: Address of the contract (checksummed)
-            contract_abi: ABI of the contract
-            transaction: Transaction parameters
-            block: Block number or hash, or "latest", "pending", "earliest"
-            
+            address: Optional address to check
+
         Returns:
-            Result of the method call
+            Next nonce
         """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def make_request(
-        self,
-        method: str,
-        params: List[Any] = None,
-        url: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """
-        Make a raw JSON-RPC request.
-        
-        Args:
-            method: JSON-RPC method
-            params: Parameters for the method
-            url: URL to send the request to (overrides default URL)
-            headers: Headers to include in the request
-            timeout: Request timeout in seconds
-            
-        Returns:
-            Response from the JSON-RPC server
-        """
-        raise NotImplementedError("Method must be implemented by subclass")
-    
-    async def close(self) -> None:
-        """Close the client and clean up resources."""
-        raise NotImplementedError("Method must be implemented by subclass")
+        ...
+
+    async def close(self):
+        """Clean up resources."""
+        ...

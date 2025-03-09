@@ -1,76 +1,64 @@
-# Active Context - Listonian Arbitrage Bot
+# Active Development Context
+
+## CRITICAL PRIORITY
+Immediate focus is on deploying the bot and dashboard with LIVE DATA ONLY:
+- Remove all mock/fake/placeholder/simulated data
+- Use only real blockchain data
+- Connect to actual DEX contracts
+- Live price feeds only
+- Real-time monitoring
 
 ## Current Focus
-- Implementation of AI-powered market analysis with Glama.ai MCP integration
-- GitHub MCP integration for version control and performance tracking
-- Flashbots integration for MEV protection
-- Balancer flash loan optimization
+1. Production Deployment
+   - Live blockchain integration
+   - Real DEX connections
+   - Actual token contracts
+   - Live price data
+
+2. Dashboard Deployment
+   - Real-time data display
+   - Live transaction monitoring
+   - Actual profit tracking
+   - Real pool statistics
+
+3. Data Sources
+   - Direct blockchain queries
+   - Live DEX contract calls
+   - Real-time price feeds
+   - Actual pool states
 
 ## Recent Changes
-- Added Glama.ai MCP server for AI-powered market analysis and prediction (2025-03-03)
-- Created Glama-enhanced arbitrage strategy utilizing AI capabilities (2025-03-03)
-- Added GitHub MCP server to MCP settings (2025-03-03)
-- Created GitHub strategy performance tracker to monitor and log arbitrage strategy effectiveness (2025-03-03)
-- Implemented comprehensive documentation for MCP integrations (2025-03-03)
-- Created batch files for easy execution of MCP functionality (2025-03-03)
+1. Updated web3_manager.py for live blockchain interaction
+2. Enhanced dex_manager.py to handle real DEX contracts
+3. Improved path_finder.py for actual pool discovery
+4. Removed all test/mock data
 
-## Active Tools & Infrastructure
-- Glama.ai MCP server: AI-powered market analysis, prediction, and optimization
-- GitHub MCP server: Version control, repository management, and performance tracking
-- Balancer flash loan provider: Currently the primary flash loan source
-- Flashbots RPC: MEV protection for arbitrage transactions
-
-## Critical Paths
-1. **AI-Powered Market Analysis**
-   - Glama.ai integration for predictive analytics
-   - Advanced pattern recognition for market movements
-   - Optimization of trade paths and execution timing
-   - MEV risk analysis and protection strategy generation
-
-2. **Version Control & Performance Monitoring**
-   - GitHub integration for tracking strategy performance
-   - Automated tracking of arbitrage strategy profits
-   - Historical analysis of execution metrics
-
-3. **Flash Loan Management**
-   - Balancer flash loan integration
-   - Async execution and proper error handling
-   - Transaction atomicity
-
-4. **MEV Protection**
-   - Flashbots bundle submission
-   - Private transaction routing
-   - Frontrunning protection
+## Current Challenges
+- Ensuring reliable live data feeds
+- Handling real-time contract interactions
+- Managing production environment
+- Monitoring live transactions
 
 ## Next Steps
-1. Obtain Glama.ai API key and complete MCP configuration
-2. Test Glama.ai MCP functionality with existing arbitrage strategies
-3. Implement the Glama-enhanced strategy for production use
-4. Obtain GitHub Personal Access Token and complete MCP configuration
-5. Test GitHub MCP functionality with existing arbitrage strategies
-6. Implement automated performance monitoring workflows
-7. Complete the remaining Flashbots integration components
-8. Enhance multi-path arbitrage optimization with AI-powered insights and version tracking
+1. Complete live data integration
+2. Deploy production environment
+3. Launch real-time monitoring
+4. Enable live trading
 
-## Active Decisions & Considerations
-- Selected Glama.ai MCP server for advanced AI capabilities that directly enhance profit potential
-- Created GlamaMarketAnalyzer and GlamaEnhancedStrategy components to leverage AI insights
-- Selected Docker-based GitHub MCP server for simplicity and isolation
-- Implemented standalone utility components that demonstrate MCP usage
-- Designed memory bank integration to maintain documentation consistency
-- Created complete user guides for developers to follow when setting up MCP integrations
+## Open Questions
+- Production deployment strategy?
+- Live monitoring approach?
+- Error handling in production?
+- Recovery procedures?
 
-## Technical Requirements
-- Docker for running MCP servers
-- Glama.ai account with API key
-- GitHub account with repository access and Personal Access Token
-- Python 3.12+ for optimal compatibility
+## Technical Debt
+- Remove remaining test data
+- Enhance error handling
+- Improve logging
+- Optimize performance
 
-## Focus Areas for Profit Maximization
-- AI-powered market analysis to identify more profitable arbitrage opportunities
-- Predictive analytics to time executions during optimal market conditions
-- Intelligent path optimization to maximize returns while minimizing gas costs
-- MEV protection strategies tailored to specific transaction profiles
-- Tracking strategy performance over time to identify most profitable approaches
-- Version control to easily revert to higher-performing strategy versions
-- Historical analytics to correlate market conditions with strategy performance
+## Security Considerations
+- Live transaction validation
+- Real-time balance checks
+- Production security measures
+- Live monitoring alerts

@@ -79,7 +79,7 @@ contract FlashLoanArbitrage {
         address asset,
         uint256 amount,
         uint256 premium,
-        address initiator,
+        address /* initiator */,
         bytes calldata params
     ) public virtual returns (bool) {
         // Decode params

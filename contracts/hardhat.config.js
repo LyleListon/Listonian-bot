@@ -3,24 +3,24 @@ require("@nomiclabs/hardhat-etherscan");
 require('dotenv').config();
 
 // Load environment variables
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY;
 const WALLET_ADDRESS = process.env.WALLET_ADDRESS;
-const BASE_RPC_URL = process.env.BASE_RPC_URL;
+const MAINNET_RPC_URL = process.env.ALCHEMY_API_URL;
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 
 // Validate required environment variables
-if (!PRIVATE_KEY || !WALLET_ADDRESS || !BASE_RPC_URL) {
+if (!PRIVATE_KEY || !WALLET_ADDRESS || !MAINNET_RPC_URL) {
     console.error("Missing required environment variables:");
-    console.error("- PRIVATE_KEY:", PRIVATE_KEY ? "Set" : "Missing");
+    console.error("- WALLET_PRIVATE_KEY:", PRIVATE_KEY ? "Set" : "Missing");
     console.error("- WALLET_ADDRESS:", WALLET_ADDRESS ? "Set" : "Missing");
-    console.error("- BASE_RPC_URL:", BASE_RPC_URL ? "Set" : "Missing");
+    console.error("- ALCHEMY_API_URL:", MAINNET_RPC_URL ? "Set" : "Missing");
     process.exit(1);
 }
 
 // Log configuration
 console.log("Config loaded with:");
-console.log("- Network: Base");
-console.log(`- RPC URL: ${BASE_RPC_URL}`);
+console.log("- Network: Ethereum Mainnet");
+console.log(`- RPC URL: ${MAINNET_RPC_URL}`);
 console.log(`- Wallet Address: ${WALLET_ADDRESS}`);
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -36,12 +36,16 @@ module.exports = {
     },
     networks: {
         hardhat: {
-            chainId: 31337
+            chainId: 1,
+            forking: {
+                url: MAINNET_RPC_URL,
+                blockNumber: 19500000 // Recent mainnet block
+            }
         },
-        base: {
-            url: BASE_RPC_URL,
-            accounts: [PRIVATE_KEY], // Use private key directly without 0x prefix
-            chainId: 8453,
+        mainnet: {
+            url: MAINNET_RPC_URL,
+            accounts: [PRIVATE_KEY],
+            chainId: 1,
             gasPrice: "auto",
             verify: {
                 etherscan: {
@@ -51,19 +55,7 @@ module.exports = {
         }
     },
     etherscan: {
-        apiKey: {
-            base: ETHERSCAN_API_KEY
-        },
-        customChains: [
-            {
-                network: "base",
-                chainId: 8453,
-                urls: {
-                    apiURL: "https://api.basescan.org/api",
-                    browserURL: "https://basescan.org"
-                }
-            }
-        ]
+        apiKey: ETHERSCAN_API_KEY
     },
     paths: {
         sources: "./contracts",

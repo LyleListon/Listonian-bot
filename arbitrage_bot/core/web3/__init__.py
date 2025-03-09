@@ -1,13 +1,20 @@
 """
-Web3 Integration Package
+Web3 Package
 
-This package contains classes and utilities for interacting with the Ethereum blockchain,
-including providers, clients, and interfaces.
+This package provides functionality for:
+- Web3 interactions
+- Contract interactions
+- Transaction management
 """
 
-from .interfaces import Web3Client, Transaction
+from .web3_manager import create_web3_manager
+from .interfaces import Transaction, TransactionReceipt, Web3Client
+from .providers import EthClient
 
 __all__ = [
+    'create_web3_manager',
+    'Transaction',
+    'TransactionReceipt',
     'Web3Client',
-    'Transaction'
+    'EthClient'
 ]

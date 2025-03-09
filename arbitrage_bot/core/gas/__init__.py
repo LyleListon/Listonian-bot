@@ -1,5 +1,7 @@
-"""Gas optimization package for arbitrage operations."""
+"""
+Gas optimization module initialization.
+"""
 
-from .gas_optimizer import GasOptimizer
+from .gas_optimizer import create_gas_optimizer, GasOptimizer, GasStrategy
 
-__all__ = ['GasOptimizer']
+__all__ = ['create_gas_optimizer', 'GasOptimizer', 'GasStrategy']

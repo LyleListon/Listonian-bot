@@ -2,62 +2,149 @@
 
 import os
 import sys
+import signal
+import asyncio
 import subprocess
 from pathlib import Path
+from typing import Dict, Any
 from dotenv import load_dotenv
 
-def main():
+# Global flag for shutdown
+shutdown_flag = False
+
+def handle_shutdown(signum, frame):
+    """Handle shutdown signals gracefully."""
+    global shutdown_flag
+    print(f"\nReceived signal {signum}")
+    print("Initiating graceful shutdown...")
+    shutdown_flag = True
+
+# Register signal handlers
+signal.signal(signal.SIGINT, handle_shutdown)
+signal.signal(signal.SIGTERM, handle_shutdown)
+
+class ProcessManager:
+    """Manage production processes."""
+    
+    def __init__(self):
+        self.processes = {}
+        self.env = os.environ.copy()
+    
+    async def start_process(self, name: str, command: list):
+        """Start a process and monitor it."""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                env=self.env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            self.processes[name] = process
+            print(f"Started {name} (PID: {process.pid})")
+            
+            # Monitor process output
+            await asyncio.gather(
+                self._monitor_output(name, process.stdout, "stdout"),
+                self._monitor_output(name, process.stderr, "stderr")
+            )
+            
+            return process
+        except Exception as e:
+            print(f"Error starting {name}: {e}")
+            return None
+    
+    async def _monitor_output(self, name: str, stream: asyncio.StreamReader, stream_name: str):
+        """Monitor process output stream."""
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            print(f"[{name}] {line.decode().strip()}")
+    
+    async def stop_all(self):
+        """Stop all processes gracefully."""
+        print("\nStopping all processes...")
+        for name, process in self.processes.items():
+            print(f"Stopping {name}...")
+            try:
+                process.terminate()
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+                print(f"Stopped {name}")
+            except asyncio.TimeoutError:
+                print(f"Force killing {name}...")
+                process.kill()
+                await process.wait()
+            except Exception as e:
+                print(f"Error stopping {name}: {e}")
+
+async def main():
     """Start production bot and dashboard."""
-    print("Starting Arbitrage Bot and Dashboard in LIVE MODE...")
+    print("=" * 70)
+    print("STARTING ARBITRAGE BOT AND DASHBOARD IN PRODUCTION MODE")
+    print("=" * 70)
 
-    # Check if .env.production exists
-    if not Path('.env.production').exists():
-        print("Error: .env.production file not found")
-        print("Please copy .env.production.template and fill in your settings")
-        sys.exit(1)
+    # Verify required files
+    required_files = {
+        'Production config': Path('configs/production.json'),
+        'Environment file': Path('.env'),
+        'Production script': Path('production.py'),
+        'Dashboard module': Path('arbitrage_bot/dashboard/run.py')
+    }
 
-    # Check if production config exists
-    if not Path('configs/production_config.json').exists():
-        print("Error: configs/production_config.json not found")
-        sys.exit(1)
+    for name, path in required_files.items():
+        if not path.exists():
+            print(f"Error: {name} not found at {path}")
+            print("Please ensure all required files are in place")
+            sys.exit(1)
 
-    # Create logs directory if it doesn't exist
+    # Create required directories
     Path('logs').mkdir(exist_ok=True)
+    Path('monitoring_data').mkdir(exist_ok=True)
 
-    # Load environment variables from .env.production
-    load_dotenv('.env.production')
+    # Load environment variables
+    load_dotenv('.env')
 
-    # Set different WebSocket ports for bot and dashboard
-    env = os.environ.copy()
-    env['BOT_WEBSOCKET_PORT'] = '8770'  # Bot WebSocket port
-    env['DASHBOARD_WEBSOCKET_PORT'] = '8771'  # Dashboard WebSocket port
+    # Set WebSocket ports
+    os.environ['BOT_WEBSOCKET_PORT'] = '8770'
+    os.environ['DASHBOARD_WEBSOCKET_PORT'] = '8771'
 
-    # Start bot process
-    bot_process = subprocess.Popen(
-        ['python', 'production.py'],
-        env=env
-    )
-
-    # Start dashboard process
-    dashboard_process = subprocess.Popen(
-        ['python', '-m', 'arbitrage_bot.dashboard.run'],
-        env=env
-    )
-
-    print("Bot and dashboard started in LIVE MODE.")
-    print("Press Ctrl+C to stop all processes...")
+    # Initialize process manager
+    manager = ProcessManager()
 
     try:
-        # Wait for processes to complete
-        bot_process.wait()
-        dashboard_process.wait()
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-        bot_process.terminate()
-        dashboard_process.terminate()
-        bot_process.wait()
-        dashboard_process.wait()
-        print("All processes stopped.")
+        # Start bot and dashboard
+        await asyncio.gather(
+            manager.start_process(
+                'bot',
+                ['python', 'production.py']
+            ),
+            manager.start_process(
+                'dashboard',
+                ['python', '-m', 'arbitrage_bot.dashboard.run']
+            )
+        )
+
+        print("\nBot and dashboard started in PRODUCTION MODE")
+        print("Monitor the system at: http://localhost:8080")
+        print("\nPress Ctrl+C to stop all processes...")
+
+        # Wait for shutdown signal
+        while not shutdown_flag:
+            await asyncio.sleep(1)
+
+    except Exception as e:
+        print(f"\nError in main process: {e}")
+    finally:
+        # Ensure proper cleanup
+        await manager.stop_all()
+        print("\nAll processes stopped")
+        print("System shutdown complete")
 
 if __name__ == '__main__':
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass  # Handle through signal handler
+    except Exception as e:
+        print(f"Fatal error: {e}")
+        sys.exit(1)

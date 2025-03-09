@@ -1,136 +1,149 @@
-"""Async event loop management with Python 3.12+ asyncio support."""
+"""
+Async Manager Module
 
-import logging
+This module provides functionality for:
+- Managing asynchronous operations
+- Thread safety with locks
+- Retry mechanisms
+- Resource management
+"""
+
 import asyncio
-from contextlib import asynccontextmanager
-import ssl
+import functools
+import logging
+from typing import Any, Callable, Optional, TypeVar
+from asyncio import Lock, Semaphore
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar('T')
+
 class AsyncManager:
+    """Manages asynchronous operations and resources."""
+
     def __init__(self):
-        self.loop = None
-        self._initialized = False
+        """Initialize the async manager."""
+        self.locks = {}
+        self.semaphores = {}
 
-    def _do_initialize(self):
-        """Internal synchronous initialization."""
-        try:
-            # Initialize asyncio event loop
-            try:
-                self.loop = asyncio.get_event_loop()
-            except RuntimeError:
-                self.loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self.loop)
+    def get_lock(self, name: str) -> Lock:
+        """
+        Get or create a named lock.
 
-            if logger.getEffectiveLevel() <= logging.DEBUG:
-                self.loop.set_debug(True)
+        Args:
+            name: Lock identifier
 
-            logger.info("✓ Event loop initialized")
+        Returns:
+            Lock instance
+        """
+        if name not in self.locks:
+            self.locks[name] = Lock()
+        return self.locks[name]
 
-            self._initialized = True
-            return True
+    def get_semaphore(self, name: str, value: int = 1) -> Semaphore:
+        """
+        Get or create a named semaphore.
 
-        except Exception as e:
-            logger.error("Failed to initialize event loop: %s", str(e))
-            raise
+        Args:
+            name: Semaphore identifier
+            value: Maximum number of concurrent operations
 
-    def initialize(self):
-        """Initialize event loop synchronously."""
-        if self._initialized:
-            return True
-        return self._do_initialize()
+        Returns:
+            Semaphore instance
+        """
+        if name not in self.semaphores:
+            self.semaphores[name] = Semaphore(value)
+        return self.semaphores[name]
 
-    async def async_initialize(self):
-        """Initialize event loop asynchronously."""
-        if self._initialized:
-            return True
-        
-        # If we're in an event loop, use sync initialization
-        try:
-            loop = asyncio.get_running_loop()
-            if not loop.is_running():
-                return self.initialize()
-            # If loop is running, we need to run initialization in executor
-            return await loop.run_in_executor(None, self.initialize)
-        except RuntimeError:
-            # No event loop, we can use sync initialization
-            return self.initialize()
+    async def cleanup(self):
+        """Clean up resources."""
+        self.locks.clear()
+        self.semaphores.clear()
 
-    def _do_cleanup(self):
-        """Internal synchronous cleanup."""
-        if not self._initialized:
-            return
-
-        if self.loop and self.loop.is_running():
-            try:
-                current_task = asyncio.current_task(self.loop)
-                tasks = [t for t in asyncio.all_tasks(self.loop) if t is not current_task]
-
-                for task in tasks:
-                    task.cancel()
-
-                if tasks:
-                    self.loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
-
-                if self.loop is not asyncio.get_event_loop():
-                    self.loop.stop()
-                    self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-                    self.loop.close()
-
-                logger.info("✓ Event loop cleaned up")
-            except Exception as e:
-                logger.error("Failed to cleanup event loop: %s", str(e))
-
-        self._initialized = False
-
-    def cleanup(self):
-        """Clean up event loop resources synchronously."""
-        return self._do_cleanup()
-
-    async def async_cleanup(self):
-        """Clean up event loop resources asynchronously."""
-        try:
-            loop = asyncio.get_running_loop()
-            if loop.is_running():
-                await loop.run_in_executor(None, self.cleanup)
-            else:
-                self.cleanup()
-        except RuntimeError:
-            self.cleanup()
-
-    @asynccontextmanager
-    async def run_context(self):
-        """Context manager for running with event loop."""
-        if not self._initialized:
-            await self.async_initialize()
-        try:
-            yield self
-        finally:
-            await self.async_cleanup()
-
-# Create global manager instance
+# Global manager instance
 manager = AsyncManager()
 
-def init():
-    """Initialize event loop synchronously."""
-    try:
-        return manager.initialize()
-    except Exception as e:
-        logger.error("Failed to initialize event loop: %s", str(e))
-        raise
+def with_lock(name: str) -> Callable:
+    """
+    Decorator for using a named lock.
 
-async def async_init():
-    """Initialize event loop asynchronously."""
-    try:
-        return await manager.async_initialize()
-    except Exception as e:
-        logger.error("Failed to initialize event loop: %s", str(e), exc_info=True)
-        raise
+    Args:
+        name: Lock identifier
 
-async def run_with_async_context(coro):
-    """Run a coroutine with event loop context."""
-    async with manager.run_context():
-        return await coro
+    Returns:
+        Decorated function
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            lock = manager.get_lock(name)
+            async with lock:
+                return await func(*args, **kwargs)
+        return wrapper
+    return decorator
 
-# Initialize on module import to ensure early setup
-init()
+def with_semaphore(name: str, value: int = 1) -> Callable:
+    """
+    Decorator for using a named semaphore.
+
+    Args:
+        name: Semaphore identifier
+        value: Maximum number of concurrent operations
+
+    Returns:
+        Decorated function
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            semaphore = manager.get_semaphore(name, value)
+            async with semaphore:
+                return await func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def with_retry(
+    retries: int = 3,
+    delay: float = 1.0,
+    backoff: float = 2.0,
+    exceptions: tuple = (Exception,)
+) -> Callable:
+    """
+    Decorator for retrying failed operations.
+
+    Args:
+        retries: Maximum number of retries
+        delay: Initial delay between retries in seconds
+        backoff: Multiplier for delay after each retry
+        exceptions: Tuple of exceptions to catch
+
+    Returns:
+        Decorated function
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_exception = None
+            current_delay = delay
+
+            for attempt in range(retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < retries:
+                        logger.warning(
+                            f"Attempt {attempt + 1}/{retries} failed: {e}. "
+                            f"Retrying in {current_delay:.1f}s..."
+                        )
+                        await asyncio.sleep(current_delay)
+                        current_delay *= backoff
+                    else:
+                        logger.error(
+                            f"All {retries} retries failed. "
+                            f"Last error: {last_exception}"
+                        )
+                        raise last_exception
+
+        return wrapper
+    return decorator

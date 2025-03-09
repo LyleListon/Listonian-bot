@@ -1,8 +1,9 @@
 """
-Web3 Provider Implementations
+Web3 Providers Package
 
-This package contains various implementations of the Web3Client interface,
-providing concrete ways to interact with different Ethereum networks.
+This package provides:
+- Ethereum client implementation
+- Provider interfaces
 """
 
 from .eth_client import EthClient

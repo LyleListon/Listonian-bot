@@ -1,22 +1,19 @@
-"""DEX module initialization."""
+"""
+DEX Package
 
-from .dex_manager import DexManager
-from .base_dex import BaseDEX
-from .base_dex_v2 import BaseDEXV2
-from .base_dex_v3 import BaseDEXV3
-from .baseswap import BaseSwap
-from .rocketswap_v3 import RocketSwapV3
-from .swapbased import SwapBased
+This package provides functionality for:
+- DEX interactions
+- Pool discovery
+- Price fetching
+"""
+
+from .dex_manager import DexManager, DexInfo, create_dex_manager
+from .path_finder import PathFinder, create_path_finder
 
 __all__ = [
     'DexManager',
-    'BaseDEX',
-    'BaseDEXV2',
-    'BaseDEXV3',
-    'BaseSwap',
-    'RocketSwapV3',
-    'SwapBased'
+    'DexInfo',
+    'create_dex_manager',
+    'PathFinder',
+    'create_path_finder'
 ]
-
-# Re-export for backward compatibility
-DEXManager = DexManager

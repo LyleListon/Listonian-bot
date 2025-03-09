@@ -1,474 +1,324 @@
 """
-Flashbots Provider
+Flashbots Provider Module
 
-This module contains the FlashbotsProvider implementation for interacting
-with the Flashbots RPC service to enable MEV protection for transactions.
+This module provides functionality for:
+- Flashbots RPC integration
+- Bundle submission
+- Bundle simulation
+- MEV protection
 """
 
-import asyncio
 import logging
-import json
-import time
-from typing import Dict, List, Any, Optional, Tuple, cast, Union
-import secrets
-import eth_account
-from eth_account.signers.local import LocalAccount
-from eth_typing import HexStr, BlockNumber
-from web3.types import RPCEndpoint, Wei
+import asyncio
+from typing import Any, Dict, List, Optional, Tuple
+from eth_account import Account
+from eth_typing import ChecksumAddress, HexStr
+from web3 import Web3
+from decimal import Decimal
 
-from ..interfaces import Web3Client, Transaction, TransactionReceipt
+from ....utils.async_manager import with_retry, AsyncLock
+from ..interfaces import Transaction, TransactionReceipt
 
 logger = logging.getLogger(__name__)
 
-# Flashbots specific constants
-FLASHBOTS_ENDPOINT = "https://relay.flashbots.net"
-FLASHBOTS_HEADERS_PREFIX = "X-Flashbots"
-
-
 class FlashbotsProvider:
-    """
-    Provider for interacting with Flashbots RPC service.
-    
-    This provider enables:
-    1. Private transaction submission to avoid frontrunning
-    2. Bundle creation and submission for atomic execution
-    3. Bundle simulation for profit validation
-    4. Block builder integration for transaction privacy
-    """
-    
+    """Provides Flashbots integration functionality."""
+
     def __init__(
         self,
-        web3_client: Web3Client,
-        auth_signer_key: Optional[str] = None,
-        flashbots_endpoint: str = FLASHBOTS_ENDPOINT,
-        config: Dict[str, Any] = None
+        w3: Web3,
+        relay_url: str,
+        auth_key: Optional[str] = None,
+        chain_id: int = 8453  # Base mainnet
     ):
         """
-        Initialize the flashbots provider.
-        
+        Initialize Flashbots provider.
+
         Args:
-            web3_client: Base web3 client for standard blockchain interactions
-            auth_signer_key: Private key for signing Flashbots authentication
-            flashbots_endpoint: Flashbots RPC endpoint URL
-            config: Additional configuration parameters
+            w3: Web3 instance
+            relay_url: Flashbots relay URL
+            auth_key: Optional authentication key
+            chain_id: Chain ID
         """
-        self.web3_client = web3_client
-        self.flashbots_endpoint = flashbots_endpoint
-        self.config = config or {}
-        
-        # Authentication
-        self.auth_signer: Optional[LocalAccount] = None
-        if auth_signer_key:
-            self.auth_signer = eth_account.Account.from_key(auth_signer_key)
-        else:
-            # Generate ephemeral account for signing if none provided
-            # This is not recommended for production but allows for testing
-            random_key = secrets.token_hex(32)
-            self.auth_signer = eth_account.Account.from_key(random_key)
-            logger.warning(
-                "Using ephemeral auth signer for Flashbots. "
-                "For production, provide a permanent key."
-            )
-        
-        # Configuration
-        self.max_retries = int(self.config.get("max_retries", 3))
-        self.retry_delay = float(self.config.get("retry_delay", 1.0))
-        self.simulation_block = self.config.get("simulation_block", "latest")
-        self.fast_mode = bool(self.config.get("fast_mode", False))
-        
-        # State
-        self._request_lock = asyncio.Lock()
-        self._last_request_time = 0
-        self._min_request_interval = float(self.config.get("min_request_interval", 0.1))
-        
-        logger.info("FlashbotsProvider initialized")
-    
-    async def send_private_transaction(
-        self,
-        transaction: Transaction
-    ) -> Optional[str]:
-        """
-        Send a private transaction through Flashbots.
-        
-        Args:
-            transaction: Transaction object to send
-            
-        Returns:
-            Transaction hash if successful, None otherwise
-        """
-        logger.info("Preparing private transaction for Flashbots submission")
-        
-        # Ensure transaction is fully formed
-        if not transaction.from_address:
-            transaction.from_address = self.web3_client.get_default_account()
-        
-        if transaction.nonce is None:
-            nonce = await self.web3_client.get_transaction_count(transaction.from_address)
-            transaction.nonce = nonce
-        
-        # Get gas parameters if not set
-        if not transaction.gas:
-            try:
-                gas_estimate = await self.web3_client.estimate_gas(transaction)
-                transaction.gas = gas_estimate
-            except Exception as e:
-                logger.error(f"Error estimating gas for transaction: {e}")
-                return None
-        
-        # Get gas price if not set
-        if not transaction.gas_price and not (transaction.max_fee_per_gas and transaction.max_priority_fee_per_gas):
-            gas_price = await self.web3_client.get_gas_price()
-            transaction.gas_price = gas_price
-        
-        # Build a bundle with just this transaction
-        bundle = await self._build_single_tx_bundle(transaction)
-        
-        # Submit the bundle
-        bundle_hash = await self.send_bundle(bundle)
-        
-        # Return the first transaction's hash in the bundle
-        if bundle_hash and bundle:
-            tx_hash = bundle[0].get("hash")
-            logger.info(f"Transaction submitted via Flashbots: {tx_hash}")
-            return tx_hash
-        
-        logger.warning("Failed to submit transaction via Flashbots")
-        return None
-    
-    async def send_bundle(
-        self,
-        bundle: List[Dict[str, Any]]
-    ) -> Optional[str]:
-        """
-        Send a bundle of transactions to Flashbots.
-        
-        Args:
-            bundle: List of signed transaction objects in bundle
-            
-        Returns:
-            Bundle hash if successful, None otherwise
-        """
-        logger.info(f"Sending bundle with {len(bundle)} transactions to Flashbots")
-        
-        # Get the current block to target bundle inclusion
-        try:
-            current_block = await self.web3_client.get_block_number()
-            target_block = current_block + 1
-        except Exception as e:
-            logger.error(f"Error getting current block: {e}")
-            return None
-        
-        # Prepare the bundle request
-        params = {
-            "txs": [tx.get("raw") for tx in bundle if tx.get("raw")],
-            "blockNumber": hex(target_block),
-            "minTimestamp": 0,
-            "maxTimestamp": int(time.time()) + 120,  # 2 minutes in the future
-            "revertingTxHashes": []
-        }
-        
-        # Submit the bundle with retries
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                bundle_hash = await self._send_flashbots_request("eth_sendBundle", params)
-                if bundle_hash:
-                    logger.info(f"Bundle submitted successfully: {bundle_hash}")
-                    return bundle_hash
-                else:
-                    logger.warning(f"Bundle submission returned no hash (attempt {attempt})")
-            except Exception as e:
-                logger.error(f"Error submitting bundle (attempt {attempt}): {e}")
-            
-            # Retry with delay
-            if attempt < self.max_retries:
-                await asyncio.sleep(self.retry_delay)
-        
-        logger.error("Bundle submission failed after all retries")
-        return None
-    
+        self.w3 = w3
+        self.relay_url = relay_url
+        self.chain_id = chain_id
+
+        # Set up authentication
+        self.auth_signer = None
+        if auth_key:
+            self.auth_signer = Account.from_key(auth_key)
+
+        # Initialize locks for thread safety
+        self._simulation_lock = AsyncLock()
+        self._bundle_lock = AsyncLock()
+
+        # Bundle optimization settings
+        self.max_simulations = 5
+        self.min_profit = Web3.to_wei(0.01, 'ether')  # 0.01 ETH minimum profit
+        self.max_gas_price = Web3.to_wei(500, 'gwei')  # 500 gwei max gas price
+
+        logger.info(
+            f"Flashbots provider initialized for chain {chain_id} "
+            f"with auth signer {self.auth_signer.address if self.auth_signer else 'None'}"
+        )
+
+    async def _estimate_gas_price(self) -> int:
+        """Estimate optimal gas price based on recent blocks."""
+        base_fee = await self.w3.eth.get_block('latest')
+        priority_fee = await self.w3.eth.max_priority_fee
+        return base_fee['baseFeePerGas'] + priority_fee
+
+    @with_retry(retries=3, delay=1.0)
     async def simulate_bundle(
         self,
-        bundle: List[Dict[str, Any]],
-        block_number: Optional[Union[int, str]] = None,
-        state_block_number: Optional[Union[int, str]] = None,
-        timestamp: Optional[int] = None
-    ) -> Optional[Dict[str, Any]]:
+        transactions: List[Transaction],
+        block_number: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
-        Simulate a bundle to validate its execution and profit.
-        
-        Args:
-            bundle: List of transaction objects to simulate
-            block_number: Block number to simulate on
-            state_block_number: Block to use for state 
-            timestamp: Timestamp for simulation
-            
-        Returns:
-            Simulation result if successful, None otherwise
-        """
-        logger.info(f"Simulating bundle with {len(bundle)} transactions")
-        
-        # Set default block number if not provided
-        if not block_number:
-            try:
-                current_block = await self.web3_client.get_block_number()
-                block_number = current_block
-            except Exception as e:
-                logger.error(f"Error getting current block for simulation: {e}")
-                return None
-        
-        # Convert block number to hex
-        if isinstance(block_number, int):
-            block_number_hex = hex(block_number)
-        else:
-            block_number_hex = block_number
-        
-        # Set default state block if not provided
-        if not state_block_number:
-            state_block_number = block_number_hex
-        elif isinstance(state_block_number, int):
-            state_block_number = hex(state_block_number)
-        
-        # Set default timestamp if not provided
-        if not timestamp:
-            timestamp = int(time.time())
-        
-        # Prepare simulation params
-        params = {
-            "txs": [tx.get("raw") for tx in bundle if tx.get("raw")],
-            "blockNumber": block_number_hex,
-            "stateBlockNumber": state_block_number,
-            "timestamp": timestamp
-        }
-        
-        # Send simulation request
-        try:
-            simulation_result = await self._send_flashbots_request("eth_callBundle", params)
-            
-            if simulation_result:
-                logger.info("Bundle simulation completed successfully")
-                return simulation_result
-            else:
-                logger.warning("Bundle simulation returned no result")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error simulating bundle: {e}")
-            return None
-    
-    async def get_bundle_stats(
-        self,
-        bundle_hash: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get statistics for a submitted bundle.
-        
-        Args:
-            bundle_hash: Hash of the bundle
-            
-        Returns:
-            Bundle statistics if available, None otherwise
-        """
-        logger.info(f"Getting stats for bundle: {bundle_hash}")
-        
-        params = {"bundleHash": bundle_hash}
-        
-        try:
-            stats = await self._send_flashbots_request("flashbots_getBundleStats", params)
-            return stats
-        except Exception as e:
-            logger.error(f"Error getting bundle stats: {e}")
-            return None
-    
-    async def get_user_stats(self) -> Optional[Dict[str, Any]]:
-        """
-        Get statistics for the current user.
-        
-        Returns:
-            User statistics if available, None otherwise
-        """
-        logger.info("Getting user stats from Flashbots")
-        
-        try:
-            stats = await self._send_flashbots_request("flashbots_getUserStats", {})
-            return stats
-        except Exception as e:
-            logger.error(f"Error getting user stats: {e}")
-            return None
-    
-    async def cancel_bundle(
-        self,
-        bundle_hash: str
-    ) -> bool:
-        """
-        Cancel a previously submitted bundle.
-        
-        Args:
-            bundle_hash: Hash of the bundle to cancel
-            
-        Returns:
-            True if cancellation was successful, False otherwise
-        """
-        logger.info(f"Cancelling bundle: {bundle_hash}")
-        
-        params = {"bundleHash": bundle_hash}
-        
-        try:
-            result = await self._send_flashbots_request("flashbots_cancelBundle", params)
-            return bool(result)
-        except Exception as e:
-            logger.error(f"Error cancelling bundle: {e}")
-            return False
-    
-    async def _build_single_tx_bundle(
-        self,
-        transaction: Transaction
-    ) -> List[Dict[str, Any]]:
-        """
-        Build a bundle containing a single transaction.
-        
-        Args:
-            transaction: Transaction to include in the bundle
-            
-        Returns:
-            Bundle with the transaction
-        """
-        # Sign the transaction
-        try:
-            signed_tx = await self.web3_client.sign_transaction(transaction)
-            
-            if not signed_tx:
-                logger.error("Failed to sign transaction for bundle")
-                return []
-                
-            # Create the bundle entry
-            return [{
-                "hash": signed_tx.hash,
-                "raw": signed_tx.raw_transaction.hex(),
-                "tx": transaction
-            }]
-            
-        except Exception as e:
-            logger.error(f"Error building single transaction bundle: {e}")
-            return []
-    
-    async def _send_flashbots_request(
-        self,
-        method: str,
-        params: Dict[str, Any]
-    ) -> Any:
-        """
-        Send a request to the Flashbots RPC endpoint.
-        
-        Args:
-            method: RPC method name
-            params: Method parameters
-            
-        Returns:
-            Response from Flashbots
-        """
-        # Ensure we don't flood the API
-        async with self._request_lock:
-            # Rate limiting
-            current_time = time.time()
-            time_since_last = current_time - self._last_request_time
-            
-            if time_since_last < self._min_request_interval:
-                await asyncio.sleep(self._min_request_interval - time_since_last)
-            
-            self._last_request_time = time.time()
-            
-            # Prepare request data
-            request_id = secrets.randbits(32)
-            payload = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "method": method,
-                "params": [params]
-            }
-            
-            # Generate Flashbots signature for authentication
-            message = json.dumps(payload)
-            signature = self._generate_auth_signature(message)
-            
-            # Prepare headers with Flashbots authentication
-            headers = {
-                "Content-Type": "application/json",
-                f"{FLASHBOTS_HEADERS_PREFIX}-Signature": signature
-            }
-            
-            # Send the request
-            try:
-                response = await self.web3_client.make_request(
-                    method=method,
-                    params=params,
-                    endpoint=self.flashbots_endpoint,
-                    headers=headers
-                )
-                
-                # Check for errors
-                if "error" in response:
-                    error = response["error"]
-                    logger.error(f"Flashbots request error: {error}")
-                    raise Exception(f"Flashbots request failed: {error}")
-                
-                # Return the result
-                if "result" in response:
-                    return response["result"]
-                    
-                return None
-                
-            except Exception as e:
-                logger.error(f"Error sending Flashbots request: {e}")
-                raise
-    
-    def _generate_auth_signature(self, message: str) -> str:
-        """
-        Generate Flashbots authentication signature.
-        
-        Args:
-            message: Message to sign
-            
-        Returns:
-            Signature for authentication
-        """
-        if not self.auth_signer:
-            raise ValueError("No authentication signer available")
-        
-        # Sign the message
-        signature = self.auth_signer.sign_message(
-            eth_account.messages.encode_defunct(text=message)
-        )
-        
-        # Return the signature as hex string
-        return f"{self.auth_signer.address}:{signature.signature.hex()}"
-    
-    async def close(self) -> None:
-        """Close the provider and release resources."""
-        logger.info("Closing FlashbotsProvider")
-        # Nothing to clean up for now
+        Simulate transaction bundle.
 
+        Args:
+            transactions: List of transactions
+            block_number: Optional block number to simulate at
+
+        Returns:
+            Simulation results
+
+        Raises:
+            ValueError: If no transactions provided
+        """
+        if not transactions:
+            raise ValueError("No transactions provided")
+
+        async with self._simulation_lock:
+            # Get current block if none provided
+            if block_number is None:
+                block_number = await self.w3.eth.block_number
+
+            # Convert transactions to dict format
+            tx_dicts = [tx.to_dict() for tx in transactions]
+
+            # Add simulation parameters
+            params = {
+                "txs": tx_dicts,
+                "blockNumber": hex(block_number),
+                "timestamp": hex(int(self.w3.eth.get_block(block_number)["timestamp"])),
+                "stateBlockNumber": hex(block_number - 1),  # Use previous block state
+                "gasLimit": hex(30000000),  # Block gas limit
+                "coinbase": "0x0000000000000000000000000000000000000000"
+            }
+
+            # Make RPC call
+            result = await self.w3.eth.call({
+                "to": self.relay_url,
+                "data": self.w3.eth.abi.encode_abi(
+                    ["tuple(bytes[] txs, bytes32 blockNumber, bytes32 timestamp, bytes32 stateBlockNumber, bytes32 gasLimit, address coinbase)"],
+                    [params]
+                )
+            })
+
+            # Decode and enhance result
+            sim_result = self.w3.eth.abi.decode_abi(
+                ["tuple(bool success, string error, uint256 gasUsed, uint256 effectiveGasPrice, uint256 mevValue)"],
+                result
+            )[0]
+
+            return {
+                "success": sim_result[0],
+                "error": sim_result[1] if not sim_result[0] else "",
+                "gasUsed": sim_result[2],
+                "effectiveGasPrice": sim_result[3],
+                "mevValue": sim_result[4],
+                "totalCost": sim_result[2] * sim_result[3],
+                "profitability": sim_result[4] - (sim_result[2] * sim_result[3])
+            }
+
+    async def _optimize_bundle(
+        self,
+        transactions: List[Transaction],
+        target_block: Optional[int] = None
+    ) -> Tuple[List[Transaction], Dict[str, Any]]:
+        """
+        Optimize transaction bundle for maximum profit.
+
+        Args:
+            transactions: List of transactions
+            target_block: Optional target block number
+
+        Returns:
+            Tuple of (optimized transactions, simulation results)
+        """
+        best_profit = -float('inf')
+        best_bundle = None
+        best_results = None
+
+        # Get base gas price
+        base_gas_price = await self._estimate_gas_price()
+
+        # Try different gas price variations
+        gas_variations = [
+            base_gas_price,
+            int(base_gas_price * 1.1),  # +10%
+            int(base_gas_price * 1.2),  # +20%
+            int(base_gas_price * 0.9),  # -10%
+            int(base_gas_price * 0.8)   # -20%
+        ]
+
+        for gas_price in gas_variations:
+            if gas_price > self.max_gas_price:
+                continue
+
+            # Update gas prices in transactions
+            modified_txs = []
+            for tx in transactions:
+                tx_dict = tx.to_dict()
+                tx_dict['gasPrice'] = hex(gas_price)
+                modified_txs.append(Transaction(tx_dict))
+
+            # Simulate bundle
+            results = await self.simulate_bundle(modified_txs, target_block)
+
+            if results['success'] and results['profitability'] > best_profit:
+                best_profit = results['profitability']
+                best_bundle = modified_txs
+                best_results = results
+
+        if best_bundle is None:
+            raise ValueError("Failed to optimize bundle: no profitable configuration found")
+
+        return best_bundle, best_results
+
+    async def _validate_bundle_profit(self, simulation_result: Dict[str, Any]) -> bool:
+        """
+        Validate bundle profitability.
+
+        Args:
+            simulation_result: Simulation results
+
+        Returns:
+            True if profitable, False otherwise
+        """
+        if not simulation_result['success']:
+            return False
+
+        # Calculate net profit
+        gas_cost = simulation_result['gasUsed'] * simulation_result['effectiveGasPrice']
+        net_profit = simulation_result['mevValue'] - gas_cost
+
+        # Validate against minimum profit threshold
+        if net_profit < self.min_profit:
+            logger.warning(f"Bundle profit {net_profit} below minimum threshold {self.min_profit}")
+            return False
+
+        return True
+
+    @with_retry(retries=3, delay=1.0)
+    async def send_bundle(
+        self,
+        transactions: List[Transaction],
+        target_block: Optional[int] = None,
+        min_timestamp: Optional[int] = None
+    ) -> HexStr:
+        """
+        Send transaction bundle to Flashbots.
+
+        Args:
+            transactions: List of transactions
+            target_block: Optional target block number
+            min_timestamp: Optional minimum timestamp
+
+        Returns:
+            Bundle hash
+
+        Raises:
+            ValueError: If no transactions provided or no auth signer configured
+        """
+        if not transactions:
+            raise ValueError("No transactions provided")
+
+        if not self.auth_signer:
+            raise ValueError("No auth signer configured")
+
+        async with self._bundle_lock:
+            # Get current block if no target provided
+            if target_block is None:
+                target_block = await self.w3.eth.block_number + 1
+
+            # Optimize bundle
+            optimized_txs, sim_results = await self._optimize_bundle(
+                transactions,
+                target_block
+            )
+
+            # Validate profitability
+            if not await self._validate_bundle_profit(sim_results):
+                raise ValueError("Bundle not profitable enough to execute")
+
+            # Convert transactions to dict format
+            tx_dicts = [tx.to_dict() for tx in optimized_txs]
+
+            # Add bundle parameters
+            params = {
+                "txs": tx_dicts,
+                "blockNumber": hex(target_block),
+                "minTimestamp": hex(min_timestamp) if min_timestamp else hex(0),
+                "maxTimestamp": hex(min_timestamp + 120) if min_timestamp else hex(0),  # 2 minute window
+                "revertingTxHashes": []  # Hashes of transactions that are allowed to revert
+            }
+
+            # Sign bundle
+            message = self.w3.keccak(
+                self.w3.eth.abi.encode_abi(
+                    ["tuple(bytes[] txs, bytes32 blockNumber, bytes32 minTimestamp, bytes32 maxTimestamp, bytes32[] revertingTxHashes)"],
+                    [params]
+                )
+            )
+
+            signature = self.auth_signer.sign_message(message)
+
+            # Make RPC call with enhanced parameters
+            result = await self.w3.eth.call({
+                "to": self.relay_url,
+                "data": self.w3.eth.abi.encode_abi(
+                    [
+                        "tuple(bytes[] txs, bytes32 blockNumber, bytes32 minTimestamp, bytes32 maxTimestamp, bytes32[] revertingTxHashes, bytes signature)",
+                        "address"
+                    ],
+                    [params, self.auth_signer.address]
+                )
+            })
+
+            # Log bundle submission
+            logger.info(f"Submitted optimized bundle to block {target_block} "
+                       f"with estimated profit {sim_results['profitability']} wei")
+
+            # Return bundle hash
+            return HexStr(result)
+
+    async def close(self):
+        """Clean up resources."""
+        pass
 
 async def create_flashbots_provider(
-    web3_client: Web3Client,
-    auth_signer_key: Optional[str] = None,
-    flashbots_endpoint: str = FLASHBOTS_ENDPOINT,
-    config: Dict[str, Any] = None
+    web3_manager: Any,
+    relay_url: str,
+    auth_key: Optional[str] = None
 ) -> FlashbotsProvider:
     """
-    Factory function to create a Flashbots provider.
-    
+    Create a new Flashbots provider.
+
     Args:
-        web3_client: Base web3 client for standard blockchain interactions
-        auth_signer_key: Private key for signing Flashbots authentication
-        flashbots_endpoint: Flashbots RPC endpoint URL
-        config: Additional configuration parameters
-        
+        web3_manager: Web3Manager instance
+        relay_url: Flashbots relay URL
+        auth_key: Optional authentication key
+
     Returns:
-        Initialized Flashbots provider
+        FlashbotsProvider instance
     """
     return FlashbotsProvider(
-        web3_client=web3_client,
-        auth_signer_key=auth_signer_key,
-        flashbots_endpoint=flashbots_endpoint,
-        config=config
+        w3=web3_manager.w3,
+        relay_url=relay_url,
+        auth_key=auth_key,
+        chain_id=web3_manager.chain_id
     )
