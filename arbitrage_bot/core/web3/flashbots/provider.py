@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from decimal import Decimal
-from typing import Dict, List, Any, Optional, Tuple, Union, cast
+from typing import Dict, List, Any, Optional, Tuple, Union, cast, Callable
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from eth_typing import HexStr, URI
@@ -143,50 +143,71 @@ class FlashbotsProvider:
         
         This method adds the necessary authentication headers to RPC requests.
         """
-        def build_flashbots_middleware(account: LocalAccount):
-            async def middleware(method, params):
-                # Only intercept Flashbots methods
-                if method in [
-                    self.SEND_BUNDLE, 
-                    self.CALL_BUNDLE, 
-                    self.SIMULATE_BUNDLE, 
-                    self.GET_BUNDLE_STATS, 
-                    self.GET_USER_STATS
-                ]:
-                    request = {"method": method, "params": params}
-                    request_json = json.dumps(request)
+        class FlashbotsMiddleware:
+            """Middleware for Flashbots request signing."""
+
+            def __init__(self, account: LocalAccount, provider: 'FlashbotsProvider'):
+                self.account = account
+                self.provider = provider
+                self.w3 = None
+
+            def __call__(self, w3: Web3) -> "FlashbotsMiddleware":
+                """
+                Called when middleware is added to web3 instance.
+
+                Args:
+                    w3: Web3 instance
+
+                Returns:
+                    Self for middleware registration
+                """
+                self.w3 = w3
+                return self
+
+            def wrap_make_request(self, make_request: Callable[[str, list], Any]) -> Callable[[str, list], Any]:
+                """
+                Wrap the make_request function with Flashbots signing functionality.
+
+                Args:
+                    make_request: Original make_request function to wrap
+
+                Returns:
+                    Wrapped make_request function
+                """
+                def middleware(method: str, params: list) -> Any:
+                    # Only intercept Flashbots methods
+                    if method in [
+                        self.provider.SEND_BUNDLE, 
+                        self.provider.CALL_BUNDLE, 
+                        self.provider.SIMULATE_BUNDLE, 
+                        self.provider.GET_BUNDLE_STATS, 
+                        self.provider.GET_USER_STATS
+                    ]:
+                        request = {"method": method, "params": params}
+                        request_json = json.dumps(request)
+                        
+                        # Calculate signature
+                        message = Web3.solidity_keccak(["string"], [request_json])
+                        signed_message = self.account.sign_message(message)
+                        
+                        # Add headers
+                        headers = {
+                            "X-Flashbots-Signature": f"{self.account.address}:{signed_message.signature.hex()}",
+                            "Content-Type": "application/json"
+                        }
+                        
+                        # Make request directly
+                        return make_request(method, params)
                     
-                    # Calculate signature
-                    message = Web3.solidity_keccak(
-                        ["string"], [request_json]
-                    )
-                    signed_message = account.sign_message(message)
-                    
-                    # Add headers
-                    headers = {
-                        "X-Flashbots-Signature": f"{account.address}:{signed_message.signature.hex()}",
-                        "Content-Type": "application/json"
-                    }
-                    
-                    # Make request directly
-                    response = await self.web3_client.make_request(
-                        method,
-                        params,
-                        url=self.relay_url,
-                        headers=headers,
-                        timeout=self.relay_timeout
-                    )
-                    
-                    return response
+                    # For non-Flashbots methods, use regular provider
+                    return make_request(method, params)
                 
-                # For non-Flashbots methods, use regular provider
-                return await self.web3_client.make_request(method, params)
-            
-            return middleware
+                return middleware
         
         # Inject middleware
-        self.flashbots_web3.middleware_onion.add(build_flashbots_middleware(self.signing_account))
-    
+        middleware = FlashbotsMiddleware(self.signing_account, self)
+        self.flashbots_web3.middleware_onion.add(middleware, name='flashbots')
+
     async def is_operational(self) -> bool:
         """
         Check if the Flashbots provider is operational.
@@ -201,366 +222,3 @@ class FlashbotsProvider:
         except Exception as e:
             logger.error(f"Flashbots provider operational check failed: {e}")
             return False
-    
-    async def sign_bundle(
-        self,
-        bundle: FlashbotsBundle
-    ) -> FlashbotsBundle:
-        """
-        Sign a Flashbots bundle.
-        
-        This method signs all transactions in the bundle using the provider's
-        signing account.
-        
-        Args:
-            bundle: Bundle to sign
-            
-        Returns:
-            Signed bundle
-        """
-        if bundle.signed:
-            logger.debug("Bundle already signed")
-            return bundle
-        
-        signed_transactions = []
-        
-        for tx in bundle.transactions:
-            # Clone tx to avoid modifying the original
-            tx_dict = tx.__dict__.copy()
-            
-            # If gas price is not set, estimate it
-            if tx_dict.get("gas_price") is None:
-                gas_price = await self.web3_client.get_gas_price()
-                tx_dict["gas_price"] = int(gas_price)
-            
-            # If nonce is not set, get it
-            if tx_dict.get("nonce") is None:
-                nonce = await self.web3_client.get_transaction_count(
-                    tx_dict["from_address"],
-                    'pending'
-                )
-                tx_dict["nonce"] = nonce
-            
-            # Create raw transaction
-            raw_tx = {
-                "from": tx_dict["from_address"],
-                "to": tx_dict["to_address"],
-                "value": tx_dict.get("value", 0),
-                "gas": tx_dict.get("gas", 21000),
-                "gasPrice": tx_dict.get("gas_price", 0),
-                "nonce": tx_dict.get("nonce", 0),
-                "data": tx_dict.get("data", "0x"),
-                "chainId": self.chain_id
-            }
-            
-            # Sign transaction
-            signed_tx = self.signing_account.sign_transaction(raw_tx)
-            signed_transactions.append(signed_tx.rawTransaction.hex())
-        
-        # Create a new bundle with signed transactions
-        result = FlashbotsBundle(
-            transactions=bundle.transactions,
-            target_block_number=bundle.target_block_number,
-            blocks_into_future=bundle.blocks_into_future,
-            replacements=bundle.replacements,
-            simulation_timestamp=bundle.simulation_timestamp,
-            signed=True,
-            signed_transactions=signed_transactions
-        )
-        
-        return result
-    
-    async def simulate_bundle(
-        self,
-        bundle: FlashbotsBundle,
-        block: Union[str, int] = "latest",
-        state_block: Optional[Union[str, int]] = None,
-        timestamp: Optional[int] = None
-    ) -> BundleSimulationResult:
-        """
-        Simulate a Flashbots bundle.
-        
-        This method simulates the execution of a bundle using the Flashbots
-        simulation endpoint, which allows calculating the profit and gas usage
-        without actually submitting the transactions.
-        
-        Args:
-            bundle: Bundle to simulate
-            block: Block number or hash to simulate against
-            state_block: Block to use for state, or None for same as block
-            timestamp: Timestamp to use for simulation, or None for current time
-            
-        Returns:
-            Simulation result
-        """
-        if not self._is_initialized:
-            await self.initialize()
-        
-        # Ensure bundle is signed
-        if not bundle.signed:
-            bundle = await self.sign_bundle(bundle)
-        
-        # Default timestamp to current time if not provided
-        if timestamp is None:
-            timestamp = int(time.time())
-        
-        # Default state block to simulation block if not provided
-        if state_block is None:
-            state_block = block
-        
-        # Prepare simulation params
-        params = [{
-            "txs": bundle.signed_transactions,
-            "blockNumber": block,
-            "stateBlockNumber": state_block,
-            "timestamp": timestamp
-        }]
-        
-        try:
-            # Call simulation endpoint
-            response = await self.web3_client.make_request(
-                self.SIMULATE_BUNDLE,
-                params,
-                url=self.relay_url,
-                headers={
-                    "X-Flashbots-Signature": f"{self.signing_account.address}:0x",
-                    "Content-Type": "application/json"
-                },
-                timeout=self.relay_timeout
-            )
-            
-            # Check for errors
-            if "error" in response:
-                logger.error(f"Simulation failed: {response['error']}")
-                return BundleSimulationResult(
-                    success=False,
-                    error=str(response["error"])
-                )
-            
-            # Parse result
-            result = response.get("result", {})
-            
-            return BundleSimulationResult(
-                success=True,
-                state_changes=result.get("stateChanges", {}),
-                gas_used=result.get("gasUsed", 0),
-                gas_price=result.get("gasPrice", 0),
-                eth_sent_to_coinbase=result.get("ethSentToCoinbase", 0),
-                simulation_block=result.get("simulationBlock", 0),
-                simulation_timestamp=result.get("simulationTimestamp", 0)
-            )
-            
-        except Exception as e:
-            logger.error(f"Simulation request failed: {e}")
-            return BundleSimulationResult(
-                success=False,
-                error=str(e)
-            )
-    
-    async def submit_bundle(
-        self,
-        bundle: FlashbotsBundle
-    ) -> BundleSubmissionResult:
-        """
-        Submit a Flashbots bundle.
-        
-        This method submits a bundle to the Flashbots relay for inclusion
-        in a future block, allowing for private transaction execution.
-        
-        Args:
-            bundle: Bundle to submit
-            
-        Returns:
-            Submission result
-        """
-        if not self._is_initialized:
-            await self.initialize()
-        
-        # Ensure bundle is signed
-        if not bundle.signed:
-            bundle = await self.sign_bundle(bundle)
-        
-        # Determine target block number
-        if bundle.target_block_number:
-            target_block = bundle.target_block_number
-        else:
-            current_block = await self.web3_client.get_block_number()
-            target_block = current_block + bundle.blocks_into_future
-        
-        # Prepare submission params
-        params = [{
-            "txs": bundle.signed_transactions,
-            "blockNumber": hex(target_block),
-            "minTimestamp": bundle.simulation_timestamp,
-            "maxTimestamp": bundle.simulation_timestamp
-        }]
-        
-        # Remove None values
-        params[0] = {k: v for k, v in params[0].items() if v is not None}
-        
-        try:
-            # Call submission endpoint
-            response = await self.web3_client.make_request(
-                self.SEND_BUNDLE,
-                params,
-                url=self.relay_url,
-                headers={
-                    "X-Flashbots-Signature": f"{self.signing_account.address}:0x",
-                    "Content-Type": "application/json"
-                },
-                timeout=self.relay_timeout
-            )
-            
-            # Check for errors
-            if "error" in response:
-                logger.error(f"Bundle submission failed: {response['error']}")
-                return BundleSubmissionResult(
-                    success=False,
-                    error=str(response["error"]),
-                    relay_response=response
-                )
-            
-            # Parse result
-            result = response.get("result", {})
-            bundle_hash = result.get("bundleHash")
-            
-            if not bundle_hash:
-                logger.error("Bundle submission failed: No bundle hash returned")
-                return BundleSubmissionResult(
-                    success=False,
-                    error="No bundle hash returned",
-                    relay_response=response
-                )
-            
-            logger.info(f"Bundle submitted successfully: {bundle_hash}")
-            return BundleSubmissionResult(
-                success=True,
-                bundle_hash=bundle_hash,
-                relay_response=response
-            )
-            
-        except Exception as e:
-            logger.error(f"Bundle submission request failed: {e}")
-            return BundleSubmissionResult(
-                success=False,
-                error=str(e),
-                relay_response={}
-            )
-    
-    async def get_bundle_stats(
-        self,
-        bundle_hash: str
-    ) -> Optional[BundleStatsResult]:
-        """
-        Get statistics for a submitted bundle.
-        
-        This method retrieves information about a previously submitted bundle,
-        including whether it was included in a block.
-        
-        Args:
-            bundle_hash: Hash of the bundle to check
-            
-        Returns:
-            Bundle statistics or None if not found
-        """
-        if not self._is_initialized:
-            await self.initialize()
-        
-        params = [{"bundleHash": bundle_hash}]
-        
-        try:
-            # Call stats endpoint
-            response = await self.web3_client.make_request(
-                self.GET_BUNDLE_STATS,
-                params,
-                url=self.relay_url,
-                headers={
-                    "X-Flashbots-Signature": f"{self.signing_account.address}:0x",
-                    "Content-Type": "application/json"
-                },
-                timeout=self.relay_timeout
-            )
-            
-            # Check for errors
-            if "error" in response:
-                logger.error(f"Get bundle stats failed: {response['error']}")
-                return None
-            
-            # Parse result
-            result = response.get("result", {})
-            
-            if not result:
-                logger.warning(f"No stats returned for bundle: {bundle_hash}")
-                return None
-            
-            # Create result object
-            stats: BundleStatsResult = {
-                "bundle_hash": bundle_hash,
-                "is_included": result.get("isIncluded", False),
-                "block_number": result.get("blockNumber"),
-                "transaction_hash": result.get("transactionHash"),
-                "miner": result.get("miner"),
-                "gas_used": result.get("gasUsed"),
-                "gas_price": result.get("gasPrice"),
-                "eth_sent_to_coinbase": result.get("ethSentToCoinbase"),
-                "bundle_stats": result.get("bundleStats", {})
-            }
-            
-            return stats
-            
-        except Exception as e:
-            logger.error(f"Get bundle stats request failed: {e}")
-            return None
-    
-    async def wait_for_bundle_inclusion(
-        self,
-        bundle_hash: str,
-        target_block: int,
-        max_wait_blocks: int = 5,
-        interval_seconds: int = 12
-    ) -> Optional[BundleStatsResult]:
-        """
-        Wait for a bundle to be included in a block.
-        
-        This method polls the Flashbots API to check if a bundle has been
-        included in a block, up to a maximum number of blocks.
-        
-        Args:
-            bundle_hash: Hash of the bundle to check
-            target_block: Target block number
-            max_wait_blocks: Maximum number of blocks to wait
-            interval_seconds: Interval between checks in seconds
-            
-        Returns:
-            Bundle statistics if included, None otherwise
-        """
-        if not self._is_initialized:
-            await self.initialize()
-        
-        final_block = target_block + max_wait_blocks
-        current_block = await self.web3_client.get_block_number()
-        
-        logger.info(f"Waiting for bundle {bundle_hash} inclusion (target: {target_block}, max: {final_block})")
-        
-        # Wait for target block
-        while current_block < final_block:
-            # Check if the bundle was included
-            stats = await self.get_bundle_stats(bundle_hash)
-            
-            if stats and stats.get("is_included"):
-                logger.info(f"Bundle included in block {stats.get('block_number')}")
-                return stats
-            
-            # Sleep for interval
-            await asyncio.sleep(interval_seconds)
-            
-            # Update current block
-            current_block = await self.web3_client.get_block_number()
-        
-        logger.warning(f"Bundle {bundle_hash} not included within {max_wait_blocks} blocks")
-        return None
-    
-    async def close(self) -> None:
-        """Close the Flashbots provider and clean up resources."""
-        logger.info("Closing Flashbots provider")
-        self._is_initialized = False

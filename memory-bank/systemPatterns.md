@@ -15,12 +15,35 @@
    - Private key in web3.wallet_key
    - Used for transaction signing
    - Requires ETH for gas
+   - Implemented through SignerMiddleware
 
 2. Flashbots Authentication:
    - Separate key in flashbots.auth_key
    - Used only for bundle signing
    - No funds required
    - Generated through scripts/generate_flashbots_auth.py
+
+## Middleware Patterns
+1. Transaction Signing:
+   - Class-based SignerMiddleware
+   - make_request method implementation
+   - Transaction parameter modification
+   - Raw transaction signing
+   - Error propagation
+
+2. Web3 Integration:
+   - Middleware registration
+   - Chain-specific configuration
+   - Error handling
+   - State management
+   - Request modification
+
+3. Request Flow:
+   - Parameter validation
+   - Transaction signing
+   - Request modification
+   - Response handling
+   - Error propagation
 
 ## Integration Patterns
 1. Flash Loan Integration:
@@ -47,6 +70,7 @@
    - DEX manager creation
    - Flash loan setup
    - Flashbots provider initialization
+   - Middleware registration
 
 2. Cleanup:
    - Resource release
@@ -66,6 +90,7 @@
    - Network issues
    - Liquidity problems
    - Price impact limits
+   - Middleware errors
 
 3. Recovery Patterns:
    - Retry mechanisms
@@ -85,12 +110,14 @@
    - Price validation
    - Gas optimization
    - MEV protection
+   - Middleware validation
 
 3. Error Prevention:
    - Input validation
    - State verification
    - Balance checks
    - Profit confirmation
+   - Middleware checks
 
 ## Performance Patterns
 1. Async Operations:
@@ -98,18 +125,21 @@
    - Parallel processing
    - Batch operations
    - Resource pooling
+   - Middleware efficiency
 
 2. Caching:
    - Price data caching
    - Pool information
    - Token data
    - Configuration
+   - Transaction data
 
 3. Optimization:
    - Gas usage
    - Path finding
    - Bundle submission
    - Flash loan execution
+   - Middleware overhead
 
 ## Monitoring Patterns
 1. Logging:
@@ -117,11 +147,13 @@
    - Error tracking
    - Performance metrics
    - Success rates
+   - Middleware events
 
 2. Metrics:
    - Profit tracking
    - Gas usage
    - Execution time
    - Success rate
+   - Middleware performance
 
 Remember: These patterns should be consistently applied across all new development and updates to maintain system integrity and performance.

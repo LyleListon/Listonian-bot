@@ -8,14 +8,56 @@ This module provides functionality for:
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 from web3 import Web3
 from eth_account import Account
 from eth_typing import ChecksumAddress
 
 from ...utils.async_manager import with_retry
+from .web3_client_wrapper import Web3ClientWrapper
 
 logger = logging.getLogger(__name__)
+
+class SignerMiddleware:
+    """Middleware for signing transactions."""
+
+    def __init__(self, w3: Web3, account: Account):
+        self.w3 = w3
+        self.account = account
+
+    def __call__(self, w3: Web3) -> "SignerMiddleware":
+        """
+        Called when middleware is added to web3 instance.
+
+        Args:
+            w3: Web3 instance
+
+        Returns:
+            Self for middleware registration
+        """
+        self.w3 = w3
+        return self
+
+    def wrap_make_request(self, make_request: Callable[[str, list], Any]) -> Callable[[str, list], Any]:
+        """
+        Wrap the make_request function with signing functionality.
+
+        Args:
+            make_request: Original make_request function
+
+        Returns:
+            Wrapped make_request function
+        """
+        def middleware(method: str, params: list) -> Any:
+            if method == 'eth_sendRawTransaction':
+                transaction_dict = params[0]
+                signed = self.account.sign_transaction(transaction_dict)
+                return make_request(method, [signed.rawTransaction])
+            
+            # For non-transaction methods, pass through
+            return make_request(method, params)
+            
+        return middleware
 
 class Web3Manager:
     """Manages Web3 connections and interactions."""
@@ -41,10 +83,10 @@ class Web3Manager:
         self.config = config or {}
 
         # Initialize Web3
-        self.w3 = Web3(Web3.HTTPProvider(provider_url))
-
+        self._raw_w3 = Web3(Web3.HTTPProvider(provider_url))
+        
         # Configure for PoA chains
-        self.w3.eth.default_block = "latest"
+        self._raw_w3.eth.default_block = "latest"
 
         # Set up account if private key provided
         self.private_key = private_key
@@ -56,21 +98,13 @@ class Web3Manager:
             self.wallet_address = self.account.address
 
             # Add middleware for signing transactions
-            def sign_transaction(transaction_dict, w3):
-                signed = self.account.sign_transaction(transaction_dict)
-                return signed.rawTransaction
+            signer = SignerMiddleware(self._raw_w3, self.account)
+            self._raw_w3.middleware_onion.add(signer, name='signer')
 
-            self.w3.middleware_onion.add(
-                lambda make_request, w3: (
-                    lambda method, params: make_request(
-                        method,
-                        [sign_transaction(params[0], w3)] if method == 'eth_sendRawTransaction'
-                        else params
-                    )
-                )
-            )
-
-        # Expose eth module
+        # Create wrapped Web3 instance
+        self.w3 = Web3ClientWrapper(self._raw_w3)
+        
+        # Expose eth module through wrapper
         self.eth = self.w3.eth
 
         logger.info(
@@ -81,7 +115,7 @@ class Web3Manager:
     @property
     def is_connected(self) -> bool:
         """Check if connected to node."""
-        return self.w3.is_connected()
+        return self._raw_w3.is_connected()
 
     @with_retry(retries=3, delay=1.0)
     async def get_balance(
@@ -104,7 +138,7 @@ class Web3Manager:
             raise ValueError("No address provided and no wallet configured")
 
         address = address or self.wallet_address
-        return self.eth.get_balance(address)
+        return await self.eth.get_balance(address)
 
     @with_retry(retries=3, delay=1.0)
     async def get_token_balance(
@@ -131,7 +165,7 @@ class Web3Manager:
         address = address or self.wallet_address
 
         # ERC20 balanceOf function selector
-        selector = self.w3.keccak(text="balanceOf(address)")[:4]
+        selector = self._raw_w3.keccak(text="balanceOf(address)")[:4]
 
         # Encode address parameter
         params = self.eth.abi.encode_single("address", address)
@@ -170,8 +204,8 @@ class Web3Manager:
 
     async def close(self):
         """Clean up resources."""
-        if hasattr(self.w3.provider, "close"):
-            await self.w3.provider.close()
+        if hasattr(self._raw_w3.provider, "close"):
+            await self._raw_w3.provider.close()
 
 async def create_web3_manager(
     config: Dict[str, Any]

@@ -1,36 +1,10 @@
 {
   "web3": {
-    "rpc_url": "https://base-mainnet.infura.io/v3/863c326dab1a444dba3f41ae7a07ccce",
+    "rpc_url": "https://mainnet.base.org",
     "chain_id": 8453,
-    "wallet_key": "0x5127c66bfc607750f5bd309d45ab922255c514d3607b7ff8507f44e73f64dc0d",
-    "max_retries": 3,
-    "retry_delay": 1.0
+    "wallet_key": "0x5127c66bfc607750f5bd309d45ab922255c514d3607b7ff8507f44e73f64dc0d"
   },
-  "flashbots": {
-    "relay_url": "https://relay.flashbots.net",
-    "auth_key": "0xcec42651c3545800e04928b21a04d1c0771d0ba54394abf9f6e16795e0f68191",
-    "min_profit": 1000000000000000,
-    "max_gas_price": 500000000000
-  },
-  "balancer": {
-    "vault_address": "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
-  },
-  "path_finder": {
-    "max_paths_to_check": 100,
-    "max_path_length": 4,
-    "max_parallel_requests": 10,
-    "min_profit_threshold": 0.001,
-    "min_liquidity_usd": 10000
-  },
-  "scan": {
-    "interval": 1.0,
-    "amount_wei": "1000000000000000000",
-    "max_paths": 5
-  },
-  "monitoring": {
-    "stats_interval": 300,
-    "log_level": "INFO"
-  },
+
   "tokens": {
     "WETH": {
       "address": "0x4200000000000000000000000000000000000006",
@@ -39,8 +13,121 @@
     "USDC": {
       "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "decimals": 6
+    },
+    "USDT": {
+      "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+      "decimals": 6
+    },
+    "DAI": {
+      "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+      "decimals": 18
     }
   },
-  "profit_recipient": "0x4200000000000000000000000000000000000006",
-  "max_slippage": 0.5
+
+  "dexes": {
+    "aerodrome": {
+      "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+      "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+      "version": "v2",
+      "fee": 30
+    },
+    "baseswap": {
+      "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
+      "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+      "version": "v2",
+      "fee": 30
+    },
+    "swapbased": {
+      "factory": "0x36218B2F8dC32D43fb5EcF45F2E6113cd52Cc5B9",
+      "router": "0x36218B2F8dC32D43fb5EcF45F2E6113cd52Cc5B9",
+      "version": "v2",
+      "fee": 30
+    }
+  },
+
+  "path_finder": {
+    "max_paths_to_check": 100,
+    "max_path_length": 4,
+    "max_parallel_requests": 10,
+    "min_profit_threshold": "1000000000000000",
+    "max_price_impact": 0.05,
+    "min_liquidity_ratio": 1.5,
+    "cache_ttl": 30,
+    "update_interval": 1.0
+  },
+
+  "balancer": {
+    "vault_address": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+    "pool_registry": "0x7c3B1957F87529BA09577E155eA38C5F2C2D72F8",
+    "min_liquidity": "1000000000000000000",
+    "max_pools": 10,
+    "max_tokens": 5,
+    "min_weight": 0.01,
+    "max_weight": 0.99
+  },
+
+  "flash_loan": {
+    "enabled": true,
+    "use_flashbots": true,
+    "min_profit": "0.001",
+    "max_trade_size": "1000000000000000000",
+    "slippage_tolerance": 50,
+    "transaction_timeout": 180,
+    "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+    "max_parallel_pools": 10,
+    "min_liquidity_ratio": 1.5
+  },
+
+  "flashbots": {
+    "relay_url": "https://relay.flashbots.net",
+    "auth_key": "0x945d0bb1e689e19f480f113a448d3aad578b66f7ed542f3ed6cf05be5a47af1e",
+    "min_profit": "1000000000000000",
+    "max_gas_price": "500000000000"
+  },
+
+  "mev_protection": {
+    "enabled": true,
+    "use_flashbots": true,
+    "max_bundle_size": 5,
+    "max_blocks_ahead": 3,
+    "min_priority_fee": "1.5",
+    "max_priority_fee": "3.0",
+    "sandwich_detection": true,
+    "frontrun_detection": true,
+    "backrun_detection": true,
+    "time_bandit_detection": true,
+    "profit_threshold": "0.1",
+    "gas_threshold": "1.5",
+    "confidence_threshold": "0.7",
+    "adaptive_gas": true
+  },
+
+  "monitoring": {
+    "enabled": true,
+    "log_level": "INFO",
+    "log_file": "logs/arbitrage.log",
+    "stats_interval": 300,
+    "metrics_port": 9090,
+    "dashboard_port": 8080,
+    "alert_thresholds": {
+      "min_balance_eth": "0.1",
+      "max_gas_price_gwei": "500",
+      "min_profit_eth": "0.001",
+      "max_slippage": 0.05,
+      "max_error_rate": 0.1
+    },
+    "performance_tracking": {
+      "enabled": true,
+      "track_gas_usage": true,
+      "track_execution_time": true,
+      "track_success_rate": true,
+      "track_profit_loss": true
+    }
+  },
+
+  "scan": {
+    "interval": 1.0,
+    "amount_wei": "1000000000000000000",
+    "max_paths": 5
+  }
 }

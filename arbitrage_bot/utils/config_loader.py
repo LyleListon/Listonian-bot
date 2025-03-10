@@ -15,8 +15,32 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = "configs/config.json"
-PRODUCTION_CONFIG_PATH = "configs/production.json"
+DEFAULT_CONFIG_PATH = "configs/production.json"
+REQUIRED_SECTIONS = {
+    "web3": ["rpc_url", "chain_id", "wallet_key"],
+    "flashbots": ["relay_url", "auth_key", "min_profit", "max_gas_price"],
+    "balancer": ["vault_address"],
+    "path_finder": ["max_paths_to_check", "max_path_length", "max_parallel_requests"],
+    "scan": ["interval", "amount_wei", "max_paths"],
+    "monitoring": ["stats_interval", "log_level"],
+    "tokens": ["WETH", "USDC"],
+    "mev_protection": [
+        "enabled",
+        "use_flashbots",
+        "max_bundle_size",
+        "max_blocks_ahead",
+        "min_priority_fee",
+        "max_priority_fee",
+        "sandwich_detection",
+        "frontrun_detection",
+        "backrun_detection",
+        "time_bandit_detection",
+        "profit_threshold",
+        "gas_threshold",
+        "confidence_threshold",
+        "adaptive_gas"
+    ]
+}
 
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -38,13 +62,6 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
         if not config_path:
             config_path = DEFAULT_CONFIG_PATH
 
-        # Load base config first
-        base_config = {}
-        base_config_file = Path(DEFAULT_CONFIG_PATH)
-        if base_config_file.exists():
-            with open(base_config_file) as f:
-                base_config = json.load(f)
-
         # Convert to Path object
         config_file = Path(config_path)
 
@@ -56,63 +73,58 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
         with open(config_file) as f:
             config = json.load(f)
 
-        # Merge with base config, with config overriding base values
-        config = {**base_config, **config}
-
-        # Handle production config structure
-        if config_path == PRODUCTION_CONFIG_PATH:
-            # Map web3 config
-            if 'web3' in config:
-                config['provider_url'] = config['web3']['rpc_url']
-                config['chain_id'] = config['web3']['chain_id']
-                if 'wallet_key' in config['web3']:
-                    config['private_key'] = config['web3']['wallet_key']
-
-        # Validate required fields
-        required_fields = [
-            "provider_url",
-            "chain_id",
-            "tokens",
-            "dexes",
-            "flash_loan",
-            "gas",
-            "security"
-        ]
-
-        for field in required_fields:
-            if field not in config:
-                raise ValueError(f"Missing required config field: {field}")
-
-        # Additional validation for production config
-        if config_path == PRODUCTION_CONFIG_PATH:
-            # Check for flashbots section
-            if not config.get('flashbots'):
-                raise ValueError("Missing required production config field: flashbots")
-
-            # Check for auth key in flashbots section
-            if not config['flashbots'].get('auth_key'):
-                raise ValueError("Missing required production config field: flashbots.auth_key")
-
-            # Validate auth key format
-            auth_key = config['flashbots']['auth_key']
-            if not auth_key.startswith('0x') or len(auth_key) != 66:
-                raise ValueError("Invalid Flashbots auth key format - must be 32 bytes hex")
-
-            # Map flashbots.auth_key to flashbots_auth_key for backward compatibility
-            config['flashbots_auth_key'] = auth_key
-
-            # Validate other production fields
-            prod_required_fields = [
-                "private_key",
-                "profit_recipient",
-                "max_slippage"
-            ]
+        # Validate required sections and fields
+        for section, fields in REQUIRED_SECTIONS.items():
+            if section not in config:
+                raise ValueError(f"Missing required config section: {section}")
             
-            for field in prod_required_fields:
-                if field not in config:
-                    raise ValueError(f"Missing required production config field: {field}")
+            section_config = config[section]
+            for field in fields:
+                if field not in section_config:
+                    raise ValueError(f"Missing required field '{field}' in section '{section}'")
 
-        # Add default values if not present
+        # Validate token addresses are checksummed
+        for token_name, token_info in config["tokens"].items():
+            if isinstance(token_info, dict):
+                address = token_info.get('address')
+                if not address or not isinstance(address, str) or not address.startswith("0x"):
+                    raise ValueError(f"Invalid token address format for {token_name}: {address}")
+                
+                # Validate decimals field
+                if 'decimals' not in token_info:
+                    raise ValueError(f"Missing decimals for token {token_name}")
+                if not isinstance(token_info['decimals'], int):
+                    raise ValueError(f"Invalid decimals format for {token_name}")
+
+        # Validate Flashbots configuration
+        flashbots_config = config['flashbots']
+        auth_key = flashbots_config['auth_key']
+        if not auth_key.startswith('0x') or len(auth_key) != 66:
+            raise ValueError("Invalid Flashbots auth key format - must be 32 bytes hex")
+
+        relay_url = flashbots_config['relay_url']
+        if not relay_url.startswith(('http://', 'https://')):
+            raise ValueError("Invalid Flashbots relay URL format")
+
+        # Validate MEV protection settings
+        mev_config = config['mev_protection']
+        if not isinstance(mev_config['enabled'], bool):
+            raise ValueError("mev_protection.enabled must be a boolean")
+        if not isinstance(mev_config['use_flashbots'], bool):
+            raise ValueError("mev_protection.use_flashbots must be a boolean")
+        if not isinstance(mev_config['max_bundle_size'], int):
+            raise ValueError("mev_protection.max_bundle_size must be an integer")
+        if not isinstance(mev_config['max_blocks_ahead'], int):
+            raise ValueError("mev_protection.max_blocks_ahead must be an integer")
+
+        # Convert numeric strings to proper types
+        mev_config['min_priority_fee'] = str(mev_config['min_priority_fee'])
+        mev_config['max_priority_fee'] = str(mev_config['max_priority_fee'])
+        mev_config['profit_threshold'] = str(mev_config['profit_threshold'])
+        mev_config['gas_threshold'] = str(mev_config['gas_threshold'])
+        mev_config['confidence_threshold'] = str(mev_config['confidence_threshold'])
+
+        # Add default values for optional settings
         config.setdefault("logging", {
             "level": "INFO",
             "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -121,49 +133,11 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             "backup_count": 5
         })
 
-        config.setdefault("monitoring", {
-            "enabled": True,
-            "interval": 60,
-            "metrics_port": 9090
-        })
-
         config.setdefault("performance", {
             "cache_ttl": 300,
             "max_concurrent_paths": 10,
             "batch_size": 100
         })
-
-        # Validate token addresses are checksummed
-        for token, token_info in config["tokens"].items():
-            if isinstance(token_info, dict):
-                address = token_info.get('address')
-                if not address or not isinstance(address, str) or not address.startswith("0x"):
-                    raise ValueError(f"Invalid token address format for {token}: {address}")
-            else:
-                if not isinstance(token_info, str) or not token_info.startswith("0x"):
-                    raise ValueError(f"Invalid token address format for {token}: {token_info}")
-
-        # Validate DEX addresses
-        for dex_name, dex_config in config["dexes"].items():
-            if not dex_config["factory"].startswith("0x"):
-                raise ValueError(f"Invalid factory address for {dex_name}: {dex_config['factory']}")
-            if not dex_config["router"].startswith("0x"):
-                raise ValueError(f"Invalid router address for {dex_name}: {dex_config['router']}")
-
-        # Validate flash loan config
-        flash_loan = config["flash_loan"]
-        if not flash_loan["balancer_vault"].startswith("0x"):
-            raise ValueError(f"Invalid Balancer vault address: {flash_loan['balancer_vault']}")
-
-        if not isinstance(flash_loan["min_profit"], str):
-            flash_loan["min_profit"] = str(flash_loan["min_profit"])
-
-        # Validate gas config
-        gas = config["gas"]
-        if not isinstance(gas["max_priority_fee"], str):
-            gas["max_priority_fee"] = str(gas["max_priority_fee"])
-        if not isinstance(gas["max_fee"], str):
-            gas["max_fee"] = str(gas["max_fee"])
 
         logger.info("Configuration loaded successfully")
         return config
@@ -197,4 +171,4 @@ def load_production_config() -> Dict[str, Any]:
     Raises:
         Various exceptions if validation fails
     """
-    return load_config(PRODUCTION_CONFIG_PATH)
+    return load_config(DEFAULT_CONFIG_PATH)
