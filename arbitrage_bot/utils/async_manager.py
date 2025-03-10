@@ -18,6 +18,44 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 
+class AsyncLock:
+    """Thread-safe async lock with context manager support."""
+
+    def __init__(self):
+        """Initialize the async lock."""
+        self._lock = Lock()
+        self._owner = None
+        self._depth = 0
+
+    async def __aenter__(self) -> 'AsyncLock':
+        """
+        Acquire the lock.
+
+        Returns:
+            Self for context manager support
+        """
+        if self._owner != asyncio.current_task():
+            await self._lock.acquire()
+            self._owner = asyncio.current_task()
+            self._depth = 0
+        self._depth += 1
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """
+        Release the lock.
+
+        Args:
+            exc_type: Exception type if an error occurred
+            exc_val: Exception value if an error occurred
+            exc_tb: Exception traceback if an error occurred
+        """
+        self._depth -= 1
+        if self._depth == 0:
+            self._owner = None
+            self._lock.release()
+        return None
+
 class AsyncManager:
     """Manages asynchronous operations and resources."""
 

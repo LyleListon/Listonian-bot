@@ -133,6 +133,75 @@ class DexManager:
             f"{', '.join(dexes.keys())}"
         )
 
+    @classmethod
+    async def create(
+        cls,
+        web3_manager: Web3Client,
+        config: Dict[str, Any]
+    ) -> 'DexManager':
+        """
+        Create a new DEX manager.
+
+        Args:
+            web3_manager: Web3 client instance
+            config: Configuration dictionary
+
+        Returns:
+            DexManager instance
+        """
+        dexes = {}
+
+        for name, dex_config in config['dexes'].items():
+            dexes[name] = DexInfo(
+                name=name,
+                factory_address=dex_config['factory'],
+                router_address=dex_config['router'],
+                fee_tiers=dex_config.get('fee_tiers', [30, 100, 500, 3000, 10000])
+            )
+
+        return cls(web3_manager=web3_manager, dexes=dexes)
+
+    async def discover_pools_aerodrome(
+        self,
+        factory_contract: Any,
+        dex: DexInfo,
+        token_addresses: Optional[List[ChecksumAddress]] = None
+    ) -> Set[ChecksumAddress]:
+        """
+        Discover pools for Aerodrome style DEX.
+
+        Args:
+            factory_contract: Factory contract instance
+            dex: DEX info instance
+            token_addresses: Optional list of token addresses to filter by
+
+        Returns:
+            Set of pool addresses
+        """
+        if token_addresses:
+            # Filter by tokens
+            for token0 in token_addresses:
+                for token1 in token_addresses:
+                    if token0 != token1:
+                        # Try both stable and volatile pools
+                        for stable in [True, False]:
+                            try:
+                                pool = await factory_contract.functions.getPool(
+                                    token0,
+                                    token1,
+                                    stable
+                                ).call()
+
+                                if pool != "0x0000000000000000000000000000000000000000":
+                                    dex.pools.add(to_checksum_address(pool))
+
+                            except Exception as e:
+                                logger.debug(
+                                    f"Failed to get pool for {token0}/{token1} (stable={stable}): {e}"
+                                )
+
+        return dex.pools
+
     async def discover_pools_v2(
         self,
         factory_contract: Any,
@@ -276,39 +345,176 @@ class DexManager:
                 abi=dex.factory_abi
             )
 
-            # Try V3 style first
+            # Try Aerodrome style first
             try:
                 await factory_contract.functions.getPool(
                     "0x0000000000000000000000000000000000000000",
                     "0x0000000000000000000000000000000000000000",
-                    3000
+                    True
                 ).call()
-                return await self.discover_pools_v3(
+                return await self.discover_pools_aerodrome(
                     factory_contract,
                     dex,
                     token_addresses
                 )
             except Exception:
-                # Try V2 style
+                # Try V3 style
                 try:
-                    await factory_contract.functions.getPair(
+                    await factory_contract.functions.getPool(
                         "0x0000000000000000000000000000000000000000",
-                        "0x0000000000000000000000000000000000000000"
+                        "0x0000000000000000000000000000000000000000",
+                        3000
                     ).call()
-                    return await self.discover_pools_v2(
+                    return await self.discover_pools_v3(
                         factory_contract,
                         dex,
                         token_addresses
                     )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to discover pools for {dex_name}: {e}"
-                    )
-                    return set()
+                except Exception:
+                    # Try V2 style
+                    try:
+                        await factory_contract.functions.getPair(
+                            "0x0000000000000000000000000000000000000000",
+                            "0x0000000000000000000000000000000000000000"
+                        ).call()
+                        return await self.discover_pools_v2(
+                            factory_contract,
+                            dex,
+                            token_addresses
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to discover pools for {dex_name}: {e}"
+                        )
+                        return set()
 
         except Exception as e:
             logger.warning(f"Failed to discover pools for {dex_name}: {e}")
             return set()
+
+    @with_retry(retries=3, delay=1.0)
+    async def get_price(
+        self,
+        dex_name: str,
+        token_in: ChecksumAddress,
+        token_out: ChecksumAddress,
+        amount_in: int
+    ) -> int:
+        """
+        Get output amount for token swap.
+
+        Args:
+            dex_name: DEX name
+            token_in: Input token address
+            token_out: Output token address
+            amount_in: Input amount in wei
+
+        Returns:
+            Output amount in wei
+        """
+        try:
+            dex = self.dexes[dex_name]
+            pool = await self.get_pool(dex_name, token_in, token_out)
+            
+            if not pool:
+                return 0
+
+            pool_contract = self.web3_manager.w3.eth.contract(
+                address=pool,
+                abi=dex.pool_abi
+            )
+
+            # Try V3 style first
+            try:
+                slot0 = await pool_contract.functions.slot0().call()
+                sqrtPriceX96 = slot0[0]
+                amount_out = amount_in * sqrtPriceX96 * sqrtPriceX96 // (2**192)
+                return amount_out
+            except Exception:
+                # Try V2 style
+                try:
+                    reserves = await pool_contract.functions.getReserves().call()
+                    reserve_in = reserves[0] if token_in < token_out else reserves[1]
+                    reserve_out = reserves[1] if token_in < token_out else reserves[0]
+                    
+                    # Using constant product formula: dy = y * dx / (x + dx)
+                    amount_out = (amount_in * reserve_out) // (reserve_in + amount_in)
+                    return amount_out
+                except Exception as e:
+                    logger.debug(f"Failed to get price from pool {pool}: {e}")
+                    return 0
+
+        except Exception as e:
+            logger.debug(f"Failed to get price for {token_in}/{token_out} on {dex_name}: {e}")
+            return 0
+
+    @with_retry(retries=3, delay=1.0)
+    async def get_pool(
+        self,
+        dex_name: str,
+        token_in: ChecksumAddress,
+        token_out: ChecksumAddress
+    ) -> Optional[ChecksumAddress]:
+        """
+        Get pool address for token pair.
+
+        Args:
+            dex_name: DEX name
+            token_in: Input token address
+            token_out: Output token address
+
+        Returns:
+            Pool address or None if not found
+        """
+        try:
+            dex = self.dexes[dex_name]
+            
+            # Discover pools if needed
+            if not dex.pools:
+                await self.discover_pools(dex_name, [token_in, token_out])
+
+            # Find pool with both tokens
+            for pool in dex.pools:
+                pool_contract = self.web3_manager.w3.eth.contract(
+                    address=pool,
+                    abi=dex.pool_abi
+                )
+                
+                try:
+                    token0 = await pool_contract.functions.token0().call()
+                    token1 = await pool_contract.functions.token1().call()
+                    
+                    if (token0 == token_in and token1 == token_out) or \
+                       (token0 == token_out and token1 == token_in):
+                        return pool
+                except Exception:
+                    continue
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Failed to get pool for {token_in}/{token_out} on {dex_name}: {e}")
+            return None
+
+    @with_retry(retries=3, delay=1.0)
+    async def get_fee(
+        self,
+        dex_name: str,
+        pool_address: ChecksumAddress
+    ) -> int:
+        """Get pool fee in basis points."""
+        try:
+            dex = self.dexes[dex_name]
+            pool_contract = self.web3_manager.w3.eth.contract(
+                address=pool_address,
+                abi=dex.pool_abi
+            )
+            
+            fee = await pool_contract.functions.fee().call()
+            return fee
+        except Exception:
+            # Default to 30 bps (0.3%) if fee not found
+            return 30
 
     @with_retry(retries=3, delay=1.0)
     async def get_pool_liquidity(
@@ -348,35 +554,74 @@ class DexManager:
 
         return total_liquidity
 
+    @with_retry(retries=3, delay=1.0)
+    async def calculate_price_impact(
+        self,
+        dex_name: str,
+        pool_address: ChecksumAddress,
+        amount_in: int
+    ) -> float:
+        """
+        Calculate price impact of swap.
+
+        Args:
+            dex_name: DEX name
+            pool_address: Pool address
+            amount_in: Input amount in wei
+
+        Returns:
+            Price impact as decimal (0.01 = 1%)
+        """
+        try:
+            dex = self.dexes[dex_name]
+            pool_contract = self.web3_manager.w3.eth.contract(
+                address=pool_address,
+                abi=dex.pool_abi
+            )
+
+            # Try V3 style first
+            try:
+                liquidity = await pool_contract.functions.liquidity().call()
+                impact = amount_in / liquidity
+                return min(impact, 1.0)  # Cap at 100%
+            except Exception:
+                # Try V2 style
+                try:
+                    reserves = await pool_contract.functions.getReserves().call()
+                    impact = amount_in / (reserves[0] + reserves[1])
+                    return min(impact, 1.0)  # Cap at 100%
+                except Exception as e:
+                    logger.debug(f"Failed to calculate price impact for pool {pool_address}: {e}")
+                    return 1.0  # Assume 100% impact on failure
+
+        except Exception as e:
+            logger.debug(f"Failed to calculate price impact for pool {pool_address}: {e}")
+            return 1.0  # Assume 100% impact on failure
+
+    @with_retry(retries=3, delay=1.0)
+    async def get_supported_tokens(self) -> List[ChecksumAddress]:
+        """
+        Get list of supported tokens across all DEXs.
+
+        Returns:
+            List of token addresses
+        """
+        tokens = set()
+
+        for dex in self.dexes.values():
+            for pool in dex.pools:
+                try:
+                    pool_contract = self.web3_manager.w3.eth.contract(
+                        address=pool,
+                        abi=dex.pool_abi
+                    )
+                    tokens.add(await pool_contract.functions.token0().call())
+                    tokens.add(await pool_contract.functions.token1().call())
+                except Exception:
+                    continue
+
+        return sorted(list(tokens))
+
     async def close(self):
         """Clean up resources."""
         pass
-
-async def create_dex_manager(
-    web3_manager: Web3Client,
-    config: Dict[str, Any]
-) -> DexManager:
-    """
-    Create a new DEX manager.
-
-    Args:
-        web3_manager: Web3 client instance
-        config: Configuration dictionary
-
-    Returns:
-        DexManager instance
-    """
-    dexes = {}
-
-    for name, dex_config in config['dexes'].items():
-        dexes[name] = DexInfo(
-            name=name,
-            factory_address=dex_config['factory'],
-            router_address=dex_config['router'],
-            fee_tiers=dex_config.get('fee_tiers', [30, 100, 500, 3000, 10000])
-        )
-
-    return DexManager(
-        web3_manager=web3_manager,
-        dexes=dexes
-    )

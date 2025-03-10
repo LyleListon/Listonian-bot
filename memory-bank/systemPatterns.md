@@ -1,148 +1,127 @@
-# System Patterns and Best Practices
-
-## CRITICAL: Live Data Only
-- NO mock/fake/placeholder/simulated data
-- Direct blockchain interaction only
-- Real contract calls only
-- Live price feeds only
-- Actual token operations only
-
-## Code Organization
-
-### Production Structure
-- Core functionality with live data
-- Direct blockchain integration
-- Real contract interactions
-- Live monitoring systems
-
-### Dependency Management
-- Live blockchain node connection
-- Real contract dependencies
-- Actual token interfaces
-- Production configuration
-
-## Async Patterns
-
-### Live Operations
-- Real-time blockchain queries
-- Live contract interactions
-- Actual transaction handling
-- Production error management
-
-### Production Retry
-- Live operation retries
-- Real error recovery
-- Actual state management
-- Production backoff
-
-## Contract Interaction
-
-### Live Integration
-- Direct contract calls
-- Real ABI usage
-- Live transaction handling
-- Actual state queries
-
-### Pool Management
-- Live pool discovery
-- Real liquidity tracking
-- Actual pair validation
-- Live state monitoring
-
-## Error Handling
-
-### Production Approach
-- Live error detection
-- Real-time recovery
-- Actual state preservation
-- Production logging
-
-### Live Validation
-- Real-time input checks
-- Live response validation
-- Actual balance verification
-- Production state checks
-
-## Security Patterns
-
-### MEV Protection
-- Live Flashbots usage
-- Real bundle submission
-- Actual transaction privacy
-- Live front-running prevention
-
-### Price Protection
-- Live price validation
-- Real slippage control
-- Actual liquidity checks
-- Live oracle monitoring
-
-## Resource Management
-
-### Live Connections
-- Real node connections
-- Live pool management
-- Actual state tracking
-- Production cleanup
-
-### Production Management
-- Live memory tracking
-- Real resource limits
-- Actual cleanup procedures
-- Production monitoring
-
-## Production Patterns
-
-### Live Operation
-- Real-time processing
-- Live data handling
-- Actual state management
-- Production monitoring
-
-### Live Data
-- Direct blockchain queries
-- Real contract calls
-- Actual token operations
-- Live price feeds
-
-## Logging and Monitoring
-
-### Production Levels
-- ERROR: Live operation failures
-- WARNING: Real-time issues
-- INFO: Actual progress
-- DEBUG: Live flow details
-
-### Live Metrics
-- Real-time performance
-- Actual resource usage
-- Live success rates
-- Production profit tracking
+# System Architecture Patterns
 
 ## Configuration Management
+- Production config in configs/production.json
+- Required sections:
+  * web3: RPC and chain settings
+  * flashbots: Authentication and relay settings
+  * balancer: Vault addresses
+  * tokens: Token addresses and decimals
+- Validation through config_loader.py
+- Default values for optional settings
 
-### Production Config
-- Live environment settings
-- Real credentials
-- Actual feature flags
-- Production tuning
+## Authentication Patterns
+1. Wallet Authentication:
+   - Private key in web3.wallet_key
+   - Used for transaction signing
+   - Requires ETH for gas
 
-### Live Validation
-- Real-time schema checks
-- Live type validation
-- Actual range verification
-- Production dependency checks
+2. Flashbots Authentication:
+   - Separate key in flashbots.auth_key
+   - Used only for bundle signing
+   - No funds required
+   - Generated through scripts/generate_flashbots_auth.py
+
+## Integration Patterns
+1. Flash Loan Integration:
+   - Balancer as primary provider
+   - Async transaction building
+   - Profit validation before execution
+   - Resource cleanup after use
+
+2. Flashbots Integration:
+   - Private transaction routing
+   - Bundle optimization
+   - MEV protection
+   - Profit simulation
+
+3. DEX Integration:
+   - Base class inheritance
+   - V2/V3 specialization
+   - Async pool discovery
+   - Price impact calculation
+
+## Resource Management
+1. Initialization:
+   - Web3 client setup
+   - DEX manager creation
+   - Flash loan setup
+   - Flashbots provider initialization
+
+2. Cleanup:
+   - Resource release
+   - Connection cleanup
+   - Lock management
+   - Error handling
+
+## Error Handling
+1. Configuration Errors:
+   - Missing fields validation
+   - Type checking
+   - Format validation
+   - Default values
+
+2. Runtime Errors:
+   - Transaction failures
+   - Network issues
+   - Liquidity problems
+   - Price impact limits
+
+3. Recovery Patterns:
+   - Retry mechanisms
+   - Fallback options
+   - State preservation
+   - Logging and monitoring
+
+## Security Patterns
+1. Key Management:
+   - Separate authentication keys
+   - Secure storage
+   - Access control
+   - Key rotation
+
+2. Transaction Security:
+   - Slippage protection
+   - Price validation
+   - Gas optimization
+   - MEV protection
+
+3. Error Prevention:
+   - Input validation
+   - State verification
+   - Balance checks
+   - Profit confirmation
 
 ## Performance Patterns
+1. Async Operations:
+   - Pure asyncio implementation
+   - Parallel processing
+   - Batch operations
+   - Resource pooling
 
-### Live Optimization
-- Real-time processing
-- Live resource pooling
-- Actual load balancing
-- Production caching
+2. Caching:
+   - Price data caching
+   - Pool information
+   - Token data
+   - Configuration
 
-### Production Monitoring
-- Live performance tracking
-- Real resource monitoring
-- Actual bottleneck detection
-- Production optimization
+3. Optimization:
+   - Gas usage
+   - Path finding
+   - Bundle submission
+   - Flash loan execution
+
+## Monitoring Patterns
+1. Logging:
+   - Structured logging
+   - Error tracking
+   - Performance metrics
+   - Success rates
+
+2. Metrics:
+   - Profit tracking
+   - Gas usage
+   - Execution time
+   - Success rate
+
+Remember: These patterns should be consistently applied across all new development and updates to maintain system integrity and performance.

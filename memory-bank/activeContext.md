@@ -1,64 +1,46 @@
 # Active Development Context
 
-## CRITICAL PRIORITY
-Immediate focus is on deploying the bot and dashboard with LIVE DATA ONLY:
-- Remove all mock/fake/placeholder/simulated data
-- Use only real blockchain data
-- Connect to actual DEX contracts
-- Live price feeds only
-- Real-time monitoring
-
 ## Current Focus
-1. Production Deployment
-   - Live blockchain integration
-   - Real DEX connections
-   - Actual token contracts
-   - Live price data
-
-2. Dashboard Deployment
-   - Real-time data display
-   - Live transaction monitoring
-   - Actual profit tracking
-   - Real pool statistics
-
-3. Data Sources
-   - Direct blockchain queries
-   - Live DEX contract calls
-   - Real-time price feeds
-   - Actual pool states
+- Implementing Flashbots integration for MEV protection
+- Setting up flash loan functionality through Balancer
+- Configuring production environment
 
 ## Recent Changes
-1. Updated web3_manager.py for live blockchain interaction
-2. Enhanced dex_manager.py to handle real DEX contracts
-3. Improved path_finder.py for actual pool discovery
-4. Removed all test/mock data
+1. Generated new Flashbots authentication key:
+   - Address: 0xe8F1Fb45ccfd9647e29D12AB0f4EE2584078c3CB
+   - Private Key: Added to configs/production.json
 
-## Current Challenges
-- Ensuring reliable live data feeds
-- Handling real-time contract interactions
-- Managing production environment
-- Monitoring live transactions
+2. Updated configuration:
+   - Fixed Flashbots relay URL to https://relay.flashbots.net
+   - Added Flashbots auth key to config
+   - Configured Balancer vault address
+
+3. Identified Issues:
+   - Config loader (config_loader.py) needs updating to properly handle production.json
+   - Current validation doesn't match production config structure
+   - Default config path points to wrong file
 
 ## Next Steps
-1. Complete live data integration
-2. Deploy production environment
-3. Launch real-time monitoring
-4. Enable live trading
+1. Update config_loader.py to:
+   - Set DEFAULT_CONFIG_PATH to "configs/production.json"
+   - Update validation for production config structure
+   - Add proper error handling for Flashbots config
 
-## Open Questions
-- Production deployment strategy?
-- Live monitoring approach?
-- Error handling in production?
-- Recovery procedures?
+2. Test configuration loading:
+   - Verify Flashbots auth key is properly loaded
+   - Ensure all required sections are validated
+   - Check proper error messages for missing fields
+
+3. Continue with Flashbots integration:
+   - Test bundle submission
+   - Implement profit calculation
+   - Add MEV protection
+
+## Current Blockers
+- Config loader needs updating to properly handle production configuration
+- Flashbots auth key not being recognized despite being in config file
 
 ## Technical Debt
-- Remove remaining test data
-- Enhance error handling
-- Improve logging
-- Optimize performance
-
-## Security Considerations
-- Live transaction validation
-- Real-time balance checks
-- Production security measures
-- Live monitoring alerts
+- Config loader needs refactoring to handle multiple config file formats
+- Better error messages needed for config validation
+- Consider adding config schema validation

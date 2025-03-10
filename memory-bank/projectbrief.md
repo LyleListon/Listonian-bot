@@ -1,121 +1,100 @@
-# Arbitrage Bot Project Brief
+# Project Brief
 
-## CRITICAL PRIORITY: LIVE DEPLOYMENT
-The immediate focus is deploying the bot and dashboard with LIVE DATA ONLY:
-- NO mock/fake/placeholder/simulated data
-- Direct blockchain integration
-- Real DEX contract interactions
-- Live price feeds
-- Actual token balances
+## Overview
+Listonian-bot is a high-performance arbitrage bot designed to execute profitable trades across multiple DEXs using flash loans and Flashbots protection. The system focuses on maximizing profits while ensuring secure and efficient execution.
 
-## Current State
-The project is an arbitrage bot for cryptocurrency trading that must use:
-- Live blockchain data
-- Real DEX contracts (V2 and V3)
-- Actual flash loan execution
-- Live Flashbots integration
-- Real-time path finding
+## Core Objectives
+1. Execute profitable arbitrage trades
+2. Protect against MEV attacks
+3. Optimize gas usage and execution speed
+4. Ensure transaction security and reliability
+5. Maximize capital efficiency through flash loans
 
-### Recent Progress
-- Implemented live DEX interactions
-- Added real contract integrations
-- Enhanced live pool discovery
-- Removed test/mock data
-
-### Active Development
-Currently focused on:
-- Production deployment
-- Live data integration
-- Real-time monitoring
-- Error handling
+## Technical Architecture
+- Python 3.12+ based implementation
+- Pure asyncio for asynchronous operations
+- Thread-safe design with proper locking
+- Modular DEX integration system
+- Comprehensive testing suite
+- Real-time monitoring and alerts
 
 ## Key Components
+1. Arbitrage Core
+   - Path finding algorithms
+   - Profit calculation
+   - Transaction building
+   - Execution management
 
-### Core Systems
-1. Web3 Manager
-   - Live blockchain interaction
-   - Real transaction management
-   - Production configuration
+2. DEX Integration
+   - Standardized interfaces
+   - Version-specific implementations
+   - Price monitoring
+   - Liquidity analysis
 
-2. DEX Manager
-   - Live DEX integration
-   - Real pool discovery
-   - Actual contract calls
+3. Flash Loan System
+   - Multiple provider support
+   - Balance verification
+   - Atomic execution
+   - Profit validation
 
-3. Path Finder
-   - Live path discovery
-   - Real profit analysis
-   - Actual gas optimization
+4. Flashbots Integration
+   - RPC connection
+   - Bundle submission
+   - MEV protection
+   - Transaction privacy
 
-4. Flash Loan Manager
-   - Live Balancer integration
-   - Real transaction bundling
-   - Actual profit validation
+5. Monitoring System
+   - Real-time metrics
+   - Error tracking
+   - Performance monitoring
+   - Profit analysis
 
-### Integration Points
-- Live Flashbots RPC
-- Real DEX contracts
-- Actual token contracts
-- Live Balancer vault
+## Repository Structure
+- /arbitrage_bot - Core implementation
+- /abi - Contract ABIs
+- /configs - Configuration files
+- /docs - Documentation
+- /tests - Test suite
+- /examples - Example implementations
+- /memory-bank - Project context and documentation
+
+## Development Practices
+- Version control with Git
+- Clean repository structure
+- Comprehensive documentation
+- Thorough testing
+- Regular updates
+- Security-first approach
+
+## Success Metrics
+1. Profit per Trade
+   - Net profit after gas
+   - Success rate
+   - Failed transaction rate
+   - Capital efficiency
+
+2. Performance
+   - Path discovery speed
+   - Execution latency
+   - Gas optimization
+   - Resource usage
+
+3. Reliability
+   - System uptime
+   - Error rate
+   - Recovery time
+   - Transaction success rate
+
+## Current Status
+- Repository initialized and structured
+- Core components in development
+- Flashbots integration in progress
+- Testing infrastructure being set up
+- Documentation being maintained
 
 ## Next Steps
-
-### Immediate Tasks
-1. Deploy production environment
-   - Live blockchain connection
-   - Real contract interactions
-   - Actual token handling
-
-2. Launch dashboard
-   - Real-time data display
-   - Live transaction monitoring
-   - Actual profit tracking
-
-3. Enable monitoring
-   - Live performance tracking
-   - Real error detection
-   - Actual resource management
-
-### Future Enhancements
-1. Security improvements
-   - Live MEV protection
-   - Real price validation
-   - Actual attack prevention
-
-2. Feature additions
-   - Live multi-path arbitrage
-   - Real profit strategies
-   - Additional live DEX support
-
-## Technical Requirements
-
-### Core Requirements
-- Python 3.12+
-- Live asyncio operations
-- Real thread safety
-- Production error handling
-
-### Performance Goals
-- Live path discovery
-- Real pool scanning
-- Actual gas optimization
-- Quick execution
-
-### Security Measures
-- Live price validation
-- Real slippage protection
-- Actual MEV protection
-- Live balance verification
-
-## Notes for Next Assistant
-1. Focus on production deployment
-2. Ensure all data is live
-3. Remove any remaining test data
-4. Implement real-time monitoring
-5. Enable live trading
-
-The project must operate with:
-- Only live blockchain data
-- Real contract interactions
-- Actual token operations
-- Live price feeds
+1. Complete Flashbots integration
+2. Implement multi-path optimization
+3. Enhance testing coverage
+4. Set up monitoring system
+5. Deploy to production

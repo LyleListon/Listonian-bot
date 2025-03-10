@@ -1,587 +1,358 @@
 """
-Flashbots Bundle
+Flashbots Bundle Module
 
-This module contains components for creating, managing, and
-submitting transaction bundles through Flashbots.
+This module provides functionality for:
+- Bundle creation and optimization
+- Transaction simulation
+- Profit validation
+- MEV protection
 """
 
 import asyncio
 import logging
-import time
-from typing import Dict, List, Any, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from eth_typing import HexStr, ChecksumAddress
+from eth_utils import to_checksum_address
+from web3 import Web3
 
-from ..interfaces import Web3Client, Transaction, TransactionReceipt
+from ....utils.async_manager import with_retry, AsyncLock
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class BundleTransaction:
+    """Represents a transaction in a Flashbots bundle."""
+    signed_transaction: HexStr
+    hash: HexStr
+    account: ChecksumAddress
+    gas_limit: int
+    gas_price: int
+    nonce: int
 
-class FlashbotsBundleResponse:
-    """
-    Response from a Flashbots bundle submission.
-    
-    Contains bundle ID, status, and other relevant information.
-    """
-    
-    def __init__(
-        self,
-        bundle_hash: str,
-        response_data: Dict[str, Any]
-    ):
-        """
-        Initialize a bundle response.
-        
-        Args:
-            bundle_hash: Hash of the submitted bundle
-            response_data: Raw response data from Flashbots
-        """
-        self.bundle_hash = bundle_hash
-        self.response_data = response_data
-        self.submission_time = time.time()
-        
-        # Parse standard fields
-        self.target_block = response_data.get("targetBlock")
-        self.simulation_result = response_data.get("simulationResult")
-        self.simulation_success = False
-        
-        if self.simulation_result:
-            self.simulation_success = self.simulation_result.get("success", False)
-            
-        # Status tracking
-        self.included = False
-        self.included_block = None
-        self.mined_transactions = []
-    
-    def update_status(self, status_data: Dict[str, Any]) -> None:
-        """
-        Update the bundle status with fresh data.
-        
-        Args:
-            status_data: New status data from Flashbots
-        """
-        if not status_data:
-            return
-            
-        self.included = status_data.get("included", self.included)
-        self.included_block = status_data.get("includedBlock", self.included_block)
-        
-        if "transactions" in status_data:
-            self.mined_transactions = status_data["transactions"]
-    
-    @property
-    def is_included(self) -> bool:
-        """Check if the bundle was included in a block."""
-        return self.included
-    
-    @property
-    def is_simulation_successful(self) -> bool:
-        """Check if the bundle simulation was successful."""
-        return self.simulation_success
-    
-    def __repr__(self) -> str:
-        """Get string representation of the bundle response."""
-        status = "Included" if self.included else "Pending"
-        return (
-            f"FlashbotsBundleResponse(hash={self.bundle_hash}, "
-            f"status={status}, "
-            f"target_block={self.target_block})"
-        )
-
+@dataclass
+class BundleSimulation:
+    """Results of a bundle simulation."""
+    success: bool
+    error: Optional[str]
+    revert_reason: Optional[str]
+    gas_used: int
+    effective_gas_price: int
+    mev_value: int
+    state_changes: List[Dict[str, Any]]
 
 class FlashbotsBundle:
-    """
-    Container for a bundle of transactions to be submitted via Flashbots.
-    
-    Handles bundle creation, signing, simulation, and submission.
-    """
-    
+    """Manages Flashbots bundle creation and optimization."""
+
     def __init__(
         self,
-        web3_client: Web3Client,
-        flashbots_provider: Any,  # Avoid circular import
-        config: Dict[str, Any] = None
+        w3: Web3,
+        relay_url: str,
+        auth_signer: Any,
+        chain_id: int = 8453  # Base mainnet
     ):
         """
-        Initialize a Flashbots bundle.
-        
+        Initialize Flashbots bundle.
+
         Args:
-            web3_client: Web3 client for blockchain interactions
-            flashbots_provider: Flashbots provider for submission
-            config: Configuration dictionary
+            w3: Web3 instance
+            relay_url: Flashbots relay URL
+            auth_signer: Authentication signer
+            chain_id: Chain ID
         """
-        self.web3_client = web3_client
-        self.flashbots_provider = flashbots_provider
-        self.config = config or {}
-        
-        # Configuration
-        self.block_offset = int(self.config.get("block_offset", 1))
-        self.bundle_validity_minutes = int(self.config.get("bundle_validity_minutes", 2))
-        self.simulation_required = bool(self.config.get("simulation_required", True))
-        self.min_profit_wei = int(self.config.get("min_profit_wei", 0))
-        
-        # State
-        self.transactions: List[Transaction] = []
-        self.tx_hashes: List[str] = []
-        self.signed_transactions: List[Dict[str, Any]] = []
-        self.responses: List[FlashbotsBundleResponse] = []
-        self._bundle_lock = asyncio.Lock()
-        
-        logger.info("FlashbotsBundle initialized")
-    
-    async def add_transaction(
+        self.w3 = w3
+        self.relay_url = relay_url
+        self.auth_signer = auth_signer
+        self.chain_id = chain_id
+
+        # Initialize locks
+        self._simulation_lock = AsyncLock()
+        self._optimization_lock = AsyncLock()
+
+        # Bundle settings
+        self.max_simulations = 5
+        self.min_profit = Web3.to_wei(0.01, 'ether')  # 0.01 ETH
+        self.max_gas_price = Web3.to_wei(500, 'gwei')  # 500 gwei
+        self.max_slippage = 0.05  # 5% max slippage
+
+    async def _estimate_base_fee(self, block_number: Optional[int] = None) -> int:
+        """Estimate base fee for target block."""
+        if block_number is None:
+            block_number = await self.w3.eth.block_number
+
+        block = await self.w3.eth.get_block(block_number)
+        next_base_fee = block['base_fee_per_gas'] * 1.125  # 12.5% buffer
+        return int(next_base_fee)
+
+    async def _estimate_priority_fee(self) -> int:
+        """Estimate priority fee based on recent blocks."""
+        latest_block = await self.w3.eth.block_number
+        total_priority_fee = 0
+        blocks_to_check = 10
+
+        for i in range(latest_block - blocks_to_check + 1, latest_block + 1):
+            block = await self.w3.eth.get_block(i, True)
+            for tx in block['transactions']:
+                if 'max_priority_fee_per_gas' in tx:
+                    total_priority_fee += tx['max_priority_fee_per_gas']
+
+        avg_priority_fee = total_priority_fee / (blocks_to_check * len(block['transactions']))
+        return int(avg_priority_fee * 1.2)  # 20% buffer
+
+    @with_retry(retries=3, delay=1.0)
+    async def simulate_bundle(
         self,
-        transaction: Transaction,
-        sign_immediately: bool = True
-    ) -> None:
+        transactions: List[BundleTransaction],
+        block_number: Optional[int] = None,
+        state_block_number: Optional[int] = None,
+        timestamp: Optional[int] = None,
+        state_overrides: Optional[Dict[str, Any]] = None
+    ) -> BundleSimulation:
         """
-        Add a transaction to the bundle.
-        
+        Simulate bundle execution.
+
         Args:
-            transaction: Transaction to add
-            sign_immediately: Whether to sign the transaction immediately
-        """
-        async with self._bundle_lock:
-            logger.info(f"Adding transaction to bundle: {transaction}")
-            
-            # Add to tracked transactions
-            self.transactions.append(transaction)
-            
-            # Sign immediately if requested
-            if sign_immediately:
-                await self._sign_transaction(transaction)
-    
-    async def add_transactions(
-        self,
-        transactions: List[Transaction],
-        sign_immediately: bool = True
-    ) -> None:
-        """
-        Add multiple transactions to the bundle.
-        
-        Args:
-            transactions: List of transactions to add
-            sign_immediately: Whether to sign the transactions immediately
-        """
-        async with self._bundle_lock:
-            logger.info(f"Adding {len(transactions)} transactions to bundle")
-            
-            # Add to tracked transactions
-            self.transactions.extend(transactions)
-            
-            # Sign immediately if requested
-            if sign_immediately:
-                for tx in transactions:
-                    await self._sign_transaction(tx)
-    
-    async def _sign_transaction(
-        self,
-        transaction: Transaction
-    ) -> None:
-        """
-        Sign a transaction and add it to the signed transactions list.
-        
-        Args:
-            transaction: Transaction to sign
-        """
-        try:
-            # Ensure transaction is fully formed
-            if not transaction.from_address:
-                transaction.from_address = self.web3_client.get_default_account()
-            
-            if transaction.nonce is None:
-                nonce = await self.web3_client.get_transaction_count(transaction.from_address)
-                transaction.nonce = nonce
-            
-            # Get gas parameters if not set
-            if not transaction.gas:
-                gas_estimate = await self.web3_client.estimate_gas(transaction)
-                # Add 20% buffer for safety
-                transaction.gas = int(gas_estimate * 1.2)
-            
-            # Get gas price if not set (for legacy transactions)
-            if not transaction.gas_price and not (transaction.max_fee_per_gas and transaction.max_priority_fee_per_gas):
-                gas_price = await self.web3_client.get_gas_price()
-                # Add 10% to gas price for better inclusion chances
-                transaction.gas_price = int(gas_price * 1.1)
-            
-            # Sign the transaction
-            signed_tx = await self.web3_client.sign_transaction(transaction)
-            
-            if not signed_tx:
-                logger.error("Failed to sign transaction for bundle")
-                return
-            
-            # Add to signed transactions
-            signed_bundle_tx = {
-                "hash": signed_tx.hash,
-                "raw": signed_tx.raw_transaction.hex(),
-                "tx": transaction
-            }
-            
-            self.signed_transactions.append(signed_bundle_tx)
-            self.tx_hashes.append(signed_tx.hash)
-            logger.info(f"Transaction signed and added to bundle: {signed_tx.hash}")
-            
-        except Exception as e:
-            logger.error(f"Error signing transaction: {e}")
-    
-    async def sign_all_transactions(self) -> None:
-        """Sign all transactions in the bundle that aren't already signed."""
-        async with self._bundle_lock:
-            # Find transactions that aren't signed yet
-            tx_hashes_set = set(self.tx_hashes)
-            
-            for tx in self.transactions:
-                # Create temporary tx hash for checking
-                temp_hash = f"{tx.from_address}:{tx.nonce}"
-                
-                if temp_hash not in tx_hashes_set:
-                    await self._sign_transaction(tx)
-    
-    async def simulate(self) -> Dict[str, Any]:
-        """
-        Simulate the bundle to validate execution and potential profit.
-        
+            transactions: List of transactions
+            block_number: Optional target block number
+            state_block_number: Optional state block number
+            timestamp: Optional timestamp
+            state_overrides: Optional state overrides
+
         Returns:
-            Simulation results including gas used, execution success,
-            and potential profit information
+            Simulation results
         """
-        logger.info("Simulating Flashbots bundle")
-        
-        async with self._bundle_lock:
-            # Ensure all transactions are signed
-            await self.sign_all_transactions()
-            
-            if not self.signed_transactions:
-                logger.error("No signed transactions to simulate")
-                return {"success": False, "error": "No signed transactions"}
-            
-            # Submit for simulation
+        async with self._simulation_lock:
             try:
-                result = await self.flashbots_provider.simulate_bundle(self.signed_transactions)
-                
-                if not result:
-                    logger.warning("Bundle simulation returned no result")
-                    return {"success": False, "error": "Simulation returned no result"}
-                
-                # Log simulation results
-                if result.get("results"):
-                    successful_txs = sum(1 for r in result["results"] if r.get("success", False))
-                    logger.info(f"Bundle simulation: {successful_txs}/{len(result['results'])} transactions successful")
-                
-                # Check for simulation errors
-                if "error" in result:
-                    logger.error(f"Bundle simulation error: {result['error']}")
-                
-                # Calculate profit/cost
-                profit_analysis = self._analyze_simulation_profit(result)
-                result.update(profit_analysis)
-                
-                return result
-                
-            except Exception as e:
-                logger.error(f"Error simulating bundle: {e}")
-                return {"success": False, "error": str(e)}
-    
-    def _analyze_simulation_profit(
-        self,
-        simulation_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Analyze the simulation result to determine profit.
-        
-        Args:
-            simulation_result: Result from Flashbots simulation
-            
-        Returns:
-            Analysis including profit, cost, and profit-to-cost ratio
-        """
-        # Default analysis result
-        analysis = {
-            "profitable": False,
-            "profit_wei": 0,
-            "cost_wei": 0,
-            "profit_ratio": 0.0
-        }
-        
-        # Extract coinbase payments (direct profit indication)
-        coinbase_diff = 0
-        if "coinbaseDiff" in simulation_result:
-            coinbase_diff = int(simulation_result["coinbaseDiff"], 16) if isinstance(simulation_result["coinbaseDiff"], str) else int(simulation_result["coinbaseDiff"])
-            analysis["profit_wei"] += coinbase_diff
-        
-        # Calculate gas costs
-        gas_used = 0
-        gas_price = 0
-        
-        if "results" in simulation_result:
-            for tx_result in simulation_result["results"]:
-                if tx_result.get("gasUsed"):
-                    gas_used += int(tx_result["gasUsed"])
-                
-                # Use max of gas prices for conservative estimate
-                if "gasPrice" in tx_result:
-                    tx_gas_price = int(tx_result["gasPrice"], 16) if isinstance(tx_result["gasPrice"], str) else int(tx_result["gasPrice"])
-                    gas_price = max(gas_price, tx_gas_price)
-        
-        # Calculate total gas cost
-        gas_cost = gas_used * gas_price
-        analysis["cost_wei"] = gas_cost
-        
-        # Determine if profitable
-        pure_profit = analysis["profit_wei"] - analysis["cost_wei"]
-        analysis["profit_wei"] = pure_profit
-        analysis["profitable"] = pure_profit > self.min_profit_wei
-        
-        # Calculate profit ratio if cost is non-zero
-        if analysis["cost_wei"] > 0:
-            analysis["profit_ratio"] = pure_profit / analysis["cost_wei"]
-        
-        return analysis
-    
-    async def submit(
-        self,
-        target_block_number: Optional[int] = None,
-        simulate_first: bool = True
-    ) -> Optional[FlashbotsBundleResponse]:
-        """
-        Submit the bundle to Flashbots.
-        
-        Args:
-            target_block_number: Target block for bundle inclusion
-            simulate_first: Whether to simulate before submission
-            
-        Returns:
-            Bundle response if submission was successful
-        """
-        logger.info("Preparing to submit Flashbots bundle")
-        
-        async with self._bundle_lock:
-            # Ensure all transactions are signed
-            await self.sign_all_transactions()
-            
-            if not self.signed_transactions:
-                logger.error("No signed transactions to submit")
-                return None
-            
-            # Simulate first if requested
-            if simulate_first and self.simulation_required:
-                simulation_result = await self.simulate()
-                
-                if not simulation_result.get("success", False):
-                    logger.error("Bundle simulation failed, aborting submission")
-                    return None
-                
-                # Check for profitability if minimum is set
-                if self.min_profit_wei > 0 and not simulation_result.get("profitable", False):
-                    logger.warning(
-                        f"Bundle not profitable enough. Profit: {simulation_result.get('profit_wei', 0)} wei, "
-                        f"Minimum: {self.min_profit_wei} wei"
-                    )
-                    return None
-            
-            # Submit the bundle
-            try:
-                # Get target block if not provided
-                if target_block_number is None:
-                    current_block = await self.web3_client.get_block_number()
-                    target_block_number = current_block + self.block_offset
-                
-                # Set up bundle parameters
-                bundle_hash = await self.flashbots_provider.send_bundle(self.signed_transactions)
-                
-                if not bundle_hash:
-                    logger.error("Failed to submit bundle")
-                    return None
-                
-                # Create response object
-                response_data = {
-                    "targetBlock": target_block_number,
-                    "simulationResult": None  # Will be populated later if needed
+                # Get current block if none provided
+                if block_number is None:
+                    block_number = await self.w3.eth.block_number
+
+                if state_block_number is None:
+                    state_block_number = block_number - 1
+
+                if timestamp is None:
+                    block = await self.w3.eth.get_block(block_number)
+                    timestamp = block['timestamp']
+
+                # Prepare simulation request
+                params = {
+                    "txs": [tx.signed_transaction for tx in transactions],
+                    "blockNumber": hex(block_number),
+                    "stateBlockNumber": hex(state_block_number),
+                    "timestamp": hex(timestamp)
+,
+                    "stateOverrides": state_overrides if state_overrides else {}
                 }
-                
-                # Retrieve simulation result if available
-                if simulate_first and self.simulation_required:
-                    response_data["simulationResult"] = await self.simulate()
-                
-                # Create and store bundle response
-                bundle_response = FlashbotsBundleResponse(bundle_hash, response_data)
-                self.responses.append(bundle_response)
-                
-                logger.info(f"Bundle submitted successfully: {bundle_hash}, targeting block {target_block_number}")
-                return bundle_response
-                
+
+                # Sign request
+                message = self.w3.keccak(text=str(params))
+                signature = self.auth_signer.sign_message(message)
+
+                # Make RPC call
+                response = await self.w3.eth.call({
+                    "to": self.relay_url,
+                    "data": self.w3.eth.abi.encode_abi(
+                        ["tuple(bytes[] txs, bytes32 blockNumber, bytes32 stateBlockNumber, bytes32 timestamp, bytes signature)"],
+                        [params]
+                    )
+                })
+
+                # Parse response
+                result = self.w3.eth.abi.decode_abi(
+                    ["tuple(bool success, string error, string revertReason, uint256 gasUsed, uint256 effectiveGasPrice, uint256 mevValue, tuple(address,uint256)[] stateChanges)"],
+                    response
+                )[0]
+
+                return BundleSimulation(
+                    success=result[0],
+                    error=result[1] if not result[0] else None,
+                    revert_reason=result[2] if not result[0] else None,
+                    gas_used=result[2],
+                    effective_gas_price=result[3],
+                    mev_value=result[4],
+                    state_changes=[{
+                        'address': change[0],
+                        'value': change[1]
+                    } for change in result[5]]
+                )
+
             except Exception as e:
-                logger.error(f"Error submitting bundle: {e}")
-                return None
-    
-    async def check_inclusion(
+                logger.error(f"Bundle simulation failed: {e}")
+                return BundleSimulation(
+                    success=False,
+                    error=str(e),
+                    revert_reason=None,
+                    gas_used=0,
+                    effective_gas_price=0,
+                    mev_value=0,
+                    state_changes=[]
+                )
+
+    @with_retry(retries=3, delay=1.0)
+    async def optimize_bundle(
         self,
-        bundle_hash: str
-    ) -> bool:
+        transactions: List[BundleTransaction],
+        target_block: Optional[int] = None,
+        initial_state: Optional[Dict[str, Any]] = None
+    ) -> Tuple[List[BundleTransaction], BundleSimulation]:
         """
-        Check if a submitted bundle was included in a block.
-        
+        Optimize bundle for maximum profit.
+
         Args:
-            bundle_hash: Hash of the bundle to check
-            
+            transactions: List of transactions
+            target_block: Optional target block number
+            initial_state: Optional initial state overrides
+
         Returns:
-            True if the bundle was included, False otherwise
+            Tuple of (optimized transactions, simulation results)
         """
-        logger.info(f"Checking inclusion for bundle: {bundle_hash}")
-        
+        async with self._optimization_lock:
+            best_profit = -float('inf')
+            best_bundle = None
+            best_results = None
+
+            # Get base fee and priority fee
+            base_fee = await self._estimate_base_fee(target_block)
+            priority_fee = await self._estimate_priority_fee()
+
+            # Try different gas price variations
+            variations = [
+                base_fee + priority_fee,  # Standard
+                int((base_fee + priority_fee) * 1.1),  # +10%
+                int((base_fee + priority_fee) * 1.2),  # +20%
+                int((base_fee + priority_fee) * 0.9),  # -10%
+                int((base_fee + priority_fee) * 0.8)   # -20%
+            ]
+
+            for gas_price in variations:
+                if gas_price > self.max_gas_price:
+                    continue
+
+                # Update gas prices
+                modified_txs = []
+                for tx in transactions:
+                    modified_tx = BundleTransaction(
+                        signed_transaction=tx.signed_transaction,
+                        hash=tx.hash,
+                        account=tx.account,
+                        gas_limit=tx.gas_limit,
+                        gas_price=gas_price,
+                        nonce=tx.nonce
+                    )
+                    modified_txs.append(modified_tx)
+
+                # Simulate bundle
+                results = await self.simulate_bundle(
+                    modified_txs,
+                    target_block,
+                    state_overrides=initial_state
+                )
+
+                if results.success:
+                    profit = results.mev_value - (results.gas_used * results.effective_gas_price)
+                    
+                    # Calculate slippage
+                    initial_balances = {
+                        change['address']: change['value']
+                        for change in results.state_changes
+                    }
+                    
+                    for change in results.state_changes:
+                        if change['address'] in initial_balances:
+                            slippage = abs(change['value'] - initial_balances[change['address']]) / initial_balances[change['address']]
+                            if slippage > self.max_slippage:
+                                logger.warning(f"High slippage detected: {slippage * 100}%")
+                                continue
+                    
+                    if profit > best_profit:
+                        best_profit = profit
+                        best_bundle = modified_txs
+                        best_results = results
+
+            if best_bundle is None:
+                raise ValueError("Failed to optimize bundle: no profitable configuration found")
+
+            return best_bundle, best_results
+
+    @with_retry(retries=3, delay=1.0)
+    async def submit_bundle(
+        self,
+        transactions: List[BundleTransaction],
+        target_block: Optional[int] = None,
+        min_timestamp: Optional[int] = None,
+        max_timestamp: Optional[int] = None,
+        initial_state: Optional[Dict[str, Any]] = None
+    ) -> HexStr:
+        """
+        Submit bundle to Flashbots.
+
+        Args:
+            transactions: List of transactions
+            target_block: Optional target block number
+            min_timestamp: Optional minimum timestamp
+            initial_state: Optional initial state overrides
+            max_timestamp: Optional maximum timestamp
+
+        Returns:
+            Bundle hash
+        """
         try:
-            # Get latest status
-            stats = await self.flashbots_provider.get_bundle_stats(bundle_hash)
-            
-            if not stats:
-                logger.warning(f"No stats available for bundle {bundle_hash}")
-                return False
-            
-            # Update stored response if we have it
-            for response in self.responses:
-                if response.bundle_hash == bundle_hash:
-                    response.update_status(stats)
-                    
-                    if response.is_included:
-                        logger.info(f"Bundle {bundle_hash} was included in block {response.included_block}")
-                        return True
-            
-            # Check inclusion directly from stats
-            is_included = stats.get("included", False)
-            
-            if is_included:
-                included_block = stats.get("includedBlock")
-                logger.info(f"Bundle {bundle_hash} was included in block {included_block}")
-                return True
-            
-            logger.info(f"Bundle {bundle_hash} not yet included")
-            return False
-            
+            # Get current block if no target provided
+            if target_block is None:
+                target_block = await self.w3.eth.block_number + 1
+
+            # Optimize bundle
+            optimized_txs, sim_results = await self.optimize_bundle(
+                transactions,
+                target_block
+,
+                initial_state
+            )
+
+            # Validate profitability
+            profit = sim_results.mev_value - (sim_results.gas_used * sim_results.effective_gas_price)
+            if profit < self.min_profit:
+                raise ValueError(
+                    f"Bundle not profitable enough. "
+                    f"Expected: {Web3.from_wei(self.min_profit, 'ether')} ETH, "
+                    f"Got: {Web3.from_wei(profit, 'ether')} ETH"
+                )
+
+            # Prepare submission
+            params = {
+                "txs": [tx.signed_transaction for tx in optimized_txs],
+                "blockNumber": hex(target_block),
+                "minTimestamp": hex(min_timestamp if min_timestamp else 0),
+                "maxTimestamp": hex(max_timestamp if max_timestamp else 0)
+            }
+
+            # Sign bundle
+            message = self.w3.keccak(text=str(params))
+            signature = self.auth_signer.sign_message(message)
+
+            # Submit bundle
+            response = await self.w3.eth.call({
+                "to": self.relay_url,
+                "data": self.w3.eth.abi.encode_abi(
+                    ["tuple(bytes[] txs, bytes32 blockNumber, bytes32 minTimestamp, bytes32 maxTimestamp, bytes signature)"],
+                    [params]
+                )
+            })
+
+            bundle_hash = HexStr(response)
+            logger.info(
+                f"Bundle submitted successfully:\n"
+                f"Hash: {bundle_hash}\n"
+                f"Target block: {target_block}\n"
+                f"Expected profit: {Web3.from_wei(profit, 'ether')} ETH"
+            )
+
+            return bundle_hash
+
         except Exception as e:
-            logger.error(f"Error checking bundle inclusion: {e}")
-            return False
-    
-    async def get_tx_receipts(self) -> List[Optional[TransactionReceipt]]:
-        """
-        Get transaction receipts for all transactions in the bundle.
-        
-        Returns:
-            List of transaction receipts
-        """
-        logger.info("Getting receipts for bundle transactions")
-        
-        receipts: List[Optional[TransactionReceipt]] = []
-        
-        for tx_hash in self.tx_hashes:
-            try:
-                receipt = await self.web3_client.get_transaction_receipt(tx_hash)
-                receipts.append(receipt)
-                
-                if receipt:
-                    logger.info(f"Transaction {tx_hash} status: {'Success' if receipt.status else 'Failed'}")
-                else:
-                    logger.info(f"Transaction {tx_hash} not yet mined")
-                    
-            except Exception as e:
-                logger.error(f"Error getting receipt for {tx_hash}: {e}")
-                receipts.append(None)
-        
-        return receipts
-    
-    async def wait_for_inclusion(
-        self,
-        bundle_hash: str,
-        timeout: float = 60.0,
-        check_interval: float = 2.0
-    ) -> bool:
-        """
-        Wait for a bundle to be included in a block.
-        
-        Args:
-            bundle_hash: Hash of the bundle to wait for
-            timeout: Maximum time to wait in seconds
-            check_interval: Interval between checks in seconds
-            
-        Returns:
-            True if the bundle was included, False if timeout occurred
-        """
-        logger.info(f"Waiting for bundle inclusion: {bundle_hash}")
-        
-        start_time = time.time()
-        
-        while (time.time() - start_time) < timeout:
-            included = await self.check_inclusion(bundle_hash)
-            
-            if included:
-                return True
-            
-            # Wait before checking again
-            await asyncio.sleep(check_interval)
-        
-        logger.warning(f"Bundle {bundle_hash} inclusion wait timed out after {timeout} seconds")
-        return False
-    
-    async def cancel(
-        self,
-        bundle_hash: Optional[str] = None
-    ) -> bool:
-        """
-        Cancel a previously submitted bundle.
-        
-        Args:
-            bundle_hash: Hash of the bundle to cancel, or None to cancel all
-            
-        Returns:
-            True if cancellation was successful
-        """
-        if bundle_hash:
-            logger.info(f"Cancelling bundle: {bundle_hash}")
-            return await self.flashbots_provider.cancel_bundle(bundle_hash)
-        
-        # Cancel all bundles if no specific hash provided
-        logger.info("Cancelling all submitted bundles")
-        
-        success = True
-        for response in self.responses:
-            # Only cancel bundles that aren't already included
-            if not response.is_included:
-                bundle_success = await self.flashbots_provider.cancel_bundle(response.bundle_hash)
-                
-                if not bundle_success:
-                    success = False
-                    logger.warning(f"Failed to cancel bundle: {response.bundle_hash}")
-        
-        return success
-    
-    async def clear(self) -> None:
-        """Clear all transactions and responses from the bundle."""
-        async with self._bundle_lock:
-            logger.info("Clearing bundle")
-            
-            self.transactions = []
-            self.tx_hashes = []
-            self.signed_transactions = []
-            self.responses = []
+            logger.error(f"Bundle submission failed: {e}")
+            raise
 
-
-async def create_flashbots_bundle(
-    web3_client: Web3Client,
-    flashbots_provider: Any,
-    config: Dict[str, Any] = None
-) -> FlashbotsBundle:
-    """
-    Factory function to create a Flashbots bundle.
-    
-    Args:
-        web3_client: Web3 client for blockchain interactions
-        flashbots_provider: Flashbots provider for submission
-        config: Configuration parameters
-        
-    Returns:
-        Initialized Flashbots bundle
-    """
-    return FlashbotsBundle(
-        web3_client=web3_client,
-        flashbots_provider=flashbots_provider,
-        config=config
-    )
+    async def close(self):
+        """Clean up resources."""
+        pass

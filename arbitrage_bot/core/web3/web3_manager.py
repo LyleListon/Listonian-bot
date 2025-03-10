@@ -56,7 +56,7 @@ class Web3Manager:
             self.wallet_address = self.account.address
 
             # Add middleware for signing transactions
-            def sign_transaction(transaction_dict):
+            def sign_transaction(transaction_dict, w3):
                 signed = self.account.sign_transaction(transaction_dict)
                 return signed.rawTransaction
 
@@ -64,7 +64,7 @@ class Web3Manager:
                 lambda make_request, w3: (
                     lambda method, params: make_request(
                         method,
-                        [sign_transaction(params[0])] if method == 'eth_sendRawTransaction'
+                        [sign_transaction(params[0], w3)] if method == 'eth_sendRawTransaction'
                         else params
                     )
                 )
@@ -174,26 +174,51 @@ class Web3Manager:
             await self.w3.provider.close()
 
 async def create_web3_manager(
-    provider_url: str,
-    private_key: Optional[str] = None,
-    chain_id: int = 8453,
-    config: Optional[Dict[str, Any]] = None
+    config: Dict[str, Any]
 ) -> Web3Manager:
     """
     Create a new Web3 manager.
 
     Args:
-        provider_url: Web3 provider URL
-        private_key: Optional private key for transactions
-        chain_id: Chain ID
-        config: Optional configuration dictionary
+        config: Configuration dictionary
 
     Returns:
         Web3Manager instance
+
+    Raises:
+        ValueError: If required web3 configuration is missing or invalid
     """
-    return Web3Manager(
-        provider_url=provider_url,
-        private_key=private_key,
-        chain_id=chain_id,
+    # Validate web3 config
+    if not config.get('web3'):
+        logger.error("Web3 configuration missing in config")
+        raise ValueError("Web3 configuration missing")
+
+    web3_config = config['web3']
+
+    # Validate required fields
+    if not web3_config.get('rpc_url'):
+        logger.error("Web3 RPC URL not configured")
+        raise ValueError("Web3 RPC URL not configured")
+
+    if not web3_config.get('chain_id'):
+        logger.error("Chain ID not configured")
+        raise ValueError("Chain ID not configured")
+
+    # Validate wallet key if provided
+    wallet_key = web3_config.get('wallet_key')
+    if wallet_key:
+        if not wallet_key.startswith('0x') or len(wallet_key) != 66:
+            logger.error("Invalid wallet key format provided")
+            raise ValueError("Invalid wallet key format - must be 32 bytes hex")
+
+    logger.info(f"Creating Web3 manager for chain {web3_config['chain_id']}")
+
+    manager = Web3Manager(
+        provider_url=web3_config['rpc_url'],
+        private_key=web3_config.get('wallet_key'),
+        chain_id=web3_config['chain_id'],
         config=config
     )
+
+    logger.info("Web3 manager created successfully")
+    return manager

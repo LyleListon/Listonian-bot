@@ -7,13 +7,12 @@ This package provides functionality for:
 - Price fetching
 """
 
-from .dex_manager import DexManager, DexInfo, create_dex_manager
+from .dex_manager import DexManager, DexInfo
 from .path_finder import PathFinder, create_path_finder
 
 __all__ = [
     'DexManager',
     'DexInfo',
-    'create_dex_manager',
     'PathFinder',
     'create_path_finder'
 ]

@@ -1,15 +1,27 @@
 """
 Flashbots Package
 
-This package provides:
-- Flashbots integration
-- Bundle submission
+This package provides a Python 3.12+ compatible Flashbots implementation with:
 - MEV protection
+- Bundle optimization
+- Flash loan integration
+- Transaction privacy
 """
 
-from .flashbots_provider import FlashbotsProvider, create_flashbots_provider
+from .bundle import (
+    FlashbotsBundle,
+    BundleTransaction,
+    BundleSimulation
+)
+from .relay import (
+    FlashbotsRelay,
+    create_flashbots_relay
+)
 
 __all__ = [
-    'FlashbotsProvider',
-    'create_flashbots_provider'
+    'FlashbotsBundle',
+    'BundleTransaction',
+    'BundleSimulation',
+    'FlashbotsRelay',
+    'create_flashbots_relay'
 ]
