@@ -1,187 +1,163 @@
 """
 Async Manager Module
 
-This module provides functionality for:
-- Managing asynchronous operations
-- Thread safety with locks
+This module provides utilities for:
+- Async operations management
 - Retry mechanisms
-- Resource management
+- Lock management
 """
 
 import asyncio
 import functools
 import logging
 from typing import Any, Callable, Optional, TypeVar
-from asyncio import Lock, Semaphore
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 
 class AsyncLock:
-    """Thread-safe async lock with context manager support."""
+    """Thread-safe async lock implementation."""
 
     def __init__(self):
-        """Initialize the async lock."""
-        self._lock = Lock()
-        self._owner = None
-        self._depth = 0
+        """Initialize lock."""
+        self._lock = asyncio.Lock()
 
-    async def __aenter__(self) -> 'AsyncLock':
-        """
-        Acquire the lock.
-
-        Returns:
-            Self for context manager support
-        """
-        if self._owner != asyncio.current_task():
-            await self._lock.acquire()
-            self._owner = asyncio.current_task()
-            self._depth = 0
-        self._depth += 1
+    async def __aenter__(self):
+        """Enter async context manager."""
+        await self._lock.acquire()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """
-        Release the lock.
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context manager."""
+        self._lock.release()
 
-        Args:
-            exc_type: Exception type if an error occurred
-            exc_val: Exception value if an error occurred
-            exc_tb: Exception traceback if an error occurred
-        """
-        self._depth -= 1
-        if self._depth == 0:
-            self._owner = None
-            self._lock.release()
-        return None
-
-class AsyncManager:
-    """Manages asynchronous operations and resources."""
-
-    def __init__(self):
-        """Initialize the async manager."""
-        self.locks = {}
-        self.semaphores = {}
-
-    def get_lock(self, name: str) -> Lock:
-        """
-        Get or create a named lock.
-
-        Args:
-            name: Lock identifier
-
-        Returns:
-            Lock instance
-        """
-        if name not in self.locks:
-            self.locks[name] = Lock()
-        return self.locks[name]
-
-    def get_semaphore(self, name: str, value: int = 1) -> Semaphore:
-        """
-        Get or create a named semaphore.
-
-        Args:
-            name: Semaphore identifier
-            value: Maximum number of concurrent operations
-
-        Returns:
-            Semaphore instance
-        """
-        if name not in self.semaphores:
-            self.semaphores[name] = Semaphore(value)
-        return self.semaphores[name]
-
-    async def cleanup(self):
-        """Clean up resources."""
-        self.locks.clear()
-        self.semaphores.clear()
-
-# Global manager instance
-manager = AsyncManager()
-
-def with_lock(name: str) -> Callable:
+def with_retry(retries: int = 3, delay: float = 1.0) -> Callable:
     """
-    Decorator for using a named lock.
+    Retry decorator for async functions.
 
     Args:
-        name: Lock identifier
+        retries: Number of retries
+        delay: Delay between retries in seconds
 
     Returns:
         Decorated function
     """
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            lock = manager.get_lock(name)
-            async with lock:
-                return await func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-def with_semaphore(name: str, value: int = 1) -> Callable:
-    """
-    Decorator for using a named semaphore.
-
-    Args:
-        name: Semaphore identifier
-        value: Maximum number of concurrent operations
-
-    Returns:
-        Decorated function
-    """
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            semaphore = manager.get_semaphore(name, value)
-            async with semaphore:
-                return await func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-def with_retry(
-    retries: int = 3,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    exceptions: tuple = (Exception,)
-) -> Callable:
-    """
-    Decorator for retrying failed operations.
-
-    Args:
-        retries: Maximum number of retries
-        delay: Initial delay between retries in seconds
-        backoff: Multiplier for delay after each retry
-        exceptions: Tuple of exceptions to catch
-
-    Returns:
-        Decorated function
-    """
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            last_exception = None
+            last_error = None
             current_delay = delay
 
             for attempt in range(retries + 1):
                 try:
                     return await func(*args, **kwargs)
-                except exceptions as e:
-                    last_exception = e
+                except Exception as e:
+                    last_error = e
                     if attempt < retries:
                         logger.warning(
-                            f"Attempt {attempt + 1}/{retries} failed: {e}. "
+                            f"Attempt {attempt + 1}/{retries + 1} failed: {e}. "
                             f"Retrying in {current_delay:.1f}s..."
                         )
                         await asyncio.sleep(current_delay)
-                        current_delay *= backoff
+                        current_delay *= 2  # Exponential backoff
                     else:
                         logger.error(
-                            f"All {retries} retries failed. "
-                            f"Last error: {last_exception}"
+                            f"All {retries + 1} attempts failed. "
+                            f"Last error: {e}"
                         )
-                        raise last_exception
+                        raise last_error
 
         return wrapper
     return decorator
+
+class AsyncRetryManager:
+    """Manages retries for async operations."""
+
+    def __init__(
+        self,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        max_delay: float = 60.0
+    ):
+        """
+        Initialize retry manager.
+
+        Args:
+            max_retries: Maximum number of retries
+            base_delay: Initial delay between retries in seconds
+            max_delay: Maximum delay between retries in seconds
+        """
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+        self._lock = AsyncLock()
+
+    async def execute(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any
+    ) -> Any:
+        """
+        Execute function with retry logic.
+
+        Args:
+            func: Function to execute
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Function result
+
+        Raises:
+            Exception: If all retries fail
+        """
+        last_error = None
+        current_delay = self.base_delay
+
+        async with self._lock:
+            for attempt in range(self.max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_error = e
+                    if attempt < self.max_retries:
+                        logger.warning(
+                            f"Attempt {attempt + 1}/{self.max_retries + 1} failed: {e}. "
+                            f"Retrying in {current_delay:.1f}s..."
+                        )
+                        await asyncio.sleep(current_delay)
+                        current_delay = min(
+                            current_delay * 2,  # Exponential backoff
+                            self.max_delay
+                        )
+                    else:
+                        logger.error(
+                            f"All {self.max_retries + 1} attempts failed. "
+                            f"Last error: {e}"
+                        )
+                        raise last_error
+
+class AsyncRateLimiter:
+    """Rate limiter for async operations."""
+
+    def __init__(self, requests_per_second: float):
+        """
+        Initialize rate limiter.
+
+        Args:
+            requests_per_second: Maximum requests per second
+        """
+        self.interval = 1.0 / requests_per_second
+        self.last_request = 0.0
+        self._lock = AsyncLock()
+
+    async def acquire(self):
+        """Acquire rate limit slot."""
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            wait_time = max(0, self.interval - (now - self.last_request))
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+            self.last_request = now

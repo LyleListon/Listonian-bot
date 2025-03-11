@@ -1,27 +1,15 @@
 """
-Flashbots Package
+Flashbots Integration Package
 
-This package provides a Python 3.12+ compatible Flashbots implementation with:
+This package provides functionality for:
 - MEV protection
-- Bundle optimization
-- Flash loan integration
-- Transaction privacy
+- Bundle submission
+- Risk analysis
+- Gas price optimization
 """
 
-from .bundle import (
-    FlashbotsBundle,
-    BundleTransaction,
-    BundleSimulation
-)
-from .relay import (
-    FlashbotsRelay,
-    create_flashbots_relay
-)
+from .risk_analyzer import RiskAnalyzer
 
 __all__ = [
-    'FlashbotsBundle',
-    'BundleTransaction',
-    'BundleSimulation',
-    'FlashbotsRelay',
-    'create_flashbots_relay'
+    'RiskAnalyzer'
 ]

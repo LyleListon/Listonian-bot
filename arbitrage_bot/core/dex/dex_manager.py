@@ -84,7 +84,8 @@ class DexInfo:
         name: str,
         factory_address: str,
         router_address: str,
-        fee_tiers: List[int]
+        fee_tiers: List[int],
+        version: str = 'v2'
     ):
         """
         Initialize DEX info.
@@ -94,12 +95,14 @@ class DexInfo:
             factory_address: Factory contract address
             router_address: Router contract address
             fee_tiers: List of fee tiers (in basis points)
+            version: DEX version ('v2' or 'v3')
         """
         self.name = name
         self.factory_address = to_checksum_address(factory_address)
         self.router_address = to_checksum_address(router_address)
         self.fee_tiers = fee_tiers
         self.pools: Set[ChecksumAddress] = set()
+        self.version = version
 
         # Load ABIs
         self.factory_abi = get_dex_abi(name, 'factory')
@@ -156,7 +159,8 @@ class DexManager:
                 name=name,
                 factory_address=dex_config['factory'],
                 router_address=dex_config['router'],
-                fee_tiers=dex_config.get('fee_tiers', [30, 100, 500, 3000, 10000])
+                fee_tiers=dex_config.get('fee_tiers', [30, 100, 500, 3000, 10000]),
+                version=dex_config.get('version', 'v2')
             )
 
         return cls(web3_manager=web3_manager, dexes=dexes)
@@ -345,48 +349,25 @@ class DexManager:
                 abi=dex.factory_abi
             )
 
-            # Try Aerodrome style first
-            try:
-                await factory_contract.functions.getPool(
-                    "0x0000000000000000000000000000000000000000",
-                    "0x0000000000000000000000000000000000000000",
-                    True
-                ).call()
+            # Check DEX type based on version and name
+            if dex.name == 'aerodrome':
                 return await self.discover_pools_aerodrome(
                     factory_contract,
                     dex,
                     token_addresses
                 )
-            except Exception:
-                # Try V3 style
-                try:
-                    await factory_contract.functions.getPool(
-                        "0x0000000000000000000000000000000000000000",
-                        "0x0000000000000000000000000000000000000000",
-                        3000
-                    ).call()
-                    return await self.discover_pools_v3(
-                        factory_contract,
-                        dex,
-                        token_addresses
-                    )
-                except Exception:
-                    # Try V2 style
-                    try:
-                        await factory_contract.functions.getPair(
-                            "0x0000000000000000000000000000000000000000",
-                            "0x0000000000000000000000000000000000000000"
-                        ).call()
-                        return await self.discover_pools_v2(
-                            factory_contract,
-                            dex,
-                            token_addresses
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to discover pools for {dex_name}: {e}"
-                        )
-                        return set()
+            elif dex.version == 'v3' or dex.name == 'swapbased':  # swapbased uses v3 style despite config
+                return await self.discover_pools_v3(
+                    factory_contract,
+                    dex,
+                    token_addresses
+                )
+            else:  # v2 style
+                return await self.discover_pools_v2(
+                    factory_contract,
+                    dex,
+                    token_addresses
+                )
 
         except Exception as e:
             logger.warning(f"Failed to discover pools for {dex_name}: {e}")

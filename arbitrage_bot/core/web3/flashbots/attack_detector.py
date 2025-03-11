@@ -59,7 +59,7 @@ class AttackDetector:
         async with self._request_lock:
             try:
                 # Get current block number
-                end_block = self.w3.eth.block_number
+                end_block = await self.web3_manager.get_block_number()
                 
                 # Calculate start block if not provided
                 if start_block is None:
@@ -67,7 +67,7 @@ class AttackDetector:
 
                 attacks = []
                 for block_num in range(start_block, end_block + 1):
-                    block = await self.w3.eth.get_block(block_num, True)
+                    block = await self.web3_manager.get_block(block_num, True)
                     block_attacks = await self._analyze_block(block)
                     if block_attacks:
                         attacks.extend(block_attacks)
@@ -116,8 +116,14 @@ class AttackDetector:
 
             # Analyze timing patterns
             if len(txs) > 1:
-                prev_block = await self.w3.eth.get_block(block['number'] - 1)
-                time_diff = block['timestamp'] - prev_block['timestamp']
+                block_num = int(block['number'], 16) if isinstance(block['number'], str) else block['number']
+                prev_block = await self.web3_manager.get_block(block_num - 1)
+                
+                # Convert timestamps to integers
+                current_timestamp = int(block['timestamp'], 16) if isinstance(block['timestamp'], str) else block['timestamp']
+                prev_timestamp = int(prev_block['timestamp'], 16) if isinstance(prev_block['timestamp'], str) else prev_block['timestamp']
+                
+                time_diff = current_timestamp - prev_timestamp
                 
                 if time_diff < self.max_time_diff:
                     attacks.append({

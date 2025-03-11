@@ -6,6 +6,7 @@ This module provides interfaces and wrappers for web3.py functionality.
 
 from typing import Any, Dict, Optional, Protocol, TypedDict, List, Union
 from eth_typing import ChecksumAddress, HexStr
+import decimal
 
 class AccessList(TypedDict, total=False):
     """Access list for EIP-2930 transactions."""
@@ -83,17 +84,32 @@ class Web3Client(Protocol):
         """Create contract instance."""
         raise NotImplementedError
 
+    async def get_gas_price(self) -> int:
+        """Get current gas price in wei."""
+        raise NotImplementedError
+
+    async def get_block(self, block_identifier: Union[str, int]) -> Dict[str, Any]:
+        """Get block by number or hash."""
+        raise NotImplementedError
+    
+    def to_wei(self, value: Union[int, float, str, decimal.Decimal], currency: str) -> int:
+        """Convert currency value to wei."""
+        raise NotImplementedError
+
 class ContractFunctionWrapper:
     """Wrapper for web3.py contract functions to ensure proper async/await."""
     
-    def __init__(self, contract_function: Any):
+    def __init__(self, contract_function: Any, w3: Any):
         """
         Initialize wrapper.
 
         Args:
             contract_function: Web3.py contract function
+            w3: Web3.py instance
         """
         self._function = contract_function
+        self._w3 = w3
+        self.address = contract_function.address
 
     async def call(self, *args, **kwargs) -> Any:
         """
@@ -102,7 +118,27 @@ class ContractFunctionWrapper:
         Returns:
             Function result
         """
-        result = self._function.call(*args, **kwargs)
+        # Make a direct RPC call to call contract function
+        # First, encode the function call
+        data = self._function.encode_input(*args)
+        
+        # Prepare the transaction
+        tx = {
+            'to': self.address,
+            'data': data,
+            **kwargs
+        }
+        
+        # Make the call
+        response = await self._w3.provider.make_request(
+            "eth_call",
+            [tx, "latest"]
+        )
+        if "error" in response:
+            raise ValueError(f"Failed to call contract: {response['error']}")
+            
+        # Decode the result
+        result = self._function.decode_output(response["result"])
         return result
 
 class ContractWrapper:
@@ -116,6 +152,7 @@ class ContractWrapper:
             contract: Web3.py contract
         """
         self._contract = contract
+        self._w3 = contract.w3
 
     @property
     def functions(self) -> Any:
@@ -125,7 +162,7 @@ class ContractWrapper:
         Returns:
             Contract functions object
         """
-        return ContractFunctionsWrapper(self._contract.functions)
+        return ContractFunctionsWrapper(self._contract.functions, self._w3)
 
     @property
     def address(self) -> ChecksumAddress:
@@ -140,14 +177,16 @@ class ContractWrapper:
 class ContractFunctionsWrapper:
     """Wrapper for web3.py contract functions object to ensure proper async/await."""
     
-    def __init__(self, functions: Any):
+    def __init__(self, functions: Any, w3: Any):
         """
         Initialize wrapper.
 
         Args:
             functions: Web3.py contract functions object
+            w3: Web3.py instance
         """
         self._functions = functions
+        self._w3 = w3
 
     def __getattr__(self, name: str) -> ContractFunctionWrapper:
         """
@@ -160,40 +199,4 @@ class ContractFunctionsWrapper:
             Wrapped contract function
         """
         function = getattr(self._functions, name)
-        return ContractFunctionWrapper(function)
-
-class Web3ClientWrapper:
-    """Wrapper for web3.py client to ensure proper async/await."""
-    
-    def __init__(self, w3: Any):
-        """
-        Initialize wrapper.
-
-        Args:
-            w3: Web3.py client
-        """
-        self._w3 = w3
-
-    @property
-    def eth(self) -> Any:
-        """
-        Get eth module.
-
-        Returns:
-            Eth module
-        """
-        return self._w3.eth
-
-    def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> ContractWrapper:
-        """
-        Create contract instance.
-
-        Args:
-            address: Contract address
-            abi: Contract ABI
-
-        Returns:
-            Wrapped contract instance
-        """
-        contract = self._w3.eth.contract(address=address, abi=abi)
-        return ContractWrapper(contract)
+        return ContractFunctionWrapper(function, self._w3)

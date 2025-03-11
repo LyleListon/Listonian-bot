@@ -121,7 +121,7 @@ async def run_production_system():
                 logger.info(f"MEV risk level: {risk_assessment['risk_level']}")
                 
                 # Step 2: Check for MEV attacks
-                current_block = web3_manager.w3.eth.block_number
+                current_block = await web3_manager.get_block_number()
                 recent_attacks = await attack_detector.scan_for_attacks(
                     start_block=current_block - 10
                 )

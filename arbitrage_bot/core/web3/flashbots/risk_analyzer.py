@@ -14,6 +14,7 @@ from typing import Dict, List, Any, Optional
 from decimal import Decimal
 
 from ....utils.async_manager import AsyncLock, with_retry
+from ..web3_manager import Web3Error
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,17 @@ class RiskAnalyzer:
             'last_update': 0
         }
 
+    def _parse_hex_or_int(self, value: Any, default: int = 0) -> int:
+        """Parse a value that could be hex string or int."""
+        try:
+            if isinstance(value, str):
+                if value.startswith('0x'):
+                    return int(value, 16)
+                return int(value)
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+
     @with_retry(retries=3, delay=1.0)
     async def analyze_mempool_risk(self) -> Dict[str, Any]:
         """
@@ -70,12 +82,18 @@ class RiskAnalyzer:
         """
         async with self._request_lock:
             try:
-                # Get current gas prices using Web3Manager methods
-                gas_price = self.w3.eth.gas_price
+                # Get current gas price
+                gas_price = await self.web3_manager.get_gas_price()
+                gas_price = self._parse_hex_or_int(gas_price)
                 
                 # Get latest block and await the result
-                block_result = await self.w3.eth.get_block('latest')
-                base_fee = block_result.get('baseFeePerGas', 0)
+                block_result = await self.web3_manager.get_block('latest')
+                if not block_result:
+                    raise ValueError("Failed to get latest block")
+                    
+                # Parse base fee from hex if needed
+                base_fee = block_result.get('baseFeePerGas', '0x0')
+                base_fee = self._parse_hex_or_int(base_fee)
 
                 # Calculate gas price statistics
                 avg_gas_price = await self._calculate_average_gas_price()
@@ -100,6 +118,10 @@ class RiskAnalyzer:
                     'base_fee': base_fee
                 }
 
+            except Web3Error as e:
+                logger.error(f"Web3 error in analyze_mempool_risk: {e}")
+                raise
+
             except Exception as e:
                 logger.error(f"Failed to analyze mempool risk: {e}")
                 raise
@@ -121,11 +143,13 @@ class RiskAnalyzer:
         """
         attacks = []
         try:
-            current_block = self.w3.eth.block_number
+            current_block = await self.web3_manager.get_block_number()
             
             for block_number in range(current_block - blocks, current_block + 1):
                 # Get block and await the result
-                block_result = await self.w3.eth.get_block(block_number, True)
+                block_result = await self.web3_manager.get_block(block_number)
+                if not block_result:
+                    continue
                 
                 if self.sandwich_detection:
                     sandwich = await self._detect_sandwich_attack(block_result)
@@ -164,14 +188,16 @@ class RiskAnalyzer:
     async def _calculate_average_gas_price(self) -> int:
         """Calculate average gas price over recent blocks."""
         try:
-            current_block = self.w3.eth.block_number
+            current_block = await self.web3_manager.get_block_number()
             prices = []
             
             for block_number in range(current_block - 10, current_block + 1):
                 # Get block and await the result
-                block_result = await self.w3.eth.get_block(block_number)
-                if 'baseFeePerGas' in block_result:
-                    prices.append(block_result['baseFeePerGas'])
+                block_result = await self.web3_manager.get_block(block_number)
+                if block_result:
+                    base_fee = block_result.get('baseFeePerGas', '0x0')
+                    base_fee = self._parse_hex_or_int(base_fee)
+                    prices.append(base_fee)
             
             return sum(prices) // len(prices) if prices else 0
 
@@ -198,7 +224,8 @@ class RiskAnalyzer:
         try:
             txs = block.get('transactions', [])
             for i in range(len(txs) - 2):
-                if await self._is_sandwich_pattern(txs[i:i+3]):
+                tx_group = txs[i:i+3]
+                if await self._is_sandwich_pattern(tx_group):
                     return {
                         'type': 'sandwich',
                         'severity': 'HIGH',
@@ -217,7 +244,8 @@ class RiskAnalyzer:
         try:
             txs = block.get('transactions', [])
             for i in range(len(txs) - 1):
-                if await self._is_frontrun_pattern(txs[i:i+2]):
+                tx_pair = txs[i:i+2]
+                if await self._is_frontrun_pattern(tx_pair):
                     return {
                         'type': 'frontrun',
                         'severity': 'MEDIUM',
@@ -238,9 +266,21 @@ class RiskAnalyzer:
         
         try:
             # Check for similar token pairs and increasing gas prices
+            gas_prices = []
+            for tx in txs:
+                if isinstance(tx, dict):
+                    gas_price = tx.get('gasPrice', '0x0')
+                    gas_price = self._parse_hex_or_int(gas_price)
+                    gas_prices.append(gas_price)
+                else:
+                    return False
+                    
+            if not all(gas_prices):
+                return False
+                
             return (
-                txs[0]['gasPrice'] > txs[1]['gasPrice'] and
-                txs[2]['gasPrice'] > txs[1]['gasPrice'] and
+                gas_prices[0] > gas_prices[1] and
+                gas_prices[2] > gas_prices[1] and
                 await self._share_token_pair(txs[0], txs[2])
             )
         except Exception:
@@ -253,8 +293,20 @@ class RiskAnalyzer:
         
         try:
             # Check for similar operations and higher gas price
+            gas_prices = []
+            for tx in txs:
+                if isinstance(tx, dict):
+                    gas_price = tx.get('gasPrice', '0x0')
+                    gas_price = self._parse_hex_or_int(gas_price)
+                    gas_prices.append(gas_price)
+                else:
+                    return False
+                    
+            if not all(gas_prices):
+                return False
+                
             return (
-                txs[0]['gasPrice'] > txs[1]['gasPrice'] and
+                gas_prices[0] > gas_prices[1] and
                 await self._share_token_pair(txs[0], txs[1])
             )
         except Exception:

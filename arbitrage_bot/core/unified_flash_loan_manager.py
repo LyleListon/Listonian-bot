@@ -20,6 +20,7 @@ from .web3.interfaces import Web3Client, Transaction
 from .dex.dex_manager import DexManager
 from .web3.balance_validator import BalanceValidator
 from .web3.flashbots.flashbots_provider import FlashbotsProvider
+from .web3.web3_manager import Web3Error
 from .path_finder import ArbitragePath
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,8 @@ class UnifiedFlashLoanManager:
         balancer_vault: ChecksumAddress,
         min_profit: int = 0,
         max_parallel_pools: int = 10,
-        min_liquidity_ratio: float = 1.5  # Require 150% of flash loan amount in liquidity
+        min_liquidity_ratio: float = 1.5,  # Require 150% of flash loan amount in liquidity
+        gas_buffer: float = 1.2  # 20% gas buffer for safety
     ):
         """
         Initialize flash loan manager.
@@ -50,6 +52,7 @@ class UnifiedFlashLoanManager:
             min_profit: Minimum profit required (in wei)
             max_parallel_pools: Maximum number of pools to scan in parallel
             min_liquidity_ratio: Minimum ratio of pool liquidity to flash loan amount
+            gas_buffer: Gas buffer multiplier for safety
         """
         self.web3_manager = web3_manager
         self.dex_manager = dex_manager
@@ -59,6 +62,7 @@ class UnifiedFlashLoanManager:
         self.min_profit = min_profit
         self.max_parallel_pools = max_parallel_pools
         self.min_liquidity_ratio = min_liquidity_ratio
+        self.gas_buffer = gas_buffer
 
         # Initialize locks
         self._validation_lock = AsyncLock()
@@ -72,6 +76,43 @@ class UnifiedFlashLoanManager:
             f"Flash loan manager initialized with min profit: {min_profit}"
         )
 
+    async def _batch_get_pool_info(
+        self,
+        pool_addresses: Set[ChecksumAddress]
+    ) -> Dict[ChecksumAddress, Dict[str, Any]]:
+        """Get pool info in batches using request batching."""
+        try:
+            # Prepare batch requests for each pool
+            requests = []
+            for pool in pool_addresses:
+                # Add liquidity request
+                requests.append(
+                    ("eth_call", [{
+                        "to": pool,
+                        "data": self.web3_manager._raw_w3.eth.abi.encode_function_call(
+                            {
+                                "name": "getReserves",
+                                "type": "function",
+                                "inputs": [],
+                                "outputs": [
+                                    {"type": "uint112", "name": "reserve0"},
+                                    {"type": "uint112", "name": "reserve1"},
+                                    {"type": "uint32", "name": "blockTimestampLast"}
+                                ]
+                            },
+                            []
+                        )
+                    }, "latest"])
+                )
+
+            # Execute batch request
+            results = await self.web3_manager.batch_call(requests)
+            return dict(zip(pool_addresses, results))
+
+        except Exception as e:
+            logger.error(f"Failed to batch get pool info: {e}")
+            raise Web3Error(str(e), "pool_info_error", {"pools": list(pool_addresses)})
+
     async def _get_pool_liquidity(
         self,
         pool_addresses: Set[ChecksumAddress]
@@ -83,21 +124,31 @@ class UnifiedFlashLoanManager:
                 cache_entry = self._liquidity_cache.get(pool)
                 if cache_entry:
                     amount, timestamp = cache_entry
-                    if timestamp + self._cache_ttl > int(self.web3_manager.w3.eth.get_block('latest')['timestamp']):
+                    block = await self.web3_manager.get_block('latest')
+                    if block and timestamp + self._cache_ttl > int(block['timestamp']):
                         return pool, amount
 
-                liquidity = await self.dex_manager.get_pool_liquidity(pool)
+                pool_info = await self._batch_get_pool_info({pool})
+                liquidity = pool_info[pool].get('reserve0', 0)
 
                 # Update cache
-                self._liquidity_cache[pool] = (
-                    liquidity,
-                    int(self.web3_manager.w3.eth.get_block('latest')['timestamp'])
-                )
+                block = await self.web3_manager.get_block('latest')
+                if block:
+                    self._liquidity_cache[pool] = (
+                        liquidity,
+                        int(block['timestamp'])
+                    )
 
                 return pool, liquidity
+            except Web3Error as e:
+                logger.error(f"Web3 error getting liquidity for pool {pool}: {e}")
+                raise
             except Exception as e:
                 logger.error(f"Failed to get liquidity for pool {pool}: {e}")
-                return pool, 0
+                raise Web3Error(
+                    str(e), "liquidity_error",
+                    {"pool": pool}
+                )
 
         # Process pools in batches
         results = {}
@@ -132,6 +183,7 @@ class UnifiedFlashLoanManager:
             True if valid, False otherwise
         """
         try:
+            
             async with self._validation_lock:
                 # Check token balance
                 balance = await self.balance_validator.get_token_balance(
@@ -187,9 +239,15 @@ class UnifiedFlashLoanManager:
 
                 return True
 
+        except Web3Error as e:
+            logger.error(f"Web3 error validating flash loan: {e}")
+            raise
         except Exception as e:
             logger.error(f"Error validating flash loan: {e}")
-            return False
+            raise Web3Error(
+                str(e), "validation_error",
+                {"token": token_address, "amount": amount}
+            )
 
     @with_retry(retries=3, delay=1.0)
     async def execute_flash_loan(
@@ -228,6 +286,13 @@ class UnifiedFlashLoanManager:
                     }
 
                 # Create flash loan transaction
+                gas_price = await self.web3_manager.get_gas_price()
+                gas_limit = int(300000 * self.gas_buffer)  # Base gas * buffer
+
+                # Get current nonce
+                nonce = await self.web3_manager.get_nonce(
+                    self.web3_manager.wallet_address
+                )
                 flash_loan_tx = {
                     'to': self.balancer_vault,
                     'value': 0,
@@ -247,6 +312,10 @@ class UnifiedFlashLoanManager:
                             callback_data
                         ]
                     )
+,
+                    'gasPrice': gas_price,
+                    'gas': gas_limit,
+                    'nonce': nonce
                 }
 
                 # Create transaction bundle
@@ -260,7 +329,10 @@ class UnifiedFlashLoanManager:
                             step.token_in,
                             step.token_out,
                             step.amount_in,
-                            step.amount_out * 0.99  # 1% slippage tolerance
+                            step.amount_out * 0.995,  # 0.5% slippage tolerance
+                            gas_price=gas_price,
+                            gas_limit=int(150000 * self.gas_buffer),
+                            nonce=nonce + idx + 1
                         )
                         transactions.append(Transaction(swap_tx))
 
@@ -287,12 +359,21 @@ class UnifiedFlashLoanManager:
                     'profit': simulation['profitability']
                 }
 
+        except Web3Error as e:
+            logger.error(f"Web3 error executing flash loan: {e}")
+            raise
         except Exception as e:
             logger.error(f"Error executing flash loan: {e}")
-            return {
+            raise Web3Error(
+                str(e),
+                "execution_error",
+                {
+   
+                    "token": token_address,
+                    "amount": amount,
                 'success': False,
                 'error': str(e)
-            }
+                })
 
     async def close(self):
         """Clean up resources."""
@@ -320,7 +401,7 @@ async def create_unified_flash_loan_manager(
     """
     # Convert min_profit from ETH to wei
     min_profit_eth = Decimal(config['flash_loan']['min_profit'])
-    min_profit_wei = web3_manager.w3.to_wei(min_profit_eth, 'ether')
+    min_profit_wei = web3_manager.to_wei(min_profit_eth, 'ether')
 
     return UnifiedFlashLoanManager(
         web3_manager=web3_manager,
@@ -331,4 +412,6 @@ async def create_unified_flash_loan_manager(
         min_profit=min_profit_wei,
         max_parallel_pools=config['flash_loan'].get('max_parallel_pools', 10),
         min_liquidity_ratio=config['flash_loan'].get('min_liquidity_ratio', 1.5)
+,
+        gas_buffer=config['flash_loan'].get('gas_buffer', 1.2)
     )
