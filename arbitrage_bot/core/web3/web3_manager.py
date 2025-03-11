@@ -1,551 +1,256 @@
 """
 Web3 Manager Module
 
-This module provides functionality for:
-- Managing Web3 connections
-- Contract interactions
-- Transaction management
+Manages Web3 interactions with enhanced Alchemy support for:
+- Token price fetching
+- WebSocket subscriptions
+- Mempool monitoring
+- Gas predictions
 """
 
 import logging
 import asyncio
-import time
-from typing import Any, Dict, Optional, Union, List, TypeVar, Tuple, Callable
-import decimal
-from web3 import Web3
-from eth_account import Account
-from eth_typing import ChecksumAddress
+from typing import Dict, List, Any, Optional, Union
+from web3 import Web3, AsyncWeb3
+from web3.types import RPCEndpoint, RPCResponse
+from decimal import Decimal
 
-from ...utils.async_manager import with_retry
-from .web3_client_wrapper import Web3ClientWrapper
-from .interfaces import Web3Client, Contract, ContractWrapper
 from .async_provider import CustomAsyncProvider
-from .errors import Web3Error
+from .alchemy_provider import AlchemyProvider
+from ..utils.async_manager import AsyncLock
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+class Web3Manager:
+    """Manages Web3 interactions with enhanced Alchemy support."""
 
-def _parse_hex(value: Union[str, int]) -> int:
-    """Parse hex value to integer."""
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        if value.startswith('0x'):
-            return int(value, 16)
-        return int(value)
-    raise ValueError(f"Cannot parse value: {value}")
-
-class ProviderManager:
-    """Manages multiple providers with failover."""
-    
-    def __init__(self, providers: Dict[str, Union[str, List[str]]], rate_limits: Dict[str, Any]):
-        self.primary = providers['primary']
-        self.backup = providers.get('backup', [])
-        self.current_provider = self.primary
-        self.failed_providers = set()
-        self.last_switch = 0
-        self.switch_cooldown = 60  # Wait 60s before switching back to failed provider
-        
-        # Configure rate limits
-        self.requests_per_second = rate_limits.get('requests_per_second', 5)
-        self.max_backoff = rate_limits.get('max_backoff', 60.0)
-        self.batch_size = rate_limits.get('batch_size', 10)
-        self.cache_ttl = rate_limits.get('cache_ttl', 30)
-        
-        self._lock = asyncio.Lock()
-    
-    async def get_provider(self) -> str:
-        """Get current working provider URL."""
-        async with self._lock:
-            return self.current_provider
-            
-    async def mark_provider_failed(self, provider: str):
-        """Mark a provider as failed and switch to backup if available."""
-        async with self._lock:
-            now = time.time()
-            self.failed_providers.add(provider)
-            
-            # Try to switch to a working provider
-            available = [p for p in [self.primary] + self.backup 
-                       if p not in self.failed_providers]
-            
-            if available:
-                self.current_provider = available[0]
-                self.last_switch = now
-
-class RequestBatcher:
-    """Batches similar requests together."""
-    
-    def __init__(self, web3_manager: 'Web3Manager'):
-        self.web3_manager = web3_manager
-        self._lock = asyncio.Lock()
-        self._request_times = []
-        self._current_backoff = 1.0
-    
-    async def _check_rate_limit(self):
-        """Apply rate limiting with exponential backoff."""
-        now = time.time()
-        self._request_times = [t for t in self._request_times if now - t < 1.0]
-        if len(self._request_times) >= self.web3_manager.provider_manager.requests_per_second:
-            await asyncio.sleep(self._current_backoff)
-
-    async def batch_requests(
-        self, 
-        requests: List[Tuple[str, List[Any]]]
-    ) -> List[Any]:
-        """
-        Execute multiple requests in a batch.
-        
-        Args:
-            requests: List of (method, params) tuples
-            
-        Returns:
-            List of results in same order as requests
-        """
-        async with self._lock:
-            try:
-                await self._check_rate_limit()
-                
-                # Split into batches based on configured size
-                batch_size = self.web3_manager.provider_manager.batch_size
-                results = []
-                
-                for i in range(0, len(requests), batch_size):
-                    batch = requests[i:i + batch_size]
-                    
-                    try:
-                        response = await self.web3_manager._raw_w3.provider.make_request(
-                            "eth_batchRequest", 
-                            batch
-                        )
-                        batch_results = [r.get('result') for r in response.get('result', [])]
-                        results.extend(batch_results)
-                        
-                        # Success - reduce backoff
-                        self._current_backoff = max(1.0, self._current_backoff * 0.5)
-                        
-                    except Exception as e:
-                        # Failure - increase backoff
-                        self._current_backoff = min(
-                            self.web3_manager.provider_manager.max_backoff,
-                            self._current_backoff * 2
-                        )
-                        raise Web3Error(str(e), "batch_request_error", {
-                            "batch": batch,
-                            "backoff": self._current_backoff
-                        })
-                
-                return results
-                
-            except Exception as e:
-                logger.error(f"Error in batch_requests: {e}")
-                raise Web3Error(str(e), "batch_request_error", {
-                    "requests": requests,
-                    "backoff": self._current_backoff
-                })
-
-class AsyncMiddleware:
-    """Middleware for handling async requests."""
-
-    def __init__(self, w3: Web3, account: Optional[Account] = None):
-        self.w3 = w3
-        self.account = account
-
-    def __call__(self, w3: Web3) -> "AsyncMiddleware":
-        """
-        Called when middleware is added to web3 instance.
-
-        Args:
-            w3: Web3 instance
-
-        Returns:
-            Self for middleware registration
-        """
-        self.w3 = w3
-        return self
-
-    def wrap_make_request(self, make_request: Callable) -> Callable:
-        """
-        Make request with signing if needed.
-
-        Args:
-            method: RPC method
-            params: Method parameters
-
-        Returns:
-            Response from provider
-        """
-        async def middleware(method: str, params: list) -> Any:
-            try:
-                if method == 'eth_sendRawTransaction' and self.account:
-                    transaction_dict = params[0]
-                    signed = self.account.sign_transaction(transaction_dict)
-                    response = await make_request(method, [signed.rawTransaction])
-                    return response
-                
-                # For non-transaction methods, pass through
-                response = await make_request(method, params)
-                return response
-            except Exception as e:
-                raise Web3Error(
-                    str(e), 
-                    "middleware_error",
-                    {"method": method, "params": params}
-                )
-        return middleware
-
-class Web3Manager(Web3Client):
-    """Manages Web3 connections and interactions."""
-
-    def __init__(
-        self,
-        providers: Dict[str, Union[str, List[str]]],
-        private_key: Optional[str] = None,
-        chain_id: int = 8453,  # Base mainnet
-        config: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, config: Dict[str, Any]):
         """
         Initialize Web3 manager.
 
         Args:
-            providers: Dictionary with primary and backup provider URLs
-            private_key: Optional private key for transactions
-            chain_id: Chain ID
-            config: Optional configuration dictionary
+            config: Configuration dictionary containing:
+                - RPC endpoints
+                - API keys
+                - WebSocket URIs
+                - Chain settings
         """
-        self.chain_id = chain_id
-        self.config = config or {}
+        self.config = config
+        self._provider_lock = AsyncLock()
+        self._price_cache = {}
+        self._price_cache_ttl = 30  # seconds
+        self._last_gas_prediction = None
+        self._gas_prediction_ttl = 60  # seconds
+
+        # Initialize Web3 instance
+        self.w3 = AsyncWeb3()
         
-        # Initialize provider manager
-        rate_limits = config.get('rate_limits', {})
-        self.provider_manager = ProviderManager(providers, rate_limits)
+        # Set up providers
+        self._setup_providers()
 
-        # Initialize Web3 with CustomAsyncProvider
-        initial_provider = CustomAsyncProvider(providers['primary'])
-        self._raw_w3 = Web3(initial_provider)
+    def _setup_providers(self):
+        """Set up primary and backup providers."""
+        providers = self.config['web3']['providers']
         
-        # Configure for PoA chains
-        self._raw_w3.eth.default_block = "latest"
-
-        # Set up account if private key provided
-        self.private_key = private_key
-        self.account = None
-        self.wallet_address = None
-
-        if private_key:
-            self.account = Account.from_key(private_key)
-            self.wallet_address = self.account.address
-
-        # Add async middleware
-        async_middleware = AsyncMiddleware(self._raw_w3, self.account)
-        self._raw_w3.middleware_onion.add(async_middleware, name='async_middleware')
-
-        # Create wrapped Web3 instance
-        self.w3 = Web3ClientWrapper(self._raw_w3)
-        
-        # Initialize eth module
-        self._eth = self.w3.eth
-
-        # Initialize request batcher
-        self.request_batcher = RequestBatcher(self)
-
-        logger.info(
-            f"Web3 manager initialized for chain {chain_id} "
-            f"with account {self.wallet_address or 'None'} and {len(providers.get('backup', [])) + 1} providers"
-        )
-
-    @property
-    def eth(self) -> Any:
-        """
-        Get eth module.
-
-        Returns:
-            Eth module
-        """
-        return self._eth
-
-    @property
-    def is_connected(self) -> bool:
-        """Check if connected to node."""
-        return self._raw_w3.is_connected()
-
-    def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
-        """
-        Create contract instance.
-
-        Args:
-            address: Contract address
-            abi: Contract ABI
-
-        Returns:
-            Contract instance
-        """
-        # Create contract using raw Web3 instance
-        raw_contract = self._raw_w3.eth.contract(address=address, abi=abi)
-        # Wrap the contract
-        return ContractWrapper(raw_contract)
-
-    @with_retry(retries=3, delay=1.0)
-    async def get_balance(
-        self,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
-        """
-        Get ETH balance for address.
-
-        Args:
-            address: Optional address to check. Uses wallet address if not provided.
-
-        Returns:
-            Balance in wei
-
-        Raises:
-            ValueError: If no address provided and no wallet configured
-        """
-        if not address and not self.wallet_address:
-            raise ValueError("No address provided and no wallet configured")
-
-        address = address or self.wallet_address
-        try:
-            response = await self.w3.get_balance(address)
-        except Exception as e:
-            raise Web3Error(
-                str(e),
-                "balance_error",
-                {
-                    "address": address,
-                }
+        # Set up Alchemy as primary if configured
+        if 'alchemy' in providers:
+            self.primary_provider = AlchemyProvider(
+                endpoint_uri=providers['alchemy']['http'],
+                api_key=providers['alchemy']['api_key'],
+                websocket_uri=providers['alchemy'].get('ws')
             )
-        return response
-
-    @with_retry(retries=3, delay=1.0)
-    async def get_gas_price(self) -> int:
-        """
-        Get current gas price.
-
-        Returns:
-            Gas price in wei
-        """
-        try:
-            # Get both base fee and priority fee
-            latest_block = await self.get_block('latest')
-            base_fee = _parse_hex(latest_block.get('baseFeePerGas', '0x0'))
-            
-            # Add priority fee buffer
-            priority_fee = int(2e9)  # 2 Gwei default priority fee
-            
-            response = base_fee + priority_fee
-        except Exception as e:
-            raise Web3Error(
-                str(e),
-                "gas_price_error",
-                {"latest_block": latest_block if 'latest_block' in locals() else None}
+        else:
+            self.primary_provider = CustomAsyncProvider(
+                providers['primary']
             )
-        return response
 
-    @with_retry(retries=3, delay=1.0)
-    async def get_block(self, block_identifier: Union[str, int], full_transactions: bool = False) -> Dict[str, Any]:
-        """
-        Get block by number or hash.
-
-        Args:
-            block_identifier: Block number, hash, or 'latest'
-            full_transactions: If True, return full transaction objects instead of hashes
-
-        Returns:
-            Block data as a dictionary
-        """
-        try:
-            response = await self.w3.get_block(block_identifier, full_transactions)
-        except Exception as e:
-            raise Web3Error(
-                str(e),
-                "block_error",
-                {
-                    "block_identifier": block_identifier
-                }
-            )
-        return response
-
-    @with_retry(retries=3, delay=1.0)
-    async def get_block_number(self) -> int:
-        """
-        Get current block number.
-
-        Returns:
-            Block number
-        """
-        try:
-            response = await self.w3.get_block_number()
-        except Exception as e:
-            raise Web3Error(
-                str(e), "block_number_error", {}
-            )
-        return response
-
-    @with_retry(retries=3, delay=1.0)
-    async def get_token_balance(
-        self,
-        token_address: ChecksumAddress,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
-        """
-        Get token balance for address.
-
-        Args:
-            token_address: Token contract address
-            address: Optional address to check. Uses wallet address if not provided.
-
-        Returns:
-            Token balance
-
-        Raises:
-            ValueError: If no address provided and no wallet configured
-        """
-        if not address and not self.wallet_address:
-            raise ValueError("No address provided and no wallet configured")
-
-        address = address or self.wallet_address
-
-        # Create ERC20 contract
-        erc20_abi = [
-            {
-                "constant": True,
-                "inputs": [{"name": "_owner", "type": "address"}],
-                "name": "balanceOf",
-                "outputs": [{"name": "balance", "type": "uint256"}],
-                "type": "function"
-            }
+        # Set up backup providers
+        self.backup_providers = [
+            CustomAsyncProvider(uri)
+            for uri in providers.get('backup', [])
         ]
-        token_contract = self.contract(token_address, erc20_abi)
 
-        # Call balanceOf
+        # Set initial provider
+        self.w3.provider = self.primary_provider
+
+    async def initialize(self) -> bool:
+        """Initialize Web3 manager and providers."""
         try:
-            balance = await token_contract.functions.balanceOf(address).call()
+            # Initialize primary provider
+            if isinstance(self.primary_provider, AlchemyProvider):
+                await self.primary_provider.initialize()
+
+            # Test connection
+            await self.w3.eth.chain_id
+            logger.info("Web3 manager initialized successfully")
+            return True
+
         except Exception as e:
-            raise Web3Error(
-                str(e),
-                "token_balance_error",
-                {
-                    "token_address": token_address,
-                    "address": address,
-                    "contract": token_contract.address
-                }
-            )
+            logger.error(f"Failed to initialize Web3 manager: {e}")
+            return False
 
-        return balance
-
-    @with_retry(retries=3, delay=1.0)
-    async def get_nonce(
+    async def get_token_prices(
         self,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
+        token_addresses: List[str],
+        force_refresh: bool = False
+    ) -> Dict[str, Decimal]:
         """
-        Get next nonce for address.
+        Get current prices for multiple tokens.
 
         Args:
-            address: Optional address to check. Uses wallet address if not provided.
+            token_addresses: List of token addresses
+            force_refresh: Force cache refresh
 
         Returns:
-            Next nonce
-
-        Raises:
-            ValueError: If no address provided and no wallet configured
+            Dict mapping token addresses to prices
         """
-        if not address and not self.wallet_address:
-            raise ValueError("No address provided and no wallet configured")
-
-        address = address or self.wallet_address
-        try:
-            response = await self.w3.get_transaction_count(address)
-        except Exception as e:
-            raise Web3Error(
-                str(e),
-                "nonce_error",
-                {
-                    "address": address
-                }
-            )
-        return response
-
-    def to_wei(self, value: Union[int, float, str, decimal.Decimal], currency: str) -> int:
-        """
-        Convert currency value to wei.
-
-        Args:
-            value: Value to convert
-            currency: Currency unit (e.g., 'ether', 'gwei')
-
-        Returns:
-            Value in wei
-
-        Example:
-            to_wei(1, 'ether') -> 1000000000000000000
-        """
-        return self._raw_w3.to_wei(value, currency)
-
-    async def batch_call(self, contract_calls: List[Tuple[Contract, str, List[Any]]]) -> List[Any]:
-        """
-        Execute multiple contract calls in a batch.
+        now = asyncio.get_event_loop().time()
         
-        Args:
-            contract_calls: List of (contract, method_name, args) tuples
+        # Check cache first
+        if not force_refresh:
+            cached = {
+                addr: price for addr, (price, timestamp) in self._price_cache.items()
+                if addr in token_addresses and (now - timestamp) < self._price_cache_ttl
+            }
+            if len(cached) == len(token_addresses):
+                return cached
+
+        # Use Alchemy Token API if available
+        if isinstance(self.primary_provider, AlchemyProvider):
+            prices = await self.primary_provider.get_token_prices(token_addresses)
+            
+            # Update cache
+            for addr, price in prices.items():
+                self._price_cache[addr] = (price, now)
+            
+            return prices
+
+        # Fallback to on-chain price fetching
+        return await self._fetch_onchain_prices(token_addresses)
+
+    async def subscribe_to_price_updates(
+        self,
+        token_address: str,
+        callback: callable
+    ):
         """
-        requests = [(c.address, c.functions[m].encode_input(*a)) for c, m, a in contract_calls]
-        return await self.request_batcher.batch_requests(requests)
+        Subscribe to real-time price updates.
+
+        Args:
+            token_address: Token address to monitor
+            callback: Async callback function for price updates
+        """
+        if isinstance(self.primary_provider, AlchemyProvider):
+            await self.primary_provider.subscribe_to_price_updates(
+                token_address,
+                callback
+            )
+        else:
+            raise NotImplementedError(
+                "Price subscriptions require Alchemy provider"
+            )
+
+    async def get_gas_price_prediction(
+        self,
+        force_refresh: bool = False
+    ) -> Dict[str, int]:
+        """
+        Get gas price predictions.
+
+        Args:
+            force_refresh: Force cache refresh
+
+        Returns:
+            Dict containing gas price predictions
+        """
+        now = asyncio.get_event_loop().time()
+        
+        # Check cache
+        if not force_refresh and self._last_gas_prediction:
+            prediction, timestamp = self._last_gas_prediction
+            if (now - timestamp) < self._gas_prediction_ttl:
+                return prediction
+
+        # Use Alchemy if available
+        if isinstance(self.primary_provider, AlchemyProvider):
+            prediction = await self.primary_provider.get_gas_price_prediction()
+            self._last_gas_prediction = (prediction, now)
+            return prediction
+
+        # Fallback to basic gas price
+        gas_price = await self.w3.eth.gas_price
+        return {
+            "safe_low": gas_price,
+            "standard": int(gas_price * 1.1),
+            "fast": int(gas_price * 1.2),
+            "fastest": int(gas_price * 1.3)
+        }
+
+    async def simulate_transaction(
+        self,
+        tx_params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Simulate transaction with asset changes.
+
+        Args:
+            tx_params: Transaction parameters
+
+        Returns:
+            Simulation results
+        """
+        if isinstance(self.primary_provider, AlchemyProvider):
+            return await self.primary_provider.simulate_asset_changes(tx_params)
+        else:
+            # Fallback to eth_call
+            return await self.w3.eth.call(tx_params)
+
+    async def monitor_mempool(
+        self,
+        filter_criteria: Optional[Dict] = None
+    ) -> List[Dict]:
+        """
+        Monitor mempool for pending transactions.
+
+        Args:
+            filter_criteria: Optional filtering criteria
+
+        Returns:
+            List of pending transactions
+        """
+        if isinstance(self.primary_provider, AlchemyProvider):
+            return await self.primary_provider.get_pending_transactions(
+                filter_criteria
+            )
+        else:
+            # Fallback to eth_getBlockByNumber
+            block = await self.w3.eth.get_block('pending', True)
+            return block.transactions
+
+    async def _fetch_onchain_prices(
+        self,
+        token_addresses: List[str]
+    ) -> Dict[str, Decimal]:
+        """Fallback method to fetch prices from on-chain sources."""
+        # Implementation would use DEX pools or price feeds
+        pass
 
     async def close(self):
-        """Clean up resources."""
-        if hasattr(self._raw_w3.provider, "close"):
-            await self._raw_w3.provider.close()
+        """Close all connections."""
+        await self.primary_provider.close()
+        for provider in self.backup_providers:
+            await provider.close()
 
-async def create_web3_manager(
-    config: Dict[str, Any]
-) -> Web3Manager:
+async def create_web3_manager(config: Dict[str, Any]) -> Web3Manager:
     """
-    Create a new Web3 manager.
+    Create and initialize a Web3Manager instance.
 
     Args:
         config: Configuration dictionary
 
     Returns:
-        Web3Manager instance
-
-    Raises:
-        ValueError: If required web3 configuration is missing or invalid
+        Initialized Web3Manager instance
     """
-    # Validate web3 config
-    if not config.get('web3'):
-        logger.error("Web3 configuration missing in config")
-        raise ValueError("Web3 configuration missing")
-
-    web3_config = config['web3']
-
-    # Validate required fields
-    if not web3_config.get('providers'):
-        logger.error("Web3 providers not configured")
-        raise ValueError("Web3 providers not configured")
-
-    if not web3_config.get('chain_id'):
-        logger.error("Chain ID not configured")
-        raise ValueError("Chain ID not configured")
-
-    # Validate wallet key if provided
-    wallet_key = web3_config.get('wallet_key')
-    if wallet_key:
-        if not wallet_key.startswith('0x') or len(wallet_key) != 66:
-            logger.error("Invalid wallet key format provided")
-            raise ValueError("Invalid wallet key format - must be 32 bytes hex")
-
-    logger.info(f"Creating Web3 manager for chain {web3_config['chain_id']}")
-
-    manager = Web3Manager(
-        providers=web3_config['providers'],
-        private_key=web3_config.get('wallet_key'),
-        chain_id=web3_config['chain_id'],
-        config=config
-    )
-
-    logger.info("Web3 manager created successfully")
+    manager = Web3Manager(config)
+    await manager.initialize()
     return manager

@@ -3,11 +3,20 @@
     "chain_id": 8453,
     "rpc_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
     "providers": {
-      "primary": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
+      "alchemy": {
+        "http": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
+        "ws": "wss://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
+        "api_key": "kRXhWVt8YU_8LnGS20145F5uBDFbL_k0"
+      },
       "backup": [
         "https://base-mainnet.infura.io/v3/863c326dab1a444dba3f41ae7a07ccce",
         "wss://base-mainnet.infura.io/ws/v3/863c326dab1a444dba3f41ae7a07ccce"
       ]
+    },
+    "alchemy": {
+      "price_cache_ttl": 30,
+      "gas_prediction_ttl": 60,
+      "websocket_enabled": true
     },
     "wallet_key": "0x0000000000000000000000000000000000000000000000000000000000000002"
   },
@@ -49,12 +58,36 @@
       "router": "0x36218B2F8dC32D43fb5EcF45F2E6113cd52Cc5B9",
       "version": "v2",
       "fee": 30
+    },
+    "pancakeswap": {
+      "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+      "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
+      "quoter": "0x3d146FcE6c1006857750cBe8aF44f76a28041CCc",
+      "pool_deployer": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+      "version": "v3",
+      "fee": 30,
+      "enabled": true
+    },
+    "uniswap": {
+      "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+      "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
+      "quoter": "0x3d146FcE6c1006857750cBe8aF44f76a28041CCc",
+      "version": "v3",
+      "fee": 30,
+      "enabled": true
+    },
+    "rocketswap": {
+      "factory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+      "router": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+      "version": "v2",
+      "fee": 30,
+      "enabled": true
     }
   },
 
   "path_finder": {
     "max_path_length": 4,
-    "min_profit_threshold": "0.001",
+    "min_profit_threshold": "0.00017",
     "max_paths_to_check": 100,
     "min_liquidity_ratio": 1.5,
     "max_price_impact": 0.05,
@@ -73,7 +106,7 @@
   "flash_loan": {
     "enabled": true,
     "use_flashbots": true,
-    "min_profit": "0.001",
+    "min_profit": "0.00017",
     "max_trade_size": "1000000000000000000",
     "slippage_tolerance": 50,
     "transaction_timeout": 180,
@@ -86,7 +119,7 @@
   "flashbots": {
     "relay_url": "https://relay.flashbots.net",
     "auth_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
-    "min_profit": "1000000000000000",
+    "min_profit": "170000000000000",
     "max_gas_price": "500000000000"
   },
 

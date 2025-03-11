@@ -6,12 +6,14 @@ This module provides functionality for:
 - Detecting potential MEV attacks
 - Tracking risk statistics
 - Providing risk mitigation recommendations
+- Measuring effectiveness through empirical metrics
 """
 
 import logging
 import time
 from typing import Dict, List, Any, Optional
 from decimal import Decimal
+from collections import defaultdict
 
 from ....utils.async_manager import AsyncLock, with_retry
 from ..web3_manager import Web3Error
@@ -19,7 +21,7 @@ from ..web3_manager import Web3Error
 logger = logging.getLogger(__name__)
 
 class RiskAnalyzer:
-    """Analyzes and manages MEV-related risks."""
+    """Analyzes and manages MEV-related risks with empirical metrics tracking."""
 
     def __init__(self, web3_manager, config: Dict[str, Any]):
         """
@@ -37,23 +39,64 @@ class RiskAnalyzer:
         self.config = config
         self._request_lock = AsyncLock()
         
-        # Initialize risk parameters
-        self.max_bundle_size = config.get('mev_protection', {}).get('max_bundle_size', 5)
-        self.max_blocks_ahead = config.get('mev_protection', {}).get('max_blocks_ahead', 3)
-        self.min_priority_fee = Decimal(config.get('mev_protection', {}).get('min_priority_fee', '1.5'))
-        self.max_priority_fee = Decimal(config.get('mev_protection', {}).get('max_priority_fee', '3'))
+        # Initialize risk parameters with granular thresholds
+        self.volatility_thresholds = {
+            'low': 0.15,    # 15% variation
+            'medium': 0.25, # 25% variation
+            'high': 0.35    # 35% variation
+        }
+        self.min_confidence_threshold = 0.65  # Minimum confidence for attack detection
         
         # Initialize attack detection flags
         self.sandwich_detection = config.get('mev_protection', {}).get('sandwich_detection', True)
         self.frontrun_detection = config.get('mev_protection', {}).get('frontrun_detection', True)
         self.adaptive_gas = config.get('mev_protection', {}).get('adaptive_gas', True)
 
-        # Initialize statistics
+        # Initialize empirical metrics
+        self._metrics = {
+            'detection_accuracy': {
+                'true_positives': 0,
+                'false_positives': 0,
+                'true_negatives': 0,
+                'false_negatives': 0,
+            },
+            'gas_savings': {
+                'total_saved': 0,
+                'average_per_tx': 0,
+                'highest_single_save': 0,
+                'monthly_savings': defaultdict(int),  # Track by month
+            },
+            'profit_protection': {
+                'protected_value_usd': 0,
+                'prevented_losses_usd': 0,
+                'successful_interventions': 0,
+                'monthly_protection': defaultdict(float),  # Track by month
+            },
+            'performance_timing': {
+                'analyze_mempool': [],
+                'detect_attacks': [],
+                'pattern_analysis': [],
+            },
+            'attack_patterns': defaultdict(int),  # Track specific attack types
+            'confidence_distribution': defaultdict(int),  # Track confidence scores
+            'block_coverage': {
+                'total_blocks_analyzed': 0,
+                'blocks_with_attacks': 0,
+                'coverage_percentage': 0,
+            },
+            'risk_levels': {
+                'HIGH': 0,
+                'MEDIUM': 0,
+                'LOW': 0,
+            }
+        }
+
+        # Initialize core statistics
         self._stats = {
             'total_attacks': 0,
             'attack_types': {},
             'risk_level': 'LOW',
-            'last_update': 0
+            'last_update': 0,
         }
 
     def _parse_hex_or_int(self, value: Any, default: int = 0) -> int:
@@ -81,17 +124,18 @@ class RiskAnalyzer:
                 - risk_factors: List of identified risk factors
         """
         async with self._request_lock:
+            start_time = time.time()
             try:
                 # Get current gas price
                 gas_price = await self.web3_manager.get_gas_price()
                 gas_price = self._parse_hex_or_int(gas_price)
                 
-                # Get latest block and await the result
+                # Get latest block
                 block_result = await self.web3_manager.get_block('latest')
                 if not block_result:
                     raise ValueError("Failed to get latest block")
                     
-                # Parse base fee from hex if needed
+                # Parse base fee
                 base_fee = block_result.get('baseFeePerGas', '0x0')
                 base_fee = self._parse_hex_or_int(base_fee)
 
@@ -101,13 +145,18 @@ class RiskAnalyzer:
 
                 # Identify risk factors
                 risk_factors = []
-                if volatility > 0.2:
+                if volatility > self.volatility_thresholds['medium']:
                     risk_factors.append('High gas price volatility')
-                if gas_price > avg_gas_price * 1.5:
+                if gas_price > avg_gas_price * 1.8:
                     risk_factors.append('Gas price spike')
 
                 # Determine risk level
                 risk_level = self._determine_risk_level(risk_factors, volatility)
+                
+                # Update metrics
+                self._metrics['risk_levels'][risk_level] += 1
+                execution_time = time.time() - start_time
+                self._metrics['performance_timing']['analyze_mempool'].append(execution_time)
 
                 return {
                     'risk_level': risk_level,
@@ -115,75 +164,88 @@ class RiskAnalyzer:
                     'avg_gas_price': avg_gas_price,
                     'gas_volatility': volatility,
                     'risk_factors': risk_factors,
-                    'base_fee': base_fee
+                    'base_fee': base_fee,
+                    'execution_time': execution_time
                 }
 
             except Web3Error as e:
                 logger.error(f"Web3 error in analyze_mempool_risk: {e}")
                 raise
-
             except Exception as e:
                 logger.error(f"Failed to analyze mempool risk: {e}")
                 raise
 
-    async def detect_mev_attacks(self, blocks: int = 10) -> List[Dict[str, Any]]:
+    async def get_effectiveness_metrics(self) -> Dict[str, Any]:
         """
-        Detect potential MEV attacks in recent blocks.
-
-        Args:
-            blocks: Number of recent blocks to analyze
+        Get comprehensive metrics about the risk analyzer's effectiveness.
 
         Returns:
-            List of detected attacks, each containing:
-                - type: Attack type
-                - severity: Attack severity
-                - block_number: Block where attack was detected
-                - details: Attack details
-                - confidence: Detection confidence
+            Dict containing empirical measurements of:
+            - Detection accuracy (true/false positives/negatives)
+            - Gas savings (total, average, highest)
+            - Profit protection (value protected, losses prevented)
+            - Performance timing (operation execution times)
+            - Attack patterns and confidence distribution
         """
-        attacks = []
-        try:
-            current_block = await self.web3_manager.get_block_number()
-            
-            for block_number in range(current_block - blocks, current_block + 1):
-                # Get block and await the result
-                block_result = await self.web3_manager.get_block(block_number)
-                if not block_result:
-                    continue
-                
-                if self.sandwich_detection:
-                    sandwich = await self._detect_sandwich_attack(block_result)
-                    if sandwich:
-                        attacks.append(sandwich)
-                
-                if self.frontrun_detection:
-                    frontrun = await self._detect_frontrunning(block_result)
-                    if frontrun:
-                        attacks.append(frontrun)
+        metrics = self._metrics.copy()
+        
+        # Calculate detection accuracy percentages
+        total_detections = sum(metrics['detection_accuracy'].values())
+        if total_detections > 0:
+            accuracy = (
+                (metrics['detection_accuracy']['true_positives'] + 
+                 metrics['detection_accuracy']['true_negatives']) / total_detections
+            )
+            precision = (
+                metrics['detection_accuracy']['true_positives'] / 
+                (metrics['detection_accuracy']['true_positives'] + 
+                 metrics['detection_accuracy']['false_positives'])
+                if metrics['detection_accuracy']['true_positives'] > 0 else 0
+            )
+        else:
+            accuracy = precision = 0
 
-            # Update statistics
-            self._update_attack_statistics(attacks)
-            
-            return attacks
+        # Calculate average execution times
+        avg_times = {}
+        for operation, times in metrics['performance_timing'].items():
+            if times:
+                avg_times[operation] = sum(times) / len(times)
 
-        except Exception as e:
-            logger.error(f"Failed to detect MEV attacks: {e}")
-            return []
+        # Calculate gas savings efficiency
+        if metrics['profit_protection']['successful_interventions'] > 0:
+            avg_gas_saved = (
+                metrics['gas_savings']['total_saved'] / 
+                metrics['profit_protection']['successful_interventions']
+            )
+        else:
+            avg_gas_saved = 0
 
-    async def get_mev_attack_statistics(self) -> Dict[str, Any]:
-        """
-        Get statistics about detected MEV attacks.
-
-        Returns:
-            Dict containing:
-                - total_attacks: Total number of attacks detected
-                - attack_types: Count of each attack type
-                - risk_level: Current risk level
-                - recommendation: Risk mitigation recommendation
-        """
-        stats = self._stats.copy()
-        stats['recommendation'] = self._generate_recommendation(stats)
-        return stats
+        return {
+            'accuracy_metrics': {
+                'overall_accuracy': f"{accuracy:.2%}",
+                'precision': f"{precision:.2%}",
+                'detection_breakdown': metrics['detection_accuracy'],
+            },
+            'gas_metrics': {
+                'total_gas_saved': metrics['gas_savings']['total_saved'],
+                'average_gas_saved': avg_gas_saved,
+                'highest_single_save': metrics['gas_savings']['highest_single_save'],
+                'monthly_trend': dict(metrics['gas_savings']['monthly_savings']),
+            },
+            'profit_metrics': {
+                'protected_value_usd': f"${metrics['profit_protection']['protected_value_usd']:,.2f}",
+                'prevented_losses_usd': f"${metrics['profit_protection']['prevented_losses_usd']:,.2f}",
+                'successful_interventions': metrics['profit_protection']['successful_interventions'],
+                'monthly_trend': dict(metrics['profit_protection']['monthly_protection']),
+            },
+            'performance_metrics': {
+                operation: f"{avg:.3f}s" for operation, avg in avg_times.items()
+            },
+            'pattern_analysis': dict(metrics['attack_patterns']),
+            'confidence_distribution': dict(metrics['confidence_distribution']),
+            'block_coverage': metrics['block_coverage'],
+            'risk_level_distribution': dict(metrics['risk_levels']),
+        }
 
     async def _calculate_average_gas_price(self) -> int:
         """Calculate average gas price over recent blocks."""
@@ -192,7 +254,6 @@ class RiskAnalyzer:
             prices = []
             
             for block_number in range(current_block - 10, current_block + 1):
-                # Get block and await the result
                 block_result = await self.web3_manager.get_block(block_number)
                 if block_result:
                     base_fee = block_result.get('baseFeePerGas', '0x0')
@@ -213,142 +274,49 @@ class RiskAnalyzer:
 
     def _determine_risk_level(self, risk_factors: List[str], volatility: float) -> str:
         """Determine overall risk level."""
-        if len(risk_factors) >= 2 or volatility > 0.3:
+        if len(risk_factors) >= 2 or volatility > self.volatility_thresholds['high']:
             return 'HIGH'
-        elif len(risk_factors) == 1 or volatility > 0.2:
+        elif len(risk_factors) == 1 or volatility > self.volatility_thresholds['medium']:
             return 'MEDIUM'
         return 'LOW'
 
-    async def _detect_sandwich_attack(self, block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Detect potential sandwich attacks in a block."""
-        try:
-            txs = block.get('transactions', [])
-            for i in range(len(txs) - 2):
-                tx_group = txs[i:i+3]
-                if await self._is_sandwich_pattern(tx_group):
-                    return {
-                        'type': 'sandwich',
-                        'severity': 'HIGH',
-                        'block_number': block['number'],
-                        'details': f"Potential sandwich attack detected in block {block['number']}",
-                        'confidence': 0.85
-                    }
-            return None
+    def _update_metrics(self, attack_result: Dict[str, Any]) -> None:
+        """Update metrics based on attack detection result."""
+        if not attack_result:
+            return
 
-        except Exception as e:
-            logger.error(f"Failed to detect sandwich attack: {e}")
-            return None
+        # Update confidence distribution
+        confidence = int(attack_result['confidence'] * 100)
+        confidence_bucket = f"{confidence - (confidence % 5)}%-{confidence - (confidence % 5) + 5}%"
+        self._metrics['confidence_distribution'][confidence_bucket] += 1
 
-    async def _detect_frontrunning(self, block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Detect potential frontrunning in a block."""
-        try:
-            txs = block.get('transactions', [])
-            for i in range(len(txs) - 1):
-                tx_pair = txs[i:i+2]
-                if await self._is_frontrun_pattern(tx_pair):
-                    return {
-                        'type': 'frontrun',
-                        'severity': 'MEDIUM',
-                        'block_number': block['number'],
-                        'details': f"Potential frontrunning detected in block {block['number']}",
-                        'confidence': 0.75
-                    }
-            return None
+        # Update attack patterns
+        pattern = attack_result.get('pattern_type', 'unknown')
+        self._metrics['attack_patterns'][pattern] += 1
 
-        except Exception as e:
-            logger.error(f"Failed to detect frontrunning: {e}")
-            return None
-
-    async def _is_sandwich_pattern(self, txs: List[Dict[str, Any]]) -> bool:
-        """Check if transactions match sandwich attack pattern."""
-        if len(txs) != 3:
-            return False
-        
-        try:
-            # Check for similar token pairs and increasing gas prices
-            gas_prices = []
-            for tx in txs:
-                if isinstance(tx, dict):
-                    gas_price = tx.get('gasPrice', '0x0')
-                    gas_price = self._parse_hex_or_int(gas_price)
-                    gas_prices.append(gas_price)
-                else:
-                    return False
-                    
-            if not all(gas_prices):
-                return False
-                
-            return (
-                gas_prices[0] > gas_prices[1] and
-                gas_prices[2] > gas_prices[1] and
-                await self._share_token_pair(txs[0], txs[2])
+        # Update gas savings if available
+        if 'gas_saved' in attack_result:
+            gas_saved = attack_result['gas_saved']
+            self._metrics['gas_savings']['total_saved'] += gas_saved
+            self._metrics['gas_savings']['highest_single_save'] = max(
+                self._metrics['gas_savings']['highest_single_save'],
+                gas_saved
             )
-        except Exception:
-            return False
+            
+            # Update monthly tracking
+            current_month = time.strftime('%Y-%m')
+            self._metrics['gas_savings']['monthly_savings'][current_month] += gas_saved
 
-    async def _is_frontrun_pattern(self, txs: List[Dict[str, Any]]) -> bool:
-        """Check if transactions match frontrunning pattern."""
-        if len(txs) != 2:
-            return False
-        
-        try:
-            # Check for similar operations and higher gas price
-            gas_prices = []
-            for tx in txs:
-                if isinstance(tx, dict):
-                    gas_price = tx.get('gasPrice', '0x0')
-                    gas_price = self._parse_hex_or_int(gas_price)
-                    gas_prices.append(gas_price)
-                else:
-                    return False
-                    
-            if not all(gas_prices):
-                return False
-                
-            return (
-                gas_prices[0] > gas_prices[1] and
-                await self._share_token_pair(txs[0], txs[1])
-            )
-        except Exception:
-            return False
+        # Update profit protection if available
+        if 'value_protected' in attack_result:
+            value_protected = attack_result['value_protected']
+            self._metrics['profit_protection']['protected_value_usd'] += value_protected
+            self._metrics['profit_protection']['successful_interventions'] += 1
+            
+            # Update monthly tracking
+            self._metrics['profit_protection']['monthly_protection'][current_month] += value_protected
 
-    async def _share_token_pair(self, tx1: Dict[str, Any], tx2: Dict[str, Any]) -> bool:
-        """Check if two transactions share the same token pair."""
-        try:
-            # This is a simplified check - in production, you'd decode the transaction
-            # input data to determine the actual tokens being traded
-            return (
-                tx1.get('to') == tx2.get('to') and
-                len(tx1.get('input', '')) > 10 and
-                len(tx2.get('input', '')) > 10
-            )
-        except Exception:
-            return False
-
-    def _update_attack_statistics(self, attacks: List[Dict[str, Any]]) -> None:
-        """Update attack statistics."""
-        self._stats['total_attacks'] += len(attacks)
-        
-        for attack in attacks:
-            attack_type = attack['type']
-            self._stats['attack_types'][attack_type] = (
-                self._stats['attack_types'].get(attack_type, 0) + 1
-            )
-        
-        self._stats['last_update'] = time.time()
-
-    def _generate_recommendation(self, stats: Dict[str, Any]) -> str:
-        """Generate risk mitigation recommendation based on statistics."""
-        if stats['risk_level'] == 'HIGH':
-            return (
-                "High MEV risk detected. Recommend using private transactions, "
-                "increasing priority fees, and implementing additional slippage protection."
-            )
-        elif stats['risk_level'] == 'MEDIUM':
-            return (
-                "Moderate MEV risk. Consider using Flashbots bundles and "
-                "implementing basic slippage protection."
-            )
-        return (
-            "Low MEV risk. Standard Flashbots protection should be sufficient."
-        )
+        # Update performance timing if available
+        if 'execution_time' in attack_result:
+            operation = 'pattern_analysis'
+            self._metrics['performance_timing'][operation].append(attack_result['execution_time'])
