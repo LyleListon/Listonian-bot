@@ -15,7 +15,7 @@ from eth_typing import ChecksumAddress
 from eth_utils import to_checksum_address
 
 from ...utils.async_manager import with_retry
-from ..web3.interfaces import Web3Client
+from ..web3.interfaces import Web3Client, ContractWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ class DexManager:
 
     async def discover_pools_aerodrome(
         self,
-        factory_contract: Any,
+        factory_contract: ContractWrapper,
         dex: DexInfo,
         token_addresses: Optional[List[ChecksumAddress]] = None
     ) -> Set[ChecksumAddress]:
@@ -204,7 +204,7 @@ class DexManager:
 
     async def discover_pools_v2(
         self,
-        factory_contract: Any,
+        factory_contract: ContractWrapper,
         dex: DexInfo,
         token_addresses: Optional[List[ChecksumAddress]] = None
     ) -> Set[ChecksumAddress]:
@@ -257,7 +257,7 @@ class DexManager:
 
     async def discover_pools_v3(
         self,
-        factory_contract: Any,
+        factory_contract: ContractWrapper,
         dex: DexInfo,
         token_addresses: Optional[List[ChecksumAddress]] = None
     ) -> Set[ChecksumAddress]:
@@ -340,7 +340,7 @@ class DexManager:
                 return set()
 
             # Create factory contract
-            factory_contract = self.web3_manager.w3.eth.contract(
+            factory_contract = self.web3_manager.contract(
                 address=dex.factory_address,
                 abi=dex.factory_abi
             )
@@ -419,7 +419,7 @@ class DexManager:
             if not pool:
                 return 0
 
-            pool_contract = self.web3_manager.w3.eth.contract(
+            pool_contract = self.web3_manager.contract(
                 address=pool,
                 abi=dex.pool_abi
             )
@@ -475,7 +475,7 @@ class DexManager:
 
             # Find pool with both tokens
             for pool in dex.pools:
-                pool_contract = self.web3_manager.w3.eth.contract(
+                pool_contract = self.web3_manager.contract(
                     address=pool,
                     abi=dex.pool_abi
                 )
@@ -505,7 +505,7 @@ class DexManager:
         """Get pool fee in basis points."""
         try:
             dex = self.dexes[dex_name]
-            pool_contract = self.web3_manager.w3.eth.contract(
+            pool_contract = self.web3_manager.contract(
                 address=pool_address,
                 abi=dex.pool_abi
             )
@@ -540,7 +540,7 @@ class DexManager:
             for pool in dex.pools:
                 try:
                     # Create pool contract
-                    pool_contract = self.web3_manager.w3.eth.contract(
+                    pool_contract = self.web3_manager.contract(
                         address=pool,
                         abi=dex.pool_abi
                     )
@@ -574,7 +574,7 @@ class DexManager:
         """
         try:
             dex = self.dexes[dex_name]
-            pool_contract = self.web3_manager.w3.eth.contract(
+            pool_contract = self.web3_manager.contract(
                 address=pool_address,
                 abi=dex.pool_abi
             )
@@ -611,7 +611,7 @@ class DexManager:
         for dex in self.dexes.values():
             for pool in dex.pools:
                 try:
-                    pool_contract = self.web3_manager.w3.eth.contract(
+                    pool_contract = self.web3_manager.contract(
                         address=pool,
                         abi=dex.pool_abi
                     )

@@ -14,7 +14,6 @@ from typing import Dict, List, Any, Optional
 from decimal import Decimal
 
 from ....utils.async_manager import AsyncLock, with_retry
-from ..web3_client_wrapper import Web3ClientWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ class RiskAnalyzer:
                 - risk parameters
         """
         self.web3_manager = web3_manager
-        self.w3 = Web3ClientWrapper(web3_manager.w3)
+        self.w3 = web3_manager.w3
         self.config = config
         self._request_lock = AsyncLock()
         
@@ -72,11 +71,11 @@ class RiskAnalyzer:
         async with self._request_lock:
             try:
                 # Get current gas prices using Web3Manager methods
-                gas_price = await self.w3.eth.get_gas_price()
+                gas_price = self.w3.eth.gas_price
                 
-                # Get latest block
-                block = await self.w3.eth.get_block('latest')
-                base_fee = block.get('baseFeePerGas', 0)
+                # Get latest block and await the result
+                block_result = await self.w3.eth.get_block('latest')
+                base_fee = block_result.get('baseFeePerGas', 0)
 
                 # Calculate gas price statistics
                 avg_gas_price = await self._calculate_average_gas_price()
@@ -122,18 +121,19 @@ class RiskAnalyzer:
         """
         attacks = []
         try:
-            current_block = await self.w3.eth.get_block_number()
+            current_block = self.w3.eth.block_number
             
             for block_number in range(current_block - blocks, current_block + 1):
-                block = await self.w3.eth.get_block(block_number, True)
+                # Get block and await the result
+                block_result = await self.w3.eth.get_block(block_number, True)
                 
                 if self.sandwich_detection:
-                    sandwich = await self._detect_sandwich_attack(block)
+                    sandwich = await self._detect_sandwich_attack(block_result)
                     if sandwich:
                         attacks.append(sandwich)
                 
                 if self.frontrun_detection:
-                    frontrun = await self._detect_frontrunning(block)
+                    frontrun = await self._detect_frontrunning(block_result)
                     if frontrun:
                         attacks.append(frontrun)
 
@@ -164,13 +164,14 @@ class RiskAnalyzer:
     async def _calculate_average_gas_price(self) -> int:
         """Calculate average gas price over recent blocks."""
         try:
-            current_block = await self.w3.eth.get_block_number()
+            current_block = self.w3.eth.block_number
             prices = []
             
             for block_number in range(current_block - 10, current_block + 1):
-                block = await self.w3.eth.get_block(block_number)
-                if 'baseFeePerGas' in block:
-                    prices.append(block['baseFeePerGas'])
+                # Get block and await the result
+                block_result = await self.w3.eth.get_block(block_number)
+                if 'baseFeePerGas' in block_result:
+                    prices.append(block_result['baseFeePerGas'])
             
             return sum(prices) // len(prices) if prices else 0
 

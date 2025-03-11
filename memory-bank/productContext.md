@@ -1,170 +1,242 @@
 # Product Context
 
-## CRITICAL: Live System Deployment
-The arbitrage bot and dashboard MUST:
-- Use ONLY live blockchain data
-- Execute ONLY real trades
-- Display ONLY actual profits
-- Monitor ONLY live transactions
-- NO mock/fake/placeholder/simulated data
+## System Capabilities
 
-## Product Overview
-Live arbitrage system that:
-- Discovers real trading opportunities
-- Executes actual flash loans
-- Uses live Flashbots protection
-- Tracks real profits
+### Web3 Integration (Updated 3/10/2025)
+- ✅ Robust contract interaction system
+- ✅ Proper async/await handling
+- ✅ Comprehensive error handling
+- ✅ Resource management
+- ✅ Type safety
 
-## Key Features
+### DEX Integration
+- 🔄 Multiple DEX support
+  - Aerodrome
+  - BaseSwap
+  - SwapBased
+- 🔄 Pool discovery
+- 🔄 Price fetching
+- 🔄 Trade execution
 
-### Live Arbitrage
-- Real-time DEX monitoring
-- Live price tracking
-- Actual path optimization
-- Real profit calculation
+### Flash Loan Integration
+- 🔄 Balancer vault integration
+- 🔄 Multi-token support
+- 🔄 Atomic execution
+- 🔄 Profit verification
 
-### Live Execution
-- Real flash loan operations
-- Live MEV protection
-- Actual slippage control
-- Real balance verification
+### Flashbots Integration
+- 🔄 Bundle creation
+- 🔄 Transaction simulation
+- 🔄 MEV protection
+- 🔄 Private transaction routing
 
-### Live Risk Management
-- Real-time price validation
-- Live liquidity monitoring
-- Actual attack prevention
-- Real-time alerts
+## System Requirements
 
-## User Benefits
+### Performance Requirements
+- Contract call latency < 100ms
+- Price update frequency < 1s
+- Gas optimization within 5% of optimal
+- Memory usage < 500MB
+- CPU usage < 50%
 
-### Live Profit Tracking
-- Real-time path selection
-- Live gas optimization
-- Actual MEV protection
-- Real execution speed
+### Reliability Requirements
+- System uptime > 99.9%
+- Transaction success rate > 99%
+- Error recovery < 1s
+- Data consistency 100%
 
-### Live Risk Control
-- Real-time price validation
-- Live slippage protection
-- Actual balance checks
-- Real transaction validation
+### Security Requirements
+- All addresses checksummed
+- All inputs validated
+- All transactions simulated
+- All profits verified
+- All balances checked
 
-### Live Operations
-- Real-time discovery
-- Live execution
-- Actual optimization
-- Real error recovery
+## User Stories
 
-## Success Metrics
+### Arbitrage Execution
+```gherkin
+Feature: Execute arbitrage opportunity
+  As a system operator
+  I want to execute profitable arbitrage trades
+  So that I can generate consistent profits
 
-### Live Performance
-- Real path discovery time
-- Live execution speed
-- Actual gas efficiency
-- Real success rate
+  Scenario: Execute profitable trade
+    Given a profitable arbitrage opportunity exists
+    When the system discovers the opportunity
+    Then it should validate the profit
+    And execute the trade through flash loans
+    And protect against MEV attacks
+    And verify the execution success
+```
 
-### Live Profitability
-- Real profit per trade
-- Live gas costs
-- Actual failure rate
-- Real ROI metrics
+### Contract Interaction
+```gherkin
+Feature: Interact with smart contracts
+  As the arbitrage system
+  I want to interact with DEX contracts
+  So that I can execute trades efficiently
 
-### Live Reliability
-- Real-time uptime
-- Live error rate
-- Actual recovery time
-- Real resource usage
+  Scenario: Get pool information
+    Given a DEX pool exists
+    When the system queries the pool
+    Then it should receive pool data
+    And handle the response asynchronously
+    And manage resources properly
+    And handle errors appropriately
+```
 
-## Current Status
+## System Metrics
 
-### Live Features
-- Real DEX integration
-- Live pool discovery
-- Actual path finding
-- Real Flashbots usage
+### Performance Metrics
+- Contract call latency
+- Price update frequency
+- Gas usage optimization
+- Resource utilization
+- Transaction success rate
 
-### Production Development
-- Live system deployment
-- Real performance optimization
-- Actual error handling
-- Live monitoring
+### Business Metrics
+- Profit per trade
+- Total daily profit
+- Gas costs
+- Success rate
+- Opportunity capture rate
 
-### Planned Features
-- Real profit strategies
-- Live DEX support
-- Actual security measures
-- Real performance tracking
+## Risk Management
 
-## Usage Requirements
+### Technical Risks
+- Contract interaction failures
+- Network congestion
+- High gas prices
+- MEV attacks
+- System resource exhaustion
 
-### Production System
-- Live blockchain node
-- Real network connection
-- Actual memory allocation
-- Live CPU resources
+### Business Risks
+- Insufficient liquidity
+- Price volatility
+- Competition
+- Regulatory changes
+- Smart contract vulnerabilities
 
-### Live Configuration
-- Real DEX settings
-- Live token addresses
-- Actual gas limits
-- Real profit thresholds
+## Monitoring Requirements
 
-### Live Monitoring
-- Real-time metrics
-- Live error tracking
-- Actual profit monitoring
-- Real resource tracking
+### System Health
+- Contract interaction status
+- Resource utilization
+- Error rates
+- Response times
+- System uptime
 
-## Deployment Roadmap
-
-### Immediate
-1. Remove all test data
-2. Deploy live system
-3. Enable real trading
-4. Launch live monitoring
-
-### Short Term
-1. Optimize live performance
-2. Enhance real security
-3. Improve live monitoring
-4. Add real features
-
-### Long Term
-1. Expand live DEX support
-2. Add real strategies
-3. Enhance live analytics
-4. Optimize real operations
+### Business Health
+- Profit tracking
+- Gas cost tracking
+- Success rate tracking
+- Opportunity tracking
+- Competition tracking
 
 ## Integration Points
 
-### Live Systems
-- Real blockchain nodes
-- Live DEX contracts
-- Actual token contracts
-- Real price feeds
+### External Systems
+- RPC nodes
+- DEX contracts
+- Flash loan providers
+- Flashbots relay
+- Price oracles
 
-### Production Systems
-- Live Web3 manager
-- Real DEX manager
-- Actual path finder
-- Live flash loan manager
+### Internal Systems
+- Monitoring system
+- Logging system
+- Alert system
+- Analytics system
+- Backup system
 
-## Support and Maintenance
+## Deployment Requirements
 
-### Live Monitoring
-- Real-time metrics
-- Live error tracking
-- Actual resource usage
-- Real profit analysis
+### Infrastructure
+- High-performance servers
+- Redundant connections
+- Automated failover
+- Backup systems
+- Monitoring systems
 
-### Production Updates
-- Live maintenance
-- Real security patches
-- Actual feature updates
-- Live performance fixes
+### Network
+- Low latency connections
+- High bandwidth
+- Multiple RPC endpoints
+- Redundant paths
+- DDoS protection
 
-### Live Documentation
-- Real setup procedures
-- Live configuration guide
-- Actual troubleshooting
-- Real best practices
+## Maintenance Requirements
+
+### Regular Tasks
+- Log rotation
+- Performance monitoring
+- Error analysis
+- System updates
+- Security audits
+
+### Emergency Tasks
+- Error recovery
+- System restart
+- State recovery
+- Data backup
+- Incident response
+
+## Documentation Requirements
+
+### Technical Documentation
+- Architecture overview
+- System patterns
+- Error handling
+- Performance tuning
+- Security measures
+
+### Operational Documentation
+- Setup procedures
+- Monitoring guide
+- Troubleshooting guide
+- Emergency procedures
+- Maintenance tasks
+
+## Future Enhancements
+
+### Short-term
+1. Contract event handling
+2. Subscription support
+3. Enhanced caching
+4. Better type inference
+
+### Medium-term
+1. Multi-chain support
+2. Advanced MEV protection
+3. Improved profit optimization
+4. Enhanced monitoring
+
+### Long-term
+1. AI/ML integration
+2. Cross-chain arbitrage
+3. Advanced risk management
+4. Automated optimization
+
+## Success Criteria
+
+### Technical Success
+- System stability
+- Performance targets met
+- Error rates within limits
+- Resource usage optimized
+- Security measures effective
+
+### Business Success
+- Consistent profits
+- Low operating costs
+- High success rate
+- Quick opportunity capture
+- Effective risk management
+
+Remember:
+- System must be reliable
+- Performance is critical
+- Security is paramount
+- Monitoring is essential
+- Documentation must be maintained

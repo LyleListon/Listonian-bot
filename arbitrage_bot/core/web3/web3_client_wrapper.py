@@ -1,175 +1,197 @@
 """
-Web3 Client Wrapper
+Web3 Client Wrapper Module
 
-This module provides a wrapper around web3.py's Web3 class to ensure consistent
-async/await patterns and proper property access.
+This module provides wrappers for web3.py functionality to ensure proper async/await handling.
 """
 
-import logging
 from typing import Any, Dict, Optional
-from web3 import Web3
 from eth_typing import ChecksumAddress
+from web3 import Web3
 
-logger = logging.getLogger(__name__)
+from .interfaces import Web3Client, Contract, ContractWrapper
 
-class Web3ClientWrapper:
-    """
-    Wrapper around web3.py's Web3 class to ensure consistent async/await patterns.
+class Web3ClientWrapper(Web3Client):
+    """Wrapper for web3.py client to ensure proper async/await handling."""
     
-    This wrapper provides async methods for commonly used Web3 properties and
-    ensures consistent error handling and logging.
-    """
-
     def __init__(self, w3: Web3):
         """
-        Initialize the wrapper.
+        Initialize wrapper.
 
         Args:
-            w3: Web3 instance to wrap
+            w3: Web3.py client
         """
         self._w3 = w3
-        self.eth = EthWrapper(w3.eth)
 
     @property
-    def middleware_onion(self):
-        """Access to middleware stack."""
-        return self._w3.middleware_onion
-
-    def __getattr__(self, name: str) -> Any:
+    def eth(self) -> Any:
         """
-        Passthrough for any attributes not explicitly wrapped.
-
-        Args:
-            name: Attribute name
+        Get eth module.
 
         Returns:
-            The requested attribute from the underlying Web3 instance
+            Eth module
         """
-        return getattr(self._w3, name)
+        return self._w3.eth
 
-class EthWrapper:
-    """
-    Wrapper around web3.py's Eth class to ensure consistent async/await patterns.
-    """
-
-    def __init__(self, eth):
+    def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
         """
-        Initialize the wrapper.
+        Create contract instance.
 
         Args:
-            eth: Web3.eth instance to wrap
-        """
-        self._eth = eth
-
-    async def get_gas_price(self) -> int:
-        """
-        Get current gas price.
+            address: Contract address
+            abi: Contract ABI
 
         Returns:
-            Current gas price in Wei
+            Wrapped contract instance
         """
-        try:
-            return self._eth.gas_price
-        except Exception as e:
-            logger.error(f"Failed to get gas price: {e}")
-            raise
+        # Create contract using raw Web3 instance
+        raw_contract = self._w3.eth.contract(address=address, abi=abi)
+        # Wrap the contract
+        return ContractWrapper(raw_contract)
+
+    async def get_balance(self, address: ChecksumAddress) -> int:
+        """
+        Get ETH balance for address.
+
+        Args:
+            address: Address to check
+
+        Returns:
+            Balance in wei
+        """
+        return self._w3.eth.get_balance(address)
+
+    async def get_transaction_count(self, address: ChecksumAddress) -> int:
+        """
+        Get transaction count (nonce) for address.
+
+        Args:
+            address: Address to check
+
+        Returns:
+            Transaction count
+        """
+        return self._w3.eth.get_transaction_count(address)
+
+    async def get_block(self, block_identifier: Any) -> Dict[str, Any]:
+        """
+        Get block by number or hash.
+
+        Args:
+            block_identifier: Block number or hash
+
+        Returns:
+            Block data
+        """
+        return self._w3.eth.get_block(block_identifier)
 
     async def get_block_number(self) -> int:
         """
         Get current block number.
 
         Returns:
-            Current block number
+            Block number
         """
-        try:
-            return self._eth.block_number
-        except Exception as e:
-            logger.error(f"Failed to get block number: {e}")
-            raise
+        return self._w3.eth.block_number
 
-    async def get_block(self, block_identifier: Any, full_transactions: bool = False) -> Dict[str, Any]:
+    async def get_gas_price(self) -> int:
         """
-        Get block by number or hash.
-
-        Args:
-            block_identifier: Block number or hash
-            full_transactions: Whether to include full transaction objects
+        Get current gas price.
 
         Returns:
-            Block data
+            Gas price in wei
         """
-        try:
-            return self._eth.get_block(block_identifier, full_transactions)
-        except Exception as e:
-            logger.error(f"Failed to get block {block_identifier}: {e}")
-            raise
+        return self._w3.eth.gas_price
 
-    async def get_transaction_count(self, address: ChecksumAddress, block_identifier: Optional[Any] = None) -> int:
+    async def get_transaction(self, tx_hash: str) -> Dict[str, Any]:
         """
-        Get transaction count (nonce) for address.
+        Get transaction by hash.
 
         Args:
-            address: Account address
-            block_identifier: Block number or hash (default: 'latest')
+            tx_hash: Transaction hash
 
         Returns:
-            Transaction count
+            Transaction data
         """
-        try:
-            return self._eth.get_transaction_count(address, block_identifier or 'latest')
-        except Exception as e:
-            logger.error(f"Failed to get transaction count for {address}: {e}")
-            raise
+        return self._w3.eth.get_transaction(tx_hash)
 
-    async def get_balance(self, address: ChecksumAddress, block_identifier: Optional[Any] = None) -> int:
+    async def get_transaction_receipt(self, tx_hash: str) -> Dict[str, Any]:
         """
-        Get ETH balance for address.
+        Get transaction receipt by hash.
 
         Args:
-            address: Account address
-            block_identifier: Block number or hash (default: 'latest')
+            tx_hash: Transaction hash
 
         Returns:
-            Balance in Wei
+            Transaction receipt
         """
-        try:
-            return self._eth.get_balance(address, block_identifier or 'latest')
-        except Exception as e:
-            logger.error(f"Failed to get balance for {address}: {e}")
-            raise
+        return self._w3.eth.get_transaction_receipt(tx_hash)
 
-    async def call(self, transaction: Dict[str, Any], block_identifier: Optional[Any] = None) -> bytes:
+    async def wait_for_transaction_receipt(
+        self,
+        tx_hash: str,
+        timeout: Optional[float] = None
+    ) -> Dict[str, Any]:
         """
-        Execute a new message call immediately without creating a transaction on the blockchain.
+        Wait for transaction receipt.
 
         Args:
-            transaction: Transaction parameters
-            block_identifier: Block number or hash (default: 'latest')
+            tx_hash: Transaction hash
+            timeout: Optional timeout in seconds
 
         Returns:
-            The return data of the call
+            Transaction receipt
         """
-        try:
-            return self._eth.call(transaction, block_identifier or 'latest')
-        except Exception as e:
-            logger.error(f"Failed to execute eth_call: {e}")
-            raise
+        return self._w3.eth.wait_for_transaction_receipt(tx_hash, timeout)
 
-    def __getattr__(self, name: str) -> Any:
+    async def estimate_gas(self, transaction: Dict[str, Any]) -> int:
         """
-        Passthrough for any attributes not explicitly wrapped.
+        Estimate gas for transaction.
 
         Args:
-            name: Attribute name
+            transaction: Transaction dict
 
         Returns:
-            The requested attribute from the underlying Eth instance
+            Gas estimate
         """
-        attr = getattr(self._eth, name)
-        
-        # If the attribute is a method, wrap it to ensure async compatibility
-        if callable(attr):
-            async def wrapped(*args, **kwargs):
-                return attr(*args, **kwargs)
-            return wrapped
-        return attr
+        return self._w3.eth.estimate_gas(transaction)
+
+    async def send_raw_transaction(self, raw_transaction: bytes) -> str:
+        """
+        Send raw transaction.
+
+        Args:
+            raw_transaction: Raw transaction bytes
+
+        Returns:
+            Transaction hash
+        """
+        return self._w3.eth.send_raw_transaction(raw_transaction)
+
+    async def send_transaction(self, transaction: Dict[str, Any]) -> str:
+        """
+        Send transaction.
+
+        Args:
+            transaction: Transaction dict
+
+        Returns:
+            Transaction hash
+        """
+        return self._w3.eth.send_transaction(transaction)
+
+    async def call(self, transaction: Dict[str, Any]) -> bytes:
+        """
+        Call contract function.
+
+        Args:
+            transaction: Transaction dict
+
+        Returns:
+            Return data
+        """
+        return self._w3.eth.call(transaction)
+
+    async def close(self):
+        """Clean up resources."""
+        if hasattr(self._w3.provider, "close"):
+            await self._w3.provider.close()

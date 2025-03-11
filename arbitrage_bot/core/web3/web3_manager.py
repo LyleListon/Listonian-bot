@@ -15,6 +15,7 @@ from eth_typing import ChecksumAddress
 
 from ...utils.async_manager import with_retry
 from .web3_client_wrapper import Web3ClientWrapper
+from .interfaces import Web3Client, Contract, ContractWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class SignerMiddleware:
             
         return middleware
 
-class Web3Manager:
+class Web3Manager(Web3Client):
     """Manages Web3 connections and interactions."""
 
     def __init__(
@@ -104,8 +105,8 @@ class Web3Manager:
         # Create wrapped Web3 instance
         self.w3 = Web3ClientWrapper(self._raw_w3)
         
-        # Expose eth module through wrapper
-        self.eth = self.w3.eth
+        # Initialize eth module
+        self._eth = self.w3.eth
 
         logger.info(
             f"Web3 manager initialized for chain {chain_id} "
@@ -113,9 +114,35 @@ class Web3Manager:
         )
 
     @property
+    def eth(self) -> Any:
+        """
+        Get eth module.
+
+        Returns:
+            Eth module
+        """
+        return self._eth
+
+    @property
     def is_connected(self) -> bool:
         """Check if connected to node."""
         return self._raw_w3.is_connected()
+
+    def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
+        """
+        Create contract instance.
+
+        Args:
+            address: Contract address
+            abi: Contract ABI
+
+        Returns:
+            Contract instance
+        """
+        # Create contract using raw Web3 instance
+        raw_contract = self._raw_w3.eth.contract(address=address, abi=abi)
+        # Wrap the contract
+        return ContractWrapper(raw_contract)
 
     @with_retry(retries=3, delay=1.0)
     async def get_balance(
@@ -164,20 +191,21 @@ class Web3Manager:
 
         address = address or self.wallet_address
 
-        # ERC20 balanceOf function selector
-        selector = self._raw_w3.keccak(text="balanceOf(address)")[:4]
+        # Create ERC20 contract
+        erc20_abi = [
+            {
+                "constant": True,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            }
+        ]
+        token_contract = self.contract(token_address, erc20_abi)
 
-        # Encode address parameter
-        params = self.eth.abi.encode_single("address", address)
-
-        # Make call
-        result = await self.eth.call({
-            "to": token_address,
-            "data": selector + params
-        })
-
-        # Decode result
-        return int.from_bytes(result, byteorder="big")
+        # Call balanceOf
+        balance = await token_contract.functions.balanceOf(address).call()
+        return balance
 
     @with_retry(retries=3, delay=1.0)
     async def get_nonce(

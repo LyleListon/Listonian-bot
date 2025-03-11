@@ -1,129 +1,199 @@
 """
-Web3 Interfaces Module
+Web3 Interface Module
 
-This module provides interfaces for:
-- Transaction types
-- Web3 client interactions
-- Contract interactions
+This module provides interfaces and wrappers for web3.py functionality.
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, Optional, Protocol, TypedDict, List, Union
 from eth_typing import ChecksumAddress, HexStr
 
-@dataclass
-class Transaction:
-    """Transaction data structure."""
+class AccessList(TypedDict, total=False):
+    """Access list for EIP-2930 transactions."""
+    address: ChecksumAddress
+    storageKeys: List[HexStr]
 
-    to: ChecksumAddress
-    value: int = 0
-    data: bytes = b""
-    nonce: Optional[int] = None
-    gas: Optional[int] = None
-    maxFeePerGas: Optional[int] = None
-    maxPriorityFeePerGas: Optional[int] = None
-    chainId: Optional[int] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary format."""
-        tx_dict = {
-            "to": self.to,
-            "value": self.value,
-            "data": self.data
-        }
-
-        if self.nonce is not None:
-            tx_dict["nonce"] = self.nonce
-        if self.gas is not None:
-            tx_dict["gas"] = self.gas
-        if self.maxFeePerGas is not None:
-            tx_dict["maxFeePerGas"] = self.maxFeePerGas
-        if self.maxPriorityFeePerGas is not None:
-            tx_dict["maxPriorityFeePerGas"] = self.maxPriorityFeePerGas
-        if self.chainId is not None:
-            tx_dict["chainId"] = self.chainId
-
-        return tx_dict
-
-@dataclass
-class TransactionReceipt:
-    """Transaction receipt data structure."""
-
-    transactionHash: HexStr
+class Transaction(TypedDict, total=False):
+    """Transaction dictionary type."""
     blockHash: HexStr
     blockNumber: int
-    from_: ChecksumAddress
-    to: Optional[ChecksumAddress]
-    status: int
-    gasUsed: int
-    effectiveGasPrice: int
-    logs: List[Dict[str, Any]]
+    from_: ChecksumAddress  # Note: actual key is 'from'
+    gas: int
+    gasPrice: int
+    maxFeePerGas: int
+    maxPriorityFeePerGas: int
+    hash: HexStr
+    input: HexStr
+    nonce: int
+    to: ChecksumAddress
+    transactionIndex: int
+    value: int
+    type: int
+    accessList: List[AccessList]
+    chainId: int
+    v: int
+    r: HexStr
+    s: HexStr
 
-    @classmethod
-    def from_dict(cls, receipt: Dict[str, Any]) -> "TransactionReceipt":
-        """Create from dictionary format."""
-        return cls(
-            transactionHash=receipt["transactionHash"].hex(),
-            blockHash=receipt["blockHash"].hex(),
-            blockNumber=receipt["blockNumber"],
-            from_=receipt["from"],
-            to=receipt.get("to"),
-            status=receipt["status"],
-            gasUsed=receipt["gasUsed"],
-            effectiveGasPrice=receipt["effectiveGasPrice"],
-            logs=receipt["logs"]
-        )
+class TransactionReceipt(TypedDict, total=False):
+    """Transaction receipt dictionary type."""
+    transactionHash: HexStr
+    transactionIndex: int
+    blockHash: HexStr
+    blockNumber: int
+    from_: ChecksumAddress  # Note: actual key is 'from'
+    to: ChecksumAddress
+    cumulativeGasUsed: int
+    gasUsed: int
+    contractAddress: Optional[ChecksumAddress]
+    logs: List[Dict[str, Any]]
+    status: int
+    effectiveGasPrice: int
+    type: int
+    logsBloom: HexStr
+
+class ContractFunction:
+    """Interface for web3.py contract functions."""
+    
+    async def call(self, *args, **kwargs) -> Any:
+        """Call contract function."""
+        raise NotImplementedError
+
+class Contract:
+    """Interface for web3.py contracts."""
+    
+    @property
+    def functions(self) -> Any:
+        """Get contract functions."""
+        raise NotImplementedError
+
+    @property
+    def address(self) -> ChecksumAddress:
+        """Get contract address."""
+        raise NotImplementedError
 
 class Web3Client(Protocol):
-    """Protocol for Web3 client interface."""
+    """Interface for web3.py client."""
+    
+    @property
+    def eth(self) -> Any:
+        """Get eth module."""
+        raise NotImplementedError
 
-    async def get_balance(
-        self,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
+    def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
+        """Create contract instance."""
+        raise NotImplementedError
+
+class ContractFunctionWrapper:
+    """Wrapper for web3.py contract functions to ensure proper async/await."""
+    
+    def __init__(self, contract_function: Any):
         """
-        Get ETH balance for address.
+        Initialize wrapper.
 
         Args:
-            address: Optional address to check
+            contract_function: Web3.py contract function
+        """
+        self._function = contract_function
+
+    async def call(self, *args, **kwargs) -> Any:
+        """
+        Call contract function asynchronously.
 
         Returns:
-            Balance in wei
+            Function result
         """
-        ...
+        result = self._function.call(*args, **kwargs)
+        return result
 
-    async def get_token_balance(
-        self,
-        token_address: ChecksumAddress,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
+class ContractWrapper:
+    """Wrapper for web3.py contracts to ensure proper async/await."""
+    
+    def __init__(self, contract: Any):
         """
-        Get token balance for address.
+        Initialize wrapper.
 
         Args:
-            token_address: Token contract address
-            address: Optional address to check
+            contract: Web3.py contract
+        """
+        self._contract = contract
+
+    @property
+    def functions(self) -> Any:
+        """
+        Get contract functions.
 
         Returns:
-            Token balance
+            Contract functions object
         """
-        ...
+        return ContractFunctionsWrapper(self._contract.functions)
 
-    async def get_nonce(
-        self,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
+    @property
+    def address(self) -> ChecksumAddress:
         """
-        Get next nonce for address.
+        Get contract address.
+
+        Returns:
+            Contract address
+        """
+        return self._contract.address
+
+class ContractFunctionsWrapper:
+    """Wrapper for web3.py contract functions object to ensure proper async/await."""
+    
+    def __init__(self, functions: Any):
+        """
+        Initialize wrapper.
 
         Args:
-            address: Optional address to check
+            functions: Web3.py contract functions object
+        """
+        self._functions = functions
+
+    def __getattr__(self, name: str) -> ContractFunctionWrapper:
+        """
+        Get contract function by name.
+
+        Args:
+            name: Function name
 
         Returns:
-            Next nonce
+            Wrapped contract function
         """
-        ...
+        function = getattr(self._functions, name)
+        return ContractFunctionWrapper(function)
 
-    async def close(self):
-        """Clean up resources."""
-        ...
+class Web3ClientWrapper:
+    """Wrapper for web3.py client to ensure proper async/await."""
+    
+    def __init__(self, w3: Any):
+        """
+        Initialize wrapper.
+
+        Args:
+            w3: Web3.py client
+        """
+        self._w3 = w3
+
+    @property
+    def eth(self) -> Any:
+        """
+        Get eth module.
+
+        Returns:
+            Eth module
+        """
+        return self._w3.eth
+
+    def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> ContractWrapper:
+        """
+        Create contract instance.
+
+        Args:
+            address: Contract address
+            abi: Contract ABI
+
+        Returns:
+            Wrapped contract instance
+        """
+        contract = self._w3.eth.contract(address=address, abi=abi)
+        return ContractWrapper(contract)

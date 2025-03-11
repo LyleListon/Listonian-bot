@@ -1,170 +1,163 @@
-# Technical Implementation Context
-
-## CRITICAL: Live System Implementation
-- Remove ALL mock/fake/placeholder/simulated data
-- Use ONLY live blockchain data
-- Implement ONLY real contract interactions
-- Deploy with ONLY production configuration
+# Technical Context
 
 ## Architecture Overview
-- Direct blockchain integration
-- Live contract interactions
-- Real-time data processing
-- Production monitoring
 
-## Core Components
+### Web3 Integration Layer
+- Web3Manager: Core class for web3 interactions
+  - Handles contract creation and management
+  - Manages eth module access
+  - Provides async/await support
+  - Implements proper error handling
 
-### Web3 Manager
-- Live blockchain connection
-- Real transaction handling
-- Actual contract operations
-- Production configuration
-- Proper middleware implementation:
-  - Class-based SignerMiddleware
-  - Production-ready transaction signing
-  - Flashbots integration support
-  - Real-time error handling
+- Web3ClientWrapper: Wrapper for web3.py
+  - Ensures proper async/await patterns
+  - Handles contract function wrapping
+  - Provides type-safe interfaces
+  - Manages property access
 
-### DEX Manager
-- Live DEX interactions
-- Real pool discovery
-- Actual contract calls
-- Production state tracking
+- Contract Wrappers:
+  - ContractWrapper: Base wrapper for web3 contracts
+  - ContractFunctionWrapper: Wrapper for contract functions
+  - ContractFunctionsWrapper: Wrapper for contract function collections
 
-### Path Finder
-- Live path discovery
-- Real profit calculation
-- Actual gas estimation
-- Production optimization
+### Contract Interaction Patterns
+1. Contract Creation:
+   ```python
+   contract = web3_manager.contract(address, abi)
+   ```
 
-### Flash Loan Manager
-- Live flash loan execution
-- Real transaction bundling
-- Actual profit validation
-- Production monitoring
+2. Function Calls:
+   ```python
+   result = await contract.functions.method().call()
+   ```
+
+3. Property Access:
+   ```python
+   eth_module = web3_manager.eth
+   ```
+
+### Error Handling
+- Comprehensive error handling for:
+  - Contract creation failures
+  - Function call errors
+  - Property access issues
+  - Network connectivity problems
+  - Gas estimation failures
+
+### Type Safety
+- Strong typing for:
+  - Contract addresses (ChecksumAddress)
+  - Function parameters
+  - Return values
+  - Transaction data
 
 ## Implementation Details
 
-### Contract Interactions
-- Direct contract calls
-- Live ABI usage
-- Real state queries
-- Production error handling
-- Proper transaction signing:
-  - Middleware-based approach
-  - Real-time validation
-  - Flashbots compatibility
-  - Error recovery
+### Web3Manager
+- Instance Variables:
+  ```python
+  self._raw_w3: Web3  # Raw web3.py instance
+  self._eth: Any  # Eth module reference
+  self.w3: Web3ClientWrapper  # Wrapped web3 instance
+  ```
 
-### Pool Discovery
-- Live pool scanning
-- Real token validation
-- Actual liquidity checks
-- Production caching
+- Key Methods:
+  ```python
+  def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
+      raw_contract = self._raw_w3.eth.contract(address=address, abi=abi)
+      return ContractWrapper(raw_contract)
+  ```
 
-### Path Analysis
-- Live profit calculation
-- Real gas estimation
-- Actual slippage checks
-- Production optimization
+### Web3ClientWrapper
+- Contract Handling:
+  ```python
+  def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
+      contract = self._w3.eth.contract(address=address, abi=abi)
+      return ContractWrapper(contract)
+  ```
 
-## Production Strategy
-
-### Deployment
-- Live environment setup
-- Real contract deployment
-- Actual monitoring
-- Production logging
-
-### Security
-- Live transaction validation
-- Real-time monitoring
-- Actual attack prevention
-- Production alerts
-- Secure transaction signing:
-  - Proper key management
-  - Middleware validation
-  - Error handling
-  - Attack prevention
-
-### Performance
-- Live optimization
-- Real resource management
-- Actual bottleneck handling
-- Production metrics
-
-## Current Status
-- Removing test data
-- Implementing live connections
-- Setting up production monitoring
-- Enabling real trading
-- Finalizing middleware implementation:
-  - Transaction signing
-  - Flashbots integration
-  - Error handling
-  - Performance optimization
+### Contract Wrappers
+- Function Call Pattern:
+  ```python
+  async def call(self, *args, **kwargs) -> Any:
+      result = self._function.call(*args, **kwargs)
+      return result
+  ```
 
 ## Integration Points
 
-### External Systems
-- Live blockchain nodes
-- Real DEX contracts
-- Actual token contracts
-- Production price feeds
-- Flashbots relay integration
+### DEX Integration
+- Contract creation for:
+  - Factory contracts
+  - Router contracts
+  - Pool contracts
+  - Token contracts
 
-### Internal Systems
-- Live data processing
-- Real state management
-- Actual monitoring
-- Production logging
+### Flash Loan Integration
+- Contract interactions for:
+  - Balancer vault
+  - Flash loan providers
+  - Callback handling
 
-## Production Requirements
+### Flashbots Integration
+- Bundle creation
+- Transaction simulation
+- MEV protection
 
-### System
-- High availability
-- Real-time processing
-- Actual error recovery
-- Production monitoring
+## Performance Considerations
 
-### Security
-- Live validation
-- Real-time alerts
-- Actual attack prevention
-- Production safeguards
-- Secure transaction handling:
-  - Proper signing
-  - Key protection
-  - Attack mitigation
-  - Error recovery
+### Caching
+- Contract instance caching
+- ABI caching
+- Function result caching
 
-### Performance
-- Live optimization
-- Real resource management
-- Actual bottleneck handling
-- Production metrics
+### Optimization
+- Batch contract calls
+- Parallel execution
+- Resource cleanup
 
-## Deployment Process
+## Security Measures
 
-### Setup
-- Live environment configuration
-- Real contract deployment
-- Actual monitoring setup
-- Production validation
+### Contract Validation
+- Address checksum verification
+- ABI validation
+- Function parameter validation
 
-### Validation
-- Live system testing
-- Real data verification
-- Actual performance checks
-- Production readiness
-- Transaction signing verification:
-  - Middleware testing
-  - Flashbots integration
-  - Error handling
-  - Performance validation
+### Transaction Safety
+- Gas estimation
+- Balance verification
+- Slippage protection
 
-### Monitoring
-- Live metrics tracking
-- Real-time alerts
-- Actual performance monitoring
-- Production logging
+## Monitoring
+
+### Metrics
+- Contract call latency
+- Function call success rates
+- Gas usage patterns
+- Error frequencies
+
+### Logging
+- Contract interaction logs
+- Error tracking
+- Performance metrics
+- Security events
+
+## Future Improvements
+
+### Planned Enhancements
+1. Contract event handling
+2. Subscription support
+3. Enhanced caching
+4. Better type inference
+
+### Research Areas
+1. Gas optimization
+2. MEV protection
+3. Contract interaction patterns
+4. Performance tuning
+
+## Dependencies
+- web3.py: Ethereum interaction
+- eth-typing: Type definitions
+- eth-utils: Utility functions
+- async-timeout: Async handling

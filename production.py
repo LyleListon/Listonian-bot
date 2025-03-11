@@ -16,6 +16,7 @@ import time
 import os
 from pathlib import Path
 from typing import Dict, Any
+from eth_typing import ChecksumAddress
 
 # Configure logging
 log_dir = Path("logs")
@@ -107,6 +108,11 @@ async def run_production_system():
         logger.info("System initialized successfully")
         logger.info("Running in production mode...")
         
+        # Get configuration values
+        start_token_address = ChecksumAddress(config['tokens']['WETH']['address'])
+        scan_amount = int(config['scan']['amount_wei'])
+        max_paths = config['scan']['max_paths']
+        
         # Main arbitrage loop
         while True:
             try:
@@ -115,8 +121,9 @@ async def run_production_system():
                 logger.info(f"MEV risk level: {risk_assessment['risk_level']}")
                 
                 # Step 2: Check for MEV attacks
+                current_block = web3_manager.w3.eth.block_number
                 recent_attacks = await attack_detector.scan_for_attacks(
-                    start_block=await web3_manager.w3.eth.block_number - 10
+                    start_block=current_block - 10
                 )
                 if recent_attacks:
                     logger.warning(f"Detected {len(recent_attacks)} potential MEV attacks")
@@ -124,7 +131,9 @@ async def run_production_system():
                 # Step 3: Find arbitrage opportunities
                 logger.info("Scanning for arbitrage opportunities...")
                 paths = await path_finder.find_arbitrage_paths(
-                    max_paths=config['scan']['max_paths']
+                    start_token_address=start_token_address,
+                    amount_in=scan_amount,
+                    max_paths=max_paths
                 )
                 
                 # Step 4: Process opportunities

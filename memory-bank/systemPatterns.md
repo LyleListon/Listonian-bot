@@ -1,159 +1,235 @@
-# System Architecture Patterns
+# System Patterns
 
-## Configuration Management
-- Production config in configs/production.json
-- Required sections:
-  * web3: RPC and chain settings
-  * flashbots: Authentication and relay settings
-  * balancer: Vault addresses
-  * tokens: Token addresses and decimals
-- Validation through config_loader.py
-- Default values for optional settings
+## Web3 Contract Handling Patterns
 
-## Authentication Patterns
-1. Wallet Authentication:
-   - Private key in web3.wallet_key
-   - Used for transaction signing
-   - Requires ETH for gas
-   - Implemented through SignerMiddleware
+### Contract Creation Pattern
+```python
+# Always use the Web3Manager's contract method
+contract = web3_manager.contract(address, abi)
 
-2. Flashbots Authentication:
-   - Separate key in flashbots.auth_key
-   - Used only for bundle signing
-   - No funds required
-   - Generated through scripts/generate_flashbots_auth.py
+# Never create contracts directly with web3.py
+# BAD: contract = web3.eth.contract(address, abi)
+```
 
-## Middleware Patterns
-1. Transaction Signing:
-   - Class-based SignerMiddleware
-   - make_request method implementation
-   - Transaction parameter modification
-   - Raw transaction signing
-   - Error propagation
+### Async Contract Interaction Pattern
+```python
+# Always use async/await for contract calls
+result = await contract.functions.method().call()
 
-2. Web3 Integration:
-   - Middleware registration
-   - Chain-specific configuration
-   - Error handling
-   - State management
-   - Request modification
+# Never use synchronous calls
+# BAD: result = contract.functions.method().call()
+```
 
-3. Request Flow:
-   - Parameter validation
-   - Transaction signing
-   - Request modification
-   - Response handling
-   - Error propagation
+### Property Access Pattern
+```python
+# Use instance variables for module access
+self._eth = self.w3.eth
 
-## Integration Patterns
-1. Flash Loan Integration:
-   - Balancer as primary provider
-   - Async transaction building
-   - Profit validation before execution
-   - Resource cleanup after use
+# Never use property setters for core modules
+# BAD: @eth.setter
+```
 
-2. Flashbots Integration:
-   - Private transaction routing
-   - Bundle optimization
-   - MEV protection
-   - Profit simulation
+### Error Handling Pattern
+```python
+try:
+    result = await contract.functions.method().call()
+except Exception as e:
+    logger.error(f"Contract call failed: {e}")
+    # Always preserve context
+    raise
+```
 
-3. DEX Integration:
-   - Base class inheritance
-   - V2/V3 specialization
-   - Async pool discovery
-   - Price impact calculation
+## Resource Management Patterns
 
-## Resource Management
-1. Initialization:
-   - Web3 client setup
-   - DEX manager creation
-   - Flash loan setup
-   - Flashbots provider initialization
-   - Middleware registration
+### Contract Instance Management
+```python
+# Initialize in constructor
+self._raw_w3 = Web3(Web3.HTTPProvider(provider_url))
+self.w3 = Web3ClientWrapper(self._raw_w3)
 
-2. Cleanup:
-   - Resource release
-   - Connection cleanup
-   - Lock management
-   - Error handling
+# Clean up in close method
+async def close(self):
+    if hasattr(self._raw_w3.provider, "close"):
+        await self._raw_w3.provider.close()
+```
 
-## Error Handling
-1. Configuration Errors:
-   - Missing fields validation
-   - Type checking
-   - Format validation
-   - Default values
+### Lock Management
+```python
+# Use AsyncLock for thread safety
+async with self._request_lock:
+    result = await self.contract.functions.method().call()
+```
 
-2. Runtime Errors:
-   - Transaction failures
-   - Network issues
-   - Liquidity problems
-   - Price impact limits
-   - Middleware errors
+## DEX Integration Patterns
 
-3. Recovery Patterns:
-   - Retry mechanisms
-   - Fallback options
-   - State preservation
-   - Logging and monitoring
+### Factory Contract Pattern
+```python
+# Create factory contract
+factory_contract = self.web3_manager.contract(
+    address=dex.factory_address,
+    abi=dex.factory_abi
+)
 
-## Security Patterns
-1. Key Management:
-   - Separate authentication keys
-   - Secure storage
-   - Access control
-   - Key rotation
+# Get pool address
+pool = await factory_contract.functions.getPool(
+    token0,
+    token1,
+    fee
+).call()
+```
 
-2. Transaction Security:
-   - Slippage protection
-   - Price validation
-   - Gas optimization
-   - MEV protection
-   - Middleware validation
+### Pool Contract Pattern
+```python
+# Create pool contract
+pool_contract = self.web3_manager.contract(
+    address=pool_address,
+    abi=dex.pool_abi
+)
 
-3. Error Prevention:
-   - Input validation
-   - State verification
-   - Balance checks
-   - Profit confirmation
-   - Middleware checks
+# Get reserves
+reserves = await pool_contract.functions.getReserves().call()
+```
+
+## Flash Loan Patterns
+
+### Balancer Integration
+```python
+# Create vault contract
+vault_contract = self.web3_manager.contract(
+    address=config['balancer']['vault_address'],
+    abi=vault_abi
+)
+
+# Execute flash loan
+await vault_contract.functions.flashLoan(
+    recipient,
+    tokens,
+    amounts,
+    data
+).call()
+```
+
+## Flashbots Integration Patterns
+
+### Bundle Submission
+```python
+# Create bundle
+bundle = await flashbots_provider.create_bundle([
+    transaction1,
+    transaction2
+])
+
+# Simulate bundle
+simulation = await flashbots_provider.simulate_bundle(bundle)
+```
+
+## Error Handling Patterns
+
+### Contract Call Retry Pattern
+```python
+@with_retry(retries=3, delay=1.0)
+async def get_pool(self, token0: str, token1: str) -> str:
+    return await self.factory_contract.functions.getPool(
+        token0,
+        token1
+    ).call()
+```
+
+### Error Context Preservation
+```python
+try:
+    result = await contract.functions.method().call()
+except Exception as e:
+    logger.error(
+        f"Failed to call {method} on {contract.address}: {e}",
+        exc_info=True
+    )
+    raise
+```
+
+## Logging Patterns
+
+### Contract Interaction Logging
+```python
+logger.info(
+    f"Contract call {method} on {contract.address} "
+    f"with args: {args}"
+)
+result = await contract.functions[method](*args).call()
+logger.debug(f"Contract call result: {result}")
+```
+
+### Error Logging
+```python
+logger.error(
+    f"Contract {contract.address} error: {e}",
+    exc_info=True,
+    extra={
+        'method': method,
+        'args': args,
+        'gas_used': gas_used
+    }
+)
+```
+
+## Testing Patterns
+
+### Contract Mock Pattern
+```python
+class MockContract:
+    async def functions(self):
+        return {
+            'method': lambda *args: {'call': lambda: result}
+        }
+```
+
+### Integration Test Pattern
+```python
+async def test_contract_interaction():
+    contract = web3_manager.contract(address, abi)
+    result = await contract.functions.method().call()
+    assert result == expected
+```
 
 ## Performance Patterns
-1. Async Operations:
-   - Pure asyncio implementation
-   - Parallel processing
-   - Batch operations
-   - Resource pooling
-   - Middleware efficiency
 
-2. Caching:
-   - Price data caching
-   - Pool information
-   - Token data
-   - Configuration
-   - Transaction data
+### Batch Contract Call Pattern
+```python
+async def get_multiple_pools(self, pairs: List[Tuple[str, str]]) -> List[str]:
+    return await asyncio.gather(*[
+        self.get_pool(token0, token1)
+        for token0, token1 in pairs
+    ])
+```
 
-3. Optimization:
-   - Gas usage
-   - Path finding
-   - Bundle submission
-   - Flash loan execution
-   - Middleware overhead
+### Caching Pattern
+```python
+@cached(ttl=300)  # 5 minutes
+async def get_pool_info(self, pool_address: str) -> Dict[str, Any]:
+    return await self.pool_contract.functions.getPoolInfo().call()
+```
 
-## Monitoring Patterns
-1. Logging:
-   - Structured logging
-   - Error tracking
-   - Performance metrics
-   - Success rates
-   - Middleware events
+## Security Patterns
 
-2. Metrics:
-   - Profit tracking
-   - Gas usage
-   - Execution time
-   - Success rate
-   - Middleware performance
+### Address Validation Pattern
+```python
+def validate_address(address: str) -> ChecksumAddress:
+    if not Web3.is_address(address):
+        raise ValueError(f"Invalid address: {address}")
+    return Web3.to_checksum_address(address)
+```
 
-Remember: These patterns should be consistently applied across all new development and updates to maintain system integrity and performance.
+### Balance Verification Pattern
+```python
+async def verify_balance(self, token: str, amount: int) -> bool:
+    balance = await self.get_token_balance(token)
+    return balance >= amount
+```
+
+Remember:
+- Always use async/await for contract interactions
+- Always handle errors with proper context
+- Always use proper resource management
+- Always validate inputs and outputs
+- Always use proper logging
+- Always use proper testing patterns
