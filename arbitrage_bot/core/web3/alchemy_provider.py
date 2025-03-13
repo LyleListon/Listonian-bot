@@ -16,8 +16,9 @@ from web3 import Web3
 from web3.types import RPCEndpoint, RPCResponse
 from decimal import Decimal
 
+# Import from same directory
 from .async_provider import CustomAsyncProvider
-from ..utils.async_manager import AsyncLock
+from arbitrage_bot.utils.async_manager import AsyncLock, manager, rate_limiter
 
 logger = logging.getLogger(__name__)
 

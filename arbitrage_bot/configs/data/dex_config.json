@@ -1,0 +1,88 @@
+{
+    "dexes": {
+        "baseswap": {
+            "name": "BaseSwap",
+            "version": "v2",
+            "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
+            "fee": 3000,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        },
+        "baseswap_v3": {
+            "name": "BaseSwap",
+            "version": "v3",
+            "factory": "0x38015D05f4fEC8AFe15D7cc0386a126574e8077B",
+            "router": "0x1B8eea9315bE495187D873DA7773a874545D9D48",
+            "quoter": "0x0Bb5e784Ff4D110d24FcBb32Bc321b1389528C71",
+            "fee": 500,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "tick_spacing": 10,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        },
+        "pancakeswap": {
+            "name": "PancakeSwap",
+            "version": "v3",
+            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
+            "quoter": "0x4c650FB471fe4e0f476fD3437C3411B1122c4e3B",
+            "pool_deployer": "0x41ff9AA7e16B8B1a8a8dc4f0eFacd93D02d071c9",
+            "fee": 2500,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "tick_spacing": 60,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        },
+        "swapbased": {
+            "name": "SwapBased",
+            "version": "v3",
+            "factory": "0xb5620F90e803C7F957a9EF351B8DB3C746021BEa",
+            "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
+            "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+            "fee": 500,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "tick_spacing": 10,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        },
+        "rocketswap_v3": {
+            "name": "RocketSwap",
+            "version": "v3",
+            "factory": "0x8c1A3cF8f83074169FE5D7aD50B978e1cD6b37c7",
+            "router": "0x1b81D678ffb9C0263b24A97847620C99d213eB14",
+            "quoter": "0x2f686751b19a9d91cc3d57d90150Bc767f050066",
+            "fee": 500,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "tick_spacing": 10,
+            "weth_address": "0x4200000000000000000000000000000000000006"
+        }
+    },
+    "tokens": {
+        "WETH": {
+            "name": "Wrapped Ether",
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18
+        },
+        "USDC": {
+            "name": "USD Coin",
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6
+        },
+        "USDT": {
+            "name": "Tether USD",
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 6
+        }
+    },
+    "flash_loan": {
+        "enabled": true,
+        "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+        "flash_loan_contract": "0x1234567890123456789012345678901234567890",
+        "min_profit_threshold": 50,
+        "max_loan_amount_usd": 100000
+    }
+}

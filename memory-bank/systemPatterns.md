@@ -1,235 +1,234 @@
-# System Patterns
+# System Design Patterns
 
-## Web3 Contract Handling Patterns
+## Async Component Pattern
+This pattern is used for components that require asynchronous initialization and operations.
 
-### Contract Creation Pattern
+### Structure
 ```python
-# Always use the Web3Manager's contract method
-contract = web3_manager.contract(address, abi)
+class AsyncComponent:
+    def __init__(self, config):
+        # Synchronous initialization
+        self.config = config
+        self._setup_basic_attributes()
 
-# Never create contracts directly with web3.py
-# BAD: contract = web3.eth.contract(address, abi)
+    async def initialize(self):
+        # Async initialization
+        await self._setup_async_resources()
+        return True
+
+    @classmethod
+    async def create(cls, config):
+        # Factory method
+        instance = cls(config)
+        await instance.initialize()
+        return instance
 ```
 
-### Async Contract Interaction Pattern
-```python
-# Always use async/await for contract calls
-result = await contract.functions.method().call()
+### Usage
+- Web3Manager
+- WalletManager
+- FlashbotsProvider
+- DexManager
 
-# Never use synchronous calls
-# BAD: result = contract.functions.method().call()
+## Provider Pattern
+Used for managing external service connections with proper async handling.
+
+### Structure
+```python
+class AsyncProvider:
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
+        self._connection = None
+        self._lock = AsyncLock()
+
+    async def connect(self):
+        async with self._lock:
+            if not self._connection:
+                self._connection = await self._establish_connection()
+
+    async def request(self, method, params):
+        await self.connect()
+        return await self._make_request(method, params)
 ```
 
-### Property Access Pattern
-```python
-# Use instance variables for module access
-self._eth = self.w3.eth
+### Usage
+- CustomAsyncProvider
+- AlchemyProvider
+- FlashbotsProvider
 
-# Never use property setters for core modules
-# BAD: @eth.setter
+## Resource Management Pattern
+Ensures proper cleanup of resources in async context.
+
+### Structure
+```python
+class ManagedResource:
+    async def __aenter__(self):
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.cleanup()
+
+    async def initialize(self):
+        # Setup resources
+        pass
+
+    async def cleanup(self):
+        # Cleanup resources
+        pass
 ```
 
-### Error Handling Pattern
+### Usage
+- Connection pools
+- Cache managers
+- Event subscriptions
+
+## Event Loop Management Pattern
+Handles event loop creation and cleanup for async operations.
+
+### Structure
 ```python
-try:
-    result = await contract.functions.method().call()
-except Exception as e:
-    logger.error(f"Contract call failed: {e}")
-    # Always preserve context
-    raise
+def manage_event_loop(func):
+    async def wrapper(*args, **kwargs):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        try:
+            return await func(*args, **kwargs)
+        finally:
+            if not loop.is_running():
+                loop.close()
+    return wrapper
 ```
 
-## Resource Management Patterns
+### Usage
+- CustomAsyncProvider
+- Web3Manager
+- Event handlers
 
-### Contract Instance Management
+## Retry Pattern
+Implements retry logic for async operations with exponential backoff.
+
+### Structure
 ```python
-# Initialize in constructor
-self._raw_w3 = Web3(Web3.HTTPProvider(provider_url))
-self.w3 = Web3ClientWrapper(self._raw_w3)
-
-# Clean up in close method
-async def close(self):
-    if hasattr(self._raw_w3.provider, "close"):
-        await self._raw_w3.provider.close()
+def with_retry(retries=3, delay=1.0):
+    async def decorator(func):
+        async def wrapper(*args, **kwargs):
+            last_error = None
+            for attempt in range(retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_error = e
+                    if attempt < retries - 1:
+                        await asyncio.sleep(delay * (2 ** attempt))
+            raise last_error
+        return wrapper
+    return decorator
 ```
 
-### Lock Management
+### Usage
+- Web3 requests
+- API calls
+- Network operations
+
+## Cache Pattern
+Implements TTL-based caching for async operations.
+
+### Structure
 ```python
-# Use AsyncLock for thread safety
-async with self._request_lock:
-    result = await self.contract.functions.method().call()
+class AsyncCache:
+    def __init__(self, ttl):
+        self._cache = {}
+        self._ttl = ttl
+        self._lock = AsyncLock()
+
+    async def get_or_set(self, key, getter):
+        async with self._lock:
+            if key in self._cache:
+                value, timestamp = self._cache[key]
+                if time.time() - timestamp < self._ttl:
+                    return value
+            value = await getter()
+            self._cache[key] = (value, time.time())
+            return value
 ```
 
-## DEX Integration Patterns
+### Usage
+- Price data
+- Gas estimates
+- Contract state
 
-### Factory Contract Pattern
+## Factory Pattern
+Creates and initializes async components.
+
+### Structure
 ```python
-# Create factory contract
-factory_contract = self.web3_manager.contract(
-    address=dex.factory_address,
-    abi=dex.factory_abi
-)
+class AsyncFactory:
+    @classmethod
+    async def create_component(cls, config):
+        # Create instance
+        instance = cls._create_instance(config)
+        # Initialize async resources
+        await instance.initialize()
+        return instance
 
-# Get pool address
-pool = await factory_contract.functions.getPool(
-    token0,
-    token1,
-    fee
-).call()
+    @classmethod
+    def _create_instance(cls, config):
+        # Create basic instance
+        return cls(config)
 ```
 
-### Pool Contract Pattern
-```python
-# Create pool contract
-pool_contract = self.web3_manager.contract(
-    address=pool_address,
-    abi=dex.pool_abi
-)
+### Usage
+- Web3Manager creation
+- DexManager creation
+- Provider initialization
 
-# Get reserves
-reserves = await pool_contract.functions.getReserves().call()
+## Observer Pattern
+Implements async event handling and notifications.
+
+### Structure
+```python
+class AsyncObserver:
+    def __init__(self):
+        self._handlers = set()
+
+    async def subscribe(self, handler):
+        self._handlers.add(handler)
+
+    async def unsubscribe(self, handler):
+        self._handlers.remove(handler)
+
+    async def notify(self, event):
+        for handler in self._handlers:
+            await handler(event)
 ```
 
-## Flash Loan Patterns
+### Usage
+- Price updates
+- Block notifications
+- Transaction events
 
-### Balancer Integration
+## Lock Pattern
+Manages concurrent access to shared resources.
+
+### Structure
 ```python
-# Create vault contract
-vault_contract = self.web3_manager.contract(
-    address=config['balancer']['vault_address'],
-    abi=vault_abi
-)
+class AsyncResourceManager:
+    def __init__(self):
+        self._lock = AsyncLock()
+        self._resource = None
 
-# Execute flash loan
-await vault_contract.functions.flashLoan(
-    recipient,
-    tokens,
-    amounts,
-    data
-).call()
+    async def get_resource(self):
+        async with self._lock:
+            if not self._resource:
+                self._resource = await self._create_resource()
+            return self._resource
 ```
 
-## Flashbots Integration Patterns
-
-### Bundle Submission
-```python
-# Create bundle
-bundle = await flashbots_provider.create_bundle([
-    transaction1,
-    transaction2
-])
-
-# Simulate bundle
-simulation = await flashbots_provider.simulate_bundle(bundle)
-```
-
-## Error Handling Patterns
-
-### Contract Call Retry Pattern
-```python
-@with_retry(retries=3, delay=1.0)
-async def get_pool(self, token0: str, token1: str) -> str:
-    return await self.factory_contract.functions.getPool(
-        token0,
-        token1
-    ).call()
-```
-
-### Error Context Preservation
-```python
-try:
-    result = await contract.functions.method().call()
-except Exception as e:
-    logger.error(
-        f"Failed to call {method} on {contract.address}: {e}",
-        exc_info=True
-    )
-    raise
-```
-
-## Logging Patterns
-
-### Contract Interaction Logging
-```python
-logger.info(
-    f"Contract call {method} on {contract.address} "
-    f"with args: {args}"
-)
-result = await contract.functions[method](*args).call()
-logger.debug(f"Contract call result: {result}")
-```
-
-### Error Logging
-```python
-logger.error(
-    f"Contract {contract.address} error: {e}",
-    exc_info=True,
-    extra={
-        'method': method,
-        'args': args,
-        'gas_used': gas_used
-    }
-)
-```
-
-## Testing Patterns
-
-### Contract Mock Pattern
-```python
-class MockContract:
-    async def functions(self):
-        return {
-            'method': lambda *args: {'call': lambda: result}
-        }
-```
-
-### Integration Test Pattern
-```python
-async def test_contract_interaction():
-    contract = web3_manager.contract(address, abi)
-    result = await contract.functions.method().call()
-    assert result == expected
-```
-
-## Performance Patterns
-
-### Batch Contract Call Pattern
-```python
-async def get_multiple_pools(self, pairs: List[Tuple[str, str]]) -> List[str]:
-    return await asyncio.gather(*[
-        self.get_pool(token0, token1)
-        for token0, token1 in pairs
-    ])
-```
-
-### Caching Pattern
-```python
-@cached(ttl=300)  # 5 minutes
-async def get_pool_info(self, pool_address: str) -> Dict[str, Any]:
-    return await self.pool_contract.functions.getPoolInfo().call()
-```
-
-## Security Patterns
-
-### Address Validation Pattern
-```python
-def validate_address(address: str) -> ChecksumAddress:
-    if not Web3.is_address(address):
-        raise ValueError(f"Invalid address: {address}")
-    return Web3.to_checksum_address(address)
-```
-
-### Balance Verification Pattern
-```python
-async def verify_balance(self, token: str, amount: int) -> bool:
-    balance = await self.get_token_balance(token)
-    return balance >= amount
-```
-
-Remember:
-- Always use async/await for contract interactions
-- Always handle errors with proper context
-- Always use proper resource management
-- Always validate inputs and outputs
-- Always use proper logging
-- Always use proper testing patterns
+### Usage
+- Connection pools
+- Shared state
+- Resource initialization

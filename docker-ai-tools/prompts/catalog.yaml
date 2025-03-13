@@ -1,0 +1,591 @@
+registry:
+  mcp-sqlite:
+    description: The MCP SQLite promptfile contributes all of the tools necessary to work with SQLite and SQLite databases. The file also includes a prompt to seed the database with initial data which helps to demonstrate what you can do with an SQLite MCP Server.
+    ref: github:docker/labs-ai-tools-for-devs?ref=main&path=prompts/examples/mcp-sqlite.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/sqlite.svg
+    tools:
+    - type: function
+      function:
+        name: read-query
+        description: Execute a SELECT query on the SQLite database
+        parameters:
+          type: object
+          properties:
+            query: {type: string, description: SELECT SQL query to execute}
+        container:
+          image: vonwig/sqlite:latest
+          command: [/mcp/test1.db, '{{query|safe}}']
+          volumes: ['mcp-test:/mcp']
+    - type: function
+      function:
+        name: write-query
+        description: Execute an INSERT, UPDATE, or DELETE query on the SQLite database
+        parameters:
+          type: object
+          properties:
+            query: {type: string, description: SQL query to execute}
+        container:
+          image: vonwig/sqlite:latest
+          command: [/mcp/test1.db, '{{query|safe}}']
+          volumes: ['mcp-test:/mcp']
+    - type: function
+      function:
+        name: create-table
+        description: Create a new table in the SQLite database
+        parameters:
+          type: object
+          properties:
+            query: {type: string, description: CREATE TABLE SQL statement}
+        container:
+          image: vonwig/sqlite:latest
+          command: [/mcp/test1.db, '{{query|safe}}']
+          volumes: ['mcp-test:/mcp']
+    - type: function
+      function:
+        name: list-tables
+        description: List all tables in the SQLite database
+        container:
+          image: vonwig/sqlite:latest
+          command: [/mcp/test1.db, SELECT name from sqlite_master WHERE type='table']
+          volumes: ['mcp-test:/mcp']
+    - type: function
+      function:
+        name: describe-table
+        description: Get the schema information for a specific table
+        parameters:
+          type: object
+          properties:
+            table_name: {type: string, description: Name of the table to describe}
+        container:
+          image: vonwig/sqlite:latest
+          command: [/mcp/test1.db, 'PRAGMA table_info({{table_name}})']
+          volumes: ['mcp-test:/mcp']
+    - type: function
+      function:
+        name: append-insight
+        description: Add a business insight to the memo
+        parameters:
+          type: object
+          properties:
+            insight: {type: string, description: Business insight discovered from data analysis}
+        container:
+          image: vonwig/bash_alpine
+          command: [-c, 'echo ''{{insight|safe}}'' >> /thread/insights.txt']  
+          volumes: ['mcp-test:/mcp']
+    prompts: 1
+    resources: {}
+  curl:
+    description: This prompt file contains the standard curl tool. In addition to the tool itself, you get a tool to read the latest man page to help clear up any issues. It also contains a prompt to demonstrate how to use the tool in a multi-step process.
+    ref: github:docker/labs-ai-tools-for-devs?ref=main&path=prompts/examples/curl.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/curl.svg
+    tools:
+    - type: function
+      function:
+        name: curl-manual
+        description: Run the man page for curl
+        container:
+          image: vonwig/curl:latest
+          command: ['{{raw|safe}}', man]
+    - type: function
+      function:
+        description: Run a curl command.
+        parameters:
+          type: object
+          properties:
+            args: {type: string, description: The arguments to pass to curl}
+        container:
+          image: vonwig/curl:latest
+          command: ['{{raw|safe}}']
+        name: curl
+    prompts: 1
+    resources: {}
+  hello world:
+    description: Great for testing! This prompt file simply contains a prompt to echo a greeting using a container, and the tool to do so.
+    ref: github:docker/labs-ai-tools-for-devs?ref=main&path=prompts/examples/hello_world.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/docker.svg
+    tools:
+    - type: function
+      function:
+        name: hello-docker
+        description: send a greeting from docker
+        parameters:
+          type: object
+          properties:
+            greeting: {type: string, description: the greeting to send}
+          required: [greeting]
+        container:
+          image: busybox:latest
+          command: [echo, '{{greeting}}']
+    prompts: 1
+    resources: {}
+  ffmpeg:
+    description: Use ffmpeg to process video files. This prompt file contains the ffmpeg tool, and a tool to read the latest man page to help clear up any issues. It also contains a prompt to demonstrate how to use the tool in a multi-step process.
+    ref: github:docker/labs-ai-tools-for-devs?ref=main&path=prompts/examples/ffmpeg.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/ffmpeg.svg
+    tools:
+    - type: function
+      function:
+        name: imagemagick-manual
+        description: Run the man page for imagemagick
+        container:
+          image: vonwig/imagemagick:latest
+          command: ['{{raw|safe}}', man]
+    - type: function
+      function:
+        description: Run a imagemagick command.
+        parameters:
+          type: object
+          properties:
+            args: {type: string, description: The arguments to pass to imagemagick}
+        container:
+          image: vonwig/imagemagick:latest
+          command: ['{{raw|safe}}']
+        name: imagemagick
+    - type: function
+      function:
+        name: file-exists
+        description: check if a file exists
+        parameters:
+          type: object
+          properties:
+            path: {type: string}
+        container:
+          image: busybox:latest
+          volumes: ['{{path|safe}}:{{path|safe}}']
+          command: [test, -f, '{{path|safe}}']
+    - type: function
+      function:
+        name: ffmpeg
+        description: run the ffmpeg command
+        parameters:
+          type: object
+          properties:
+            basedir: {type: string}
+            args:
+              description: arguments to pass to ffmpeg
+              type: array
+              items: {type: string}
+        container:
+          image: linuxserver/ffmpeg:version-7.1-cli
+          volumes: ['{{basedir|safe}}:{{basedir|safe}}']
+          command: ['{{args|into}}']
+    prompts: 1
+    resources: {}
+  explain dockerfiles:
+    description: Provide a detailed description, analysis, or annotation of a given Dockerfile. This prompt file contains a tool to read the latest man page to help clear up any issues. It also contains a prompt to run the tool to explain the Dockerfile.
+    ref: github:docker/labs-ai-tools-for-devs?ref=main&path=prompts/examples/explain_dockerfile.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/docker.svg
+    tools:
+    - type: function
+      function:
+        name: cat_file
+        description: fetch a file
+        parameters:
+          type: object
+          properties:
+            path: {type: string, description: Path of the folder to delete}
+        container:
+          image: vonwig/bash_alpine
+          volumes: ['{{path|safe}}:/dockerfile:ro']
+          command: [cat /dockerfile]
+    prompts: 1
+    resources: {}
+  qr code:
+    description: Generate a qrcode for an input text string
+    ref: github:docker/labs-ai-tools-for-devs?ref=main&path=prompts/examples/qrencode.md
+    icon: https://2.gravatar.com/userimage/39790510/4918b92358fde20da56c0ec8e5ac7a23?size=256
+    tools:
+    - type: function
+      function:
+        name: qrencode-manual
+        description: Run the man page for qrencode
+        container:
+          image: vonwig/qrencode:latest
+          command: ['{{raw|safe}}', man]
+    - type: function
+      function:
+        description: Run a qrencode command.
+        parameters:
+          type: object
+          properties:
+            args: {type: string, description: The arguments to pass to qrencode}
+        container:
+          image: vonwig/qrencode:latest
+          command: ['{{raw|safe}}']
+        name: qrencode
+    prompts: 1
+    resources: {}
+  speculative_execution:
+    description: "Use lorax from Claude. Lorax is a speculative execution tool that can be used  to make edits and run tools in an isolated sandbox. \n"
+    ref: github:docker/labs-ai-tools-for-devs?path=prompts/lorax/speculative.md
+    icon: https://vonwig.github.io/prompts.docs/img/speculative_hu15687469033092380316.webp
+    tools:
+    - type: function
+      function:
+        name: sandbox-source
+        description: make a cloned host repo available to the sandbox
+        parameters:
+          type: object
+          properties:
+            host-dir: {type: string}
+            name: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, source, -n, '{{name}}', '{{host-dir}}']
+          background: true
+    - type: function
+      function:
+        name: sandbox-clone
+        description: create a sandbox and respond with the id of the new sandbox
+        parameters:
+          type: object
+          properties:
+            sandbox-name: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, clone, '{{sandbox-name}}']
+    - type: function
+      function:
+        name: sandbox-snapshot
+        description: snapshot the current state of a sandbox
+        parameters:
+          type: object
+          properties:
+            sandbox-id: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, snapshot, '{{sandbox-id}}']
+    - type: function
+      function:
+        name: sandbox-restore
+        description: snapshot the current state of a sandbox
+        parameters:
+          type: object
+          properties:
+            sandbox-id: {type: string}
+            tree-id: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, restore, '{{sandbox-id}}', '{{tree-id}}']
+    - type: function
+      function:
+        name: sandbox-exec
+        description: exec a container in the current sandbox
+        parameters:
+          type: object
+          properties:
+            sandbox-id: {type: string}
+            image: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, exec, --mount-image, '{{image}}', '{{sandbox-id}}']
+    - type: function
+      function:
+        name: sandbox-delete-file
+        description: exec a container in the current sandbox
+        parameters:
+          type: object
+          properties:
+            sandbox-id: {type: string}
+            path: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, delete, '{{sandbox-id}}', '{{path}}']
+    - type: function
+      function:
+        name: sandbox-rm
+        description: exec a container in the current sandbox
+        parameters:
+          type: object
+          properties:
+            sandbox-id: {type: string}
+            path: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, rm, '{{sandbox-id}}']
+    - type: function
+      function:
+        name: sandbox-diff
+        description: exec a container in the current sandbox
+        parameters:
+          type: object
+          properties:
+            sandbox-id: {type: string}
+            tree-id: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, diff, '{{sandbox-id}}', '{{tree-id}}']
+    - type: function
+      function:
+        name: sandbox-apply
+        description: exec a container in the current sandbox
+        parameters:
+          type: object
+          properties:
+            diff: {type: string}
+        container:
+          image: lorax:latest
+          entrypoint: lorax
+          command: [sandbox, apply, user-source, '{{diff}}']
+    prompts: 1
+    resources: {}
+  memory:
+    description: Give your MCP client a memory system! This prompt file contains a tool to create entities, relations, and observations in a knowledge graph. It also contains a tool to read the latest man page to help clear up any issues. It also contains a prompt to demonstrate how to use the tool in a multi-step process.
+    ref: github:docker/labs-ai-tools-for-devs?path=prompts/examples/mcp-memory.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/knowledgebase.svg
+    tools:
+    - type: function
+      function:
+        name: create_entities
+        description: Create multiple new entities in the knowledge graph
+        parameters:
+          type: object
+          properties:
+            entities:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: {type: string, description: The name of the entity}
+                  entityType: {type: string, description: The type of the entity}
+                  observations:
+                    type: array
+                    items: {type: string}
+                    description: An array of observation contents associated with the entity
+                required: [name, entityType, observations]
+          required: [entities]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [create-entities, '{{raw|safe}}']
+    - type: function
+      function:
+        name: create_relations
+        description: Create multiple new relations between entities in the knowledge graph. Relations should be in active voice
+        parameters:
+          type: object
+          properties:
+            relations:
+              type: array
+              items:
+                type: object
+                properties:
+                  from: {type: string, description: The name of the entity where the relation starts}
+                  to: {type: string, description: The name of the entity where the relation ends}
+                  relationType: {type: string, description: The type of the relation}
+                required: [from, to, relationType]
+          required: [relations]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [create-relations, '{{raw|safe}}']
+    - type: function
+      function:
+        name: add_observations
+        description: Add new observations to existing entities in the knowledge graph
+        parameters:
+          type: object
+          properties:
+            observations:
+              type: array
+              items:
+                type: object
+                properties:
+                  entityName: {type: string, description: The name of the entity to add the observations to}
+                  contents:
+                    type: array
+                    items: {type: string}
+                    description: An array of observation contents to add
+                required: [entityName, contents]
+          required: [observations]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [add-observations, '{{raw|safe}}']
+    - type: function
+      function:
+        name: delete_entities
+        description: Delete multiple entities and their associated relations from the knowledge graph
+        parameters:
+          type: object
+          properties:
+            entityNames:
+              type: array
+              items: {type: string}
+              description: An array of entity names to delete
+          required: [entityNames]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [delete-entities, '{{raw|safe}}']
+    - type: function
+      function:
+        name: delete_observations
+        description: Delete specific observations from entities in the knowledge graph
+        parameters:
+          type: object
+          properties:
+            deletions:
+              type: array
+              items:
+                type: object
+                properties:
+                  entityName: {type: string, description: The name of the entity containing the observations}
+                  observations:
+                    type: array
+                    items: {type: string}
+                    description: An array of observations to delete
+                required: [entityName, observations]
+          required: [deletions]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [delete-observations, '{{raw|safe}}']
+    - type: function
+      function:
+        name: delete_relations
+        description: Delete multiple relations from the knowledge graph
+        parameters:
+          type: object
+          properties:
+            relations:
+              type: array
+              items:
+                type: object
+                properties:
+                  from: {type: string, description: The name of the entity where the relation starts}
+                  to: {type: string, description: The name of the entity where the relation ends}
+                  relationType: {type: string, description: The type of the relation}
+                required: [from, to, relationType]
+              description: An array of relations to delete
+          required: [relations]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [delete-relations, '{{raw|safe}}']
+    - type: function
+      function:
+        name: read_graph
+        description: Read the entire knowledge graph
+        parameters:
+          type: object
+          properties: {}
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [read-graph, '{{raw|safe}}']
+    - type: function
+      function:
+        name: search_nodes
+        description: Search for nodes in the knowledge graph based on a query
+        parameters:
+          type: object
+          properties:
+            query: {type: string, description: 'The search query to match against entity names, types, and observation content'}
+          required: [query]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [search-nodes, '{{raw|safe}}']
+    - type: function
+      function:
+        name: open_nodes
+        description: Open specific nodes in the knowledge graph by their names
+        parameters:
+          type: object
+          properties:
+            names:
+              type: array
+              items: {type: string}
+              description: An array of entity names to retrieve
+          required: [names]
+        container:
+          image: vonwig/memory:latest
+          volumes: ['mcp-memory:/memory']
+          command: [open-nodes, '{{raw|safe}}']
+    prompts: 0
+    resources: {}
+  chrome:
+    description: Drive a headless Chrome browser to interact with web pages
+    ref: github:docker/labs-ai-tools-for-devs?path=prompts/chrome.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/googlechrome.svg
+    tools:
+    - type: function
+      function:
+        name: websocat
+        description: A tool to send and receive messages over a websocket.
+        parameters:
+          type: object
+          properties:
+            url: {type: string, description: The url of the websocket endpoint.}
+            message: {type: string, description: The message to send to websocat on stdin.}
+            websocat_args:
+              type: array
+              items: {type: string}
+              description: The arguments to pass to websocat.
+          required: [url, message, websocat_args]
+        container:
+          image: vonwig/websocat:latest
+          stdin: {content: '{{message|safe}}'}
+          command: ['{{websocat_args|into}}', '{{url|safe}}']
+    - type: function
+      function:
+        name: curl-manual
+        description: Run the man page for curl
+        container:
+          image: vonwig/curl:latest
+          command: ['{{raw|safe}}', man]
+    - type: function
+      function:
+        description: Run a curl command.
+        parameters:
+          type: object
+          properties:
+            args: {type: string, description: The arguments to pass to curl}
+        container:
+          image: vonwig/curl:latest
+          command: ['{{raw|safe}}']
+        name: curl
+    prompts: 2
+    resources: {}
+  sequentialthinking:
+    description: provides a tool for dynamic and reflective problem-solving through a structured thinking process
+    ref: github:docker/labs-ai-tools-for-devs?ref=main&path=prompts/examples/sequentialthinking.md
+    icon: https://2.gravatar.com/userimage/39790510/4918b92358fde20da56c0ec8e5ac7a23?size=256
+    tools:
+      - type: function
+        function:
+          name: sequentialthinking
+  stripe:
+    description: Provides a tool to interact with Stripe services over the Stripe API.
+    ref: github:docker/labs-ai-tools-for-devs?path=prompts/mcp/stripe.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/stripe.svg
+    secrets:
+      - name: stripe.api_key
+  brave:
+    description: Web and local search using Brave's Search API
+    ref: github:docker/labs-ai-tools-for-devs?path=prompts/mcp/brave.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/brave.svg
+    secrets:
+      - name: brave.api_key
+  slack:
+    description: Provides a tool to interact with Slack Workspaces over the Slack API.
+    ref: github:docker/labs-ai-tools-for-devs?path=prompts/mcp/slack.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/slack.svg
+    secrets:
+      - name: slack.team_id
+  redis:
+    description: interact with Slack Workspaces
+    ref: github:docker/labs-ai-tools-for-devs?path=prompts/mcp/slack.md
+    icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/redis.svg
+    secrets:
+      - name: redis.url
+

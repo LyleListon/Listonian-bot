@@ -1,0 +1,41 @@
+# Basic dependabot.yml file with version updates for npm and pip
+
+version: 2
+updates:
+  # Enable version updates for npm (JavaScript/Node.js)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Labels on pull requests for version updates
+    labels:
+      - "npm dependencies"
+      - "security"
+    # Add reviewers
+    reviewers:
+      - "LyleListon"
+    # Specify version update behavior
+    versioning-strategy: auto
+    # Group all updates together
+    groups:
+      dependencies:
+        patterns:
+          - "*"
+
+  # Enable version updates for pip (Python packages)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Labels on pull requests for version updates
+    labels:
+      - "pip dependencies"
+      - "security"
+    # Add reviewers
+    reviewers:
+      - "LyleListon"
+    # Group all updates together
+    groups:
+      dependencies:
+        patterns:
+          - "*"

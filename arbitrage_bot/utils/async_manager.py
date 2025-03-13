@@ -161,3 +161,12 @@ class AsyncRateLimiter:
             if wait_time > 0:
                 await asyncio.sleep(wait_time)
             self.last_request = now
+
+# Create global manager instances
+manager = AsyncRetryManager()
+rate_limiter = AsyncRateLimiter(5.0)  # 5 requests per second default
+
+# Async initialization helper
+async def async_init():
+    """Initialize async components."""
+    pass

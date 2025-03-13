@@ -1,0 +1,68 @@
+{
+  "data": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "timestamp": {
+        "type": "number"
+      },
+      "pair": {
+        "type": "string"
+      },
+      "dex": {
+        "type": "string"
+      },
+      "amount": {
+        "type": "number"
+      },
+      "price": {
+        "type": "number"
+      },
+      "side": {
+        "type": "string",
+        "enum": [
+          "buy",
+          "sell"
+        ]
+      },
+      "gas_price": {
+        "type": "number"
+      },
+      "gas_used": {
+        "type": "number"
+      },
+      "transaction_hash": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "completed",
+          "failed"
+        ]
+      },
+      "profit_loss": {
+        "type": "number"
+      },
+      "error": {
+        "type": "string",
+        "nullable": true
+      }
+    },
+    "required": [
+      "id",
+      "timestamp",
+      "pair",
+      "dex",
+      "amount",
+      "price",
+      "side",
+      "status"
+    ]
+  },
+  "timestamp": 1739745881.872135,
+  "ttl": null
+}

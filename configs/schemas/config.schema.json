@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Arbitrage Bot Configuration",
+  "description": "Configuration schema for the arbitrage bot system",
+  "type": "object",
+  "required": ["network", "trading", "monitoring", "dashboard"],
+  "properties": {
+    "network": {
+      "type": "object",
+      "required": ["rpc_url", "chain_id"],
+      "properties": {
+        "rpc_url": {
+          "type": "string",
+          "description": "RPC endpoint URL"
+        },
+        "chain_id": {
+          "type": "integer",
+          "description": "Network chain ID"
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3,
+          "description": "Number of retry attempts for RPC calls"
+        }
+      }
+    },
+    "trading": {
+      "type": "object",
+      "required": ["min_profit", "gas_limit", "slippage"],
+      "properties": {
+        "min_profit": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Minimum profit threshold in base currency"
+        },
+        "gas_limit": {
+          "type": "integer",
+          "minimum": 100000,
+          "description": "Maximum gas limit for transactions"
+        },
+        "slippage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Slippage tolerance percentage"
+        },
+        "max_trades_per_block": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Maximum trades to execute per block"
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "required": ["log_level", "metrics_enabled"],
+      "properties": {
+        "log_level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR"],
+          "default": "INFO",
+          "description": "Logging level"
+        },
+        "metrics_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable metrics collection"
+        },
+        "alert_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Alert threshold for system metrics"
+        }
+      }
+    },
+    "dashboard": {
+      "type": "object",
+      "required": ["port", "websocket_port"],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 5001,
+          "description": "Dashboard HTTP port"
+        },
+        "websocket_port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 8772,
+          "description": "WebSocket server port"
+        },
+        "update_interval": {
+          "type": "integer",
+          "minimum": 100,
+          "default": 1000,
+          "description": "Update interval in milliseconds"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

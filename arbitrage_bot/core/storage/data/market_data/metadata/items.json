@@ -1,0 +1,10 @@
+{
+  "schema": {
+    "schema_version": "1.0.0",
+    "created_at": 1739260053.6381717,
+    "updated_at": 1739571996.184139,
+    "checksum": "52a2874a52d4b2e15da53de941ec4e625994365e3743d9adb22a95e16c4e6385",
+    "category": "market_data",
+    "backup_path": null
+  }
+}

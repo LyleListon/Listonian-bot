@@ -1,236 +1,204 @@
-# Technical Context
+# Technical Implementation Context
 
-## Core Architecture
+## Async Architecture
 
-### Web3 Integration Layer
-- CustomAsyncProvider
-  - Inherits from Web3.py BaseProvider
-  - Handles async RPC requests
-  - Manages response formats
-  - Implements error handling
-  - Rate limit awareness
-  - Proper resource cleanup
+### Core Principles
+1. Pure asyncio implementation
+   - No mixing of sync/async operations
+   - Proper event loop management
+   - Resource cleanup and error handling
 
-- AsyncMiddleware
-  - Processes async Web3 requests
-  - Handles transaction signing
-  - Manages request flow
-  - Error propagation
-  - Request batching support
+2. Component Initialization
+   ```python
+   class Component:
+       def __init__(self, config):
+           # Basic setup only
+           self.config = config
+           self._setup_basic_attributes()
 
-- Web3Manager
-  - Core Web3 interaction layer
-  - Contract management
-  - Transaction handling
-  - State management
-  - Exponential backoff implementation
-  - Request batching optimization
-  - Hex parsing standardization
+       async def initialize(self):
+           # Async initialization
+           await self._setup_async_resources()
+           return True
+   ```
 
-### Async Implementation
-- Pure asyncio for all operations
-- No blocking calls in critical paths
-- Proper error handling and recovery
-- Resource cleanup patterns
-- Thread safety with locks
+3. Factory Pattern for Async Components
+   ```python
+   async def create_component(config):
+       component = Component(config)
+       await component.initialize()
+       return component
+   ```
 
-### RPC Interaction
-- Rate limit handling with exponential backoff
-- Request batching implemented
-- Response format standardization
-- Comprehensive error handling
-- Provider failover support
+### Web3 Management
+1. Provider Architecture
+   ```python
+   class CustomAsyncProvider:
+       def request_func(self, method, params):
+           # Handle sync operations by wrapping async
+           loop = asyncio.new_event_loop()
+           try:
+               return loop.run_until_complete(
+                   self.make_request(method, params)
+               )
+           finally:
+               loop.close()
+   ```
 
-## Current Technical Challenges
+2. Web3Manager Implementation
+   - Handles all Web3 interactions
+   - Manages provider lifecycle
+   - Provides utility methods
+   ```python
+   class Web3Manager:
+       def __init__(self, config):
+           self.config = config
+           self.w3 = AsyncWeb3()
+           self.primary_provider = None
+           self.backup_providers = []
 
-### Rate Limiting
-1. ~~RPC provider rate limits~~ RESOLVED
-   - ✓ Implemented exponential backoff
-   - ✓ Added request prioritization
-   - ✓ Implemented batch processing
-   - Cache implementation pending
+       async def initialize(self):
+           await self._setup_providers()
+           await self._verify_connection()
+           return True
+   ```
 
-2. Response Format Issues
-   - ✓ Standardized hex parsing
-   - ✓ Improved type conversion
-   - ✓ Enhanced validation
-   - ✓ Robust error handling
+### Wallet Management
+1. Initialization Sequence
+   ```python
+   class WalletManager:
+       def __init__(self, config):
+           self.config = config
+           self._setup_locks()
 
-3. Gas Price Calculation
-   - ✓ Format standardization complete
-   - ✓ Calculation optimization done
-   - ✓ Update frequency optimized
-   - Caching strategy pending
+       async def initialize(self):
+           self.wallet_address = self._derive_address()
+           await self._verify_wallet()
+           return True
+   ```
 
-### Performance Optimization Needs
+2. Balance Management
+   - Async balance checks
+   - Thread-safe operations
+   - Proper error handling
 
+## Error Handling
+
+### Web3 Errors
+1. Custom Error Types
+   ```python
+   class Web3Error(Exception):
+       def __init__(self, message, error_type, context=None):
+           self.error_type = error_type
+           self.context = context or {}
+           super().__init__(message)
+   ```
+
+2. Error Recovery
+   - Retry mechanisms for transient failures
+   - Fallback providers
+   - Error context preservation
+
+### Async Error Handling
+1. Decorator Pattern
+   ```python
+   def with_retry(retries=3, delay=1.0):
+       async def decorator(func):
+           async def wrapper(*args, **kwargs):
+               for attempt in range(retries):
+                   try:
+                       return await func(*args, **kwargs)
+                   except Exception as e:
+                       if attempt == retries - 1:
+                           raise
+                       await asyncio.sleep(delay)
+           return wrapper
+       return decorator
+   ```
+
+## Resource Management
+
+### Connection Management
+1. Provider Lifecycle
+   - Initialization
+   - Health checks
+   - Graceful shutdown
+
+2. WebSocket Connections
+   - Connection pooling
+   - Auto-reconnection
+   - Event handling
+
+### Memory Management
+1. Caching Strategy
+   ```python
+   class CacheManager:
+       def __init__(self, ttl=30):
+           self._cache = {}
+           self._ttl = ttl
+
+       async def get_or_fetch(self, key, fetch_func):
+           if key in self._cache:
+               value, timestamp = self._cache[key]
+               if time.time() - timestamp < self._ttl:
+                   return value
+           value = await fetch_func()
+           self._cache[key] = (value, time.time())
+           return value
+   ```
+
+2. Resource Cleanup
+   - Proper connection closing
+   - Cache invalidation
+   - Memory leak prevention
+
+## Performance Optimization
+
+### Batch Operations
 1. Request Batching
-   - ✓ Group similar requests
-   - ✓ Reduced RPC calls
-   - ✓ Optimized timing
-   - Cache responses pending
+   ```python
+   async def batch_request(self, requests):
+       return await asyncio.gather(
+           *[self.make_request(req) for req in requests]
+       )
+   ```
 
-2. Memory Management
-   - ✓ Resource cleanup implemented
-   - ✓ Connection handling improved
-   - State management optimization needed
-   - Memory monitoring pending
+2. Transaction Bundling
+   - MEV protection
+   - Gas optimization
+   - Atomic execution
 
-3. Error Recovery
-   - ✓ Automatic retry logic
-   - ✓ Circuit breakers
-   - State recovery needs enhancement
-   - Logging enhancement ongoing
+### Monitoring
+1. Performance Metrics
+   - Response times
+   - Success rates
+   - Resource usage
 
-## Integration Points
-
-### Flashbots
-- RPC integration in progress
-- Bundle submission pending
-- MEV protection framework ready
-- Gas optimization implemented
-
-### Risk Analysis
-- ✓ Mempool monitoring
-- ✓ Gas price volatility tracking
-- ✓ Risk factor detection
-- Threshold optimization needed
-
-### DEX Interactions
-- ✓ Contract calls optimized
-- ✓ State monitoring enhanced
-- ✓ Event handling improved
-- ✓ Error recovery robust
-- DEX-specific implementations:
-  - Aerodrome: Stable/volatile pool support
-  - Baseswap: V2 style with getPair
-  - Swapbased: V3 style with fee tiers
-- Pool discovery optimized:
-  - Version detection
-  - Function pattern matching
-  - Proper error handling
-  - Efficient scanning
-- Attack detection implemented:
-  - Sandwich pattern recognition (33-88 attacks detected)
-  - Front-running detection
-  - Timing analysis
-  - Price impact monitoring
-
-### Flash Loans
-- Execution flow defined
-- Risk management enhanced
-- State verification improved
-- Rollback handling strengthened
-
-## Technical Debt
-
-### Code Quality
-- Type hints completed
-- Documentation updates needed
-- Test coverage improved
-- Error handling enhanced
-
-### Architecture
-- ✓ Response standardization
-- ✓ Error propagation
-- State management needs work
-- ✓ Resource cleanup
-
-### Performance
-- ✓ Request optimization
-- Memory usage monitoring needed
-- ✓ Connection management
-- Cache implementation pending
+2. Health Checks
+   - Provider status
+   - Connection health
+   - System resources
 
 ## Security Considerations
 
-### Transaction Safety
-- Signature verification enhanced
-- State validation improved
-- Balance checks implemented
-- Slippage protection active
+### Transaction Security
+1. Input Validation
+   - Parameter checking
+   - Address validation
+   - Amount verification
 
-### RPC Security
-- ✓ Response validation
-- ✓ Rate limit monitoring
-- ✓ Error logging
-- State verification active
+2. MEV Protection
+   - Flashbots integration
+   - Bundle optimization
+   - Private transactions
 
-### MEV Protection
-- Bundle privacy framework ready
-- ✓ Front-running detection active
-- ✓ Transaction ordering optimized
-- ✓ State monitoring enhanced
-- Attack detection metrics:
-  - Average detection time: 2.5s
-  - Pattern recognition accuracy: High
-  - False positive rate: Low
-  - Real-time monitoring active
+### Key Management
+1. Wallet Security
+   - Secure key storage
+   - Access control
+   - Transaction signing
 
-### Dashboard Requirements
-- Real-time monitoring:
-  - Attack pattern visualization
-  - Pool liquidity tracking
-  - Gas price trends
-  - Profit/loss metrics
-  - Network health indicators
-  - Performance analytics
-
-## Future Improvements
-
-### Short Term
-1. ~~Implement exponential backoff~~ DONE
-2. ~~Add request batching~~ DONE
-3. ~~Optimize gas calculations~~ DONE
-4. Fine-tune risk analyzer thresholds
-5. Implement caching system
-6. Optimize pool scanning
-
-### Medium Term
-1. Implement Flashbots bundle submission
-2. Build monitoring dashboard:
-   - Real-time data visualization
-   - Performance metrics
-   - Alert system
-   - Configuration interface
-3. Performance optimization:
-   - Comprehensive caching
-   - Memory usage reduction
-   - Parallel processing
-   - Request batching
-4. Profitability improvements:
-   - Path finding efficiency
-   - Price impact analysis
-   - Gas optimization
-
-### Long Term
-1. Advanced MEV protection strategies
-2. Multi-path optimization algorithms
-3. State management redesign
-4. Performance monitoring system
-
-## Development Guidelines
-
-### Code Standards
-- Async/await patterns strictly followed
-- Type hints required
-- Error handling comprehensive
-- Documentation up-to-date
-
-### Testing Requirements
-- Unit tests expanded
-- Integration tests comprehensive
-- Performance tests added
-- Security tests enhanced
-
-### Deployment Considerations
-- Environment setup standardized
-- Configuration management improved
-- Monitoring enhanced
-- Logging comprehensive
-
-### Maintenance
-- Regular code reviews
-- Performance monitoring
-- Security updates
-- Documentation maintenance
+2. API Security
+   - Rate limiting
+   - Request validation
+   - Error masking

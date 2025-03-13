@@ -16,7 +16,7 @@ from decimal import Decimal
 from collections import defaultdict
 
 from ....utils.async_manager import AsyncLock, with_retry
-from ..web3_manager import Web3Error
+from arbitrage_bot.core import Web3Error
 
 logger = logging.getLogger(__name__)
 

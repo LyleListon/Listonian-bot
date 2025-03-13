@@ -51,6 +51,7 @@ async def run_production_system():
         from arbitrage_bot.core.web3.web3_manager import create_web3_manager
         from arbitrage_bot.core.web3.balance_validator import create_balance_validator
         from arbitrage_bot.core.web3.flashbots.flashbots_provider import create_flashbots_provider
+        from arbitrage_bot.core.web3.wallet_manager import create_wallet_manager
         from arbitrage_bot.core.web3.flashbots.risk_analyzer import RiskAnalyzer
         from arbitrage_bot.core.web3.flashbots.bundle_optimizer import BundleOptimizer
         from arbitrage_bot.core.web3.flashbots.attack_detector import AttackDetector
@@ -95,7 +96,15 @@ async def run_production_system():
         dex_manager = await DexManager.create(web3_manager, config)
         path_finder = PathFinder(dex_manager, config)
         
-        # Step 8: Initialize Flash Loan Manager
+        # Step 8: Initialize Wallet Manager
+        logger.info("Initializing Wallet Manager...")
+        wallet_manager = await create_wallet_manager(
+            web3_manager=web3_manager,
+            dex_manager=dex_manager,
+            config=config
+        )
+        
+        # Step 9: Initialize Flash Loan Manager
         logger.info("Initializing Flash Loan Manager...")
         flash_loan_manager = await create_unified_flash_loan_manager(
             web3_manager=web3_manager,
@@ -117,6 +126,10 @@ async def run_production_system():
         while True:
             try:
                 # Step 1: Analyze mempool for MEV risk
+                # Check and maintain wallet balances
+                logger.info("Checking wallet balances...")
+                await wallet_manager.check_and_maintain_balances()
+                
                 risk_assessment = await risk_analyzer.analyze_mempool_risk()
                 logger.info(f"MEV risk level: {risk_assessment['risk_level']}")
                 

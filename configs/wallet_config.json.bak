@@ -1,0 +1,4 @@
+{
+    "address": "$SECURE:WALLET_ADDRESS",
+    "private_key": "$SECURE:PRIVATE_KEY"
+}

@@ -82,16 +82,27 @@ class CustomAsyncProvider(BaseProvider):
                 logger.error(f"Provider request failed: {e}")
                 raise
 
-    def request_func(self, method: RPCEndpoint, params: Any) -> RPCResponse:
+    def request_func(self, method: RPCEndpoint, params: Any) -> Any:
         """
         Synchronous request function required by BaseProvider.
-        This is called by Web3.py when not using async methods.
-        We raise an error since we only support async operations.
+        Wraps async request in sync call using asyncio.
         """
-        raise NotImplementedError(
-            "CustomAsyncProvider only supports async operations. "
-            "Use the async methods instead."
-        )
+        try:
+            # Create a new event loop for each sync request
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(self.make_request(method, params))
+            finally:
+                loop.close()
+                # Reset to the original event loop if there was one
+                try:
+                    asyncio.get_event_loop()
+                except RuntimeError:
+                    asyncio.set_event_loop(None)
+        except Exception as e:
+            logger.error(f"Sync request failed: {e}")
+            raise
 
     async def close(self):
         """Close provider session."""

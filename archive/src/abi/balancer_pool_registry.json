@@ -1,0 +1,118 @@
+[
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "poolId",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getPoolTokens",
+        "outputs": [
+            {
+                "internalType": "address[]",
+                "name": "tokens",
+                "type": "address[]"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "balances",
+                "type": "uint256[]"
+            },
+            {
+                "internalType": "uint256",
+                "name": "lastChangeBlock",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "tokenIn",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "tokenOut",
+                "type": "address"
+            }
+        ],
+        "name": "getPoolsWithTokens",
+        "outputs": [
+            {
+                "internalType": "bytes32[]",
+                "name": "poolIds",
+                "type": "bytes32[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "poolId",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getPool",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "pool",
+                "type": "address"
+            },
+            {
+                "internalType": "uint8",
+                "name": "poolType",
+                "type": "uint8"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "poolId",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+            }
+        ],
+        "name": "getPoolTokenInfo",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "cash",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "managed",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "lastChangeBlock",
+                "type": "uint256"
+            },
+            {
+                "internalType": "address",
+                "name": "assetManager",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]

@@ -20,7 +20,7 @@ from .web3.interfaces import Web3Client, Transaction
 from .dex.dex_manager import DexManager
 from .web3.balance_validator import BalanceValidator
 from .web3.flashbots.flashbots_provider import FlashbotsProvider
-from .web3.web3_manager import Web3Error
+from .web3.errors import Web3Error
 from .path_finder import ArbitragePath
 
 logger = logging.getLogger(__name__)

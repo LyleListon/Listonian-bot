@@ -17,7 +17,7 @@ from decimal import Decimal
 
 from .async_provider import CustomAsyncProvider
 from .alchemy_provider import AlchemyProvider
-from ..utils.async_manager import AsyncLock
+from arbitrage_bot.utils.async_manager import AsyncLock
 
 logger = logging.getLogger(__name__)
 
@@ -41,18 +41,25 @@ class Web3Manager:
         self._price_cache_ttl = 30  # seconds
         self._last_gas_prediction = None
         self._gas_prediction_ttl = 60  # seconds
+        
+        # Initialize wallet
+        self.wallet_key = config['web3']['wallet_key']
+        self.wallet_address = Web3.to_checksum_address(Web3().eth.account.from_key(self.wallet_key).address)
+        
+        # Store chain ID
+        self.chain_id = config['web3']['chain_id']
 
         # Initialize Web3 instance
         self.w3 = AsyncWeb3()
         
-        # Set up providers
-        self._setup_providers()
+        # Providers will be set up during initialize()
+        self.primary_provider = None
+        self.backup_providers = []
 
-    def _setup_providers(self):
+    async def _setup_providers(self):
         """Set up primary and backup providers."""
         providers = self.config['web3']['providers']
         
-        # Set up Alchemy as primary if configured
         if 'alchemy' in providers:
             self.primary_provider = AlchemyProvider(
                 endpoint_uri=providers['alchemy']['http'],
@@ -76,18 +83,34 @@ class Web3Manager:
     async def initialize(self) -> bool:
         """Initialize Web3 manager and providers."""
         try:
+            # Set up providers
+            await self._setup_providers()
+            
             # Initialize primary provider
             if isinstance(self.primary_provider, AlchemyProvider):
                 await self.primary_provider.initialize()
 
             # Test connection
-            await self.w3.eth.chain_id
-            logger.info("Web3 manager initialized successfully")
+            chain_id = await self.w3.eth.chain_id
+            logger.info(f"Web3 manager initialized successfully with chain ID: {chain_id}")
             return True
 
         except Exception as e:
             logger.error(f"Failed to initialize Web3 manager: {e}")
             return False
+
+    @staticmethod
+    def to_wei(value: Union[int, float, str, Decimal], unit: str = 'ether') -> int:
+        """Convert value to wei."""
+        return Web3.to_wei(value, unit)
+
+    async def get_block_number(self) -> int:
+        """Get current block number."""
+        try:
+            return await self.w3.eth.block_number
+        except Exception as e:
+            logger.error(f"Failed to get block number: {e}")
+            raise
 
     async def get_token_prices(
         self,
