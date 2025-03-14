@@ -1,204 +1,181 @@
-# Technical Implementation Context
+# Technical Context
 
-## Async Architecture
+## Dashboard Architecture
 
-### Core Principles
-1. Pure asyncio implementation
-   - No mixing of sync/async operations
-   - Proper event loop management
-   - Resource cleanup and error handling
+### Overview
+The dashboard is built using a modern async architecture with the following key components:
+- aiohttp web server for handling HTTP requests
+- WebSocket server for real-time updates
+- Jinja2 templating for HTML rendering
+- CSS for styling and responsive design
+- JavaScript for client-side interactivity
 
-2. Component Initialization
-   ```python
-   class Component:
-       def __init__(self, config):
-           # Basic setup only
-           self.config = config
-           self._setup_basic_attributes()
+### Key Components
 
-       async def initialize(self):
-           # Async initialization
-           await self._setup_async_resources()
-           return True
-   ```
+1. WebSocket Server
+- Handles real-time data updates
+- Manages client connections
+- Provides data streaming for:
+  * Market data
+  * Portfolio updates
+  * Memory bank status
+  * Storage metrics
+  * Gas prices
+  * System health
 
-3. Factory Pattern for Async Components
-   ```python
-   async def create_component(config):
-       component = Component(config)
-       await component.initialize()
-       return component
-   ```
+2. Template System
+- Base template with common layout
+- Page-specific templates for:
+  * Overview dashboard
+  * Metrics visualization
+  * Opportunity tracking
+  * History and analytics
+  * Memory management
+  * Storage management
+  * Distribution control
+  * Execution monitoring
+  * System settings
 
-### Web3 Management
-1. Provider Architecture
-   ```python
-   class CustomAsyncProvider:
-       def request_func(self, method, params):
-           # Handle sync operations by wrapping async
-           loop = asyncio.new_event_loop()
-           try:
-               return loop.run_until_complete(
-                   self.make_request(method, params)
-               )
-           finally:
-               loop.close()
-   ```
+3. Async Event Loop Management
+- Centralized event loop control
+- Resource management
+- Error handling and recovery
+- Signal handling for graceful shutdown
 
-2. Web3Manager Implementation
-   - Handles all Web3 interactions
-   - Manages provider lifecycle
-   - Provides utility methods
-   ```python
-   class Web3Manager:
-       def __init__(self, config):
-           self.config = config
-           self.w3 = AsyncWeb3()
-           self.primary_provider = None
-           self.backup_providers = []
+### Integration Points
 
-       async def initialize(self):
-           await self._setup_providers()
-           await self._verify_connection()
-           return True
-   ```
+1. Memory Bank Integration
+- Real-time memory state monitoring
+- Cache performance metrics
+- Memory usage optimization
+- State synchronization
 
-### Wallet Management
-1. Initialization Sequence
-   ```python
-   class WalletManager:
-       def __init__(self, config):
-           self.config = config
-           self._setup_locks()
+2. Storage Integration
+- Storage hub status monitoring
+- Data persistence metrics
+- Storage optimization tracking
+- Backup status monitoring
 
-       async def initialize(self):
-           self.wallet_address = self._derive_address()
-           await self._verify_wallet()
-           return True
-   ```
+3. Web3 Integration
+- Gas price monitoring
+- Transaction status tracking
+- Contract interaction monitoring
+- Network health metrics
 
-2. Balance Management
-   - Async balance checks
-   - Thread-safe operations
-   - Proper error handling
+4. System Monitoring
+- Component health tracking
+- Performance metrics
+- Resource utilization
+- Error rate monitoring
 
-## Error Handling
+### Data Flow
 
-### Web3 Errors
-1. Custom Error Types
-   ```python
-   class Web3Error(Exception):
-       def __init__(self, message, error_type, context=None):
-           self.error_type = error_type
-           self.context = context or {}
-           super().__init__(message)
-   ```
+1. Real-time Updates
+```
+WebSocket Server -> Client Dashboard
+- Market data updates (5s interval)
+- Portfolio changes (real-time)
+- System status changes (real-time)
+- Error notifications (real-time)
+```
 
-2. Error Recovery
-   - Retry mechanisms for transient failures
-   - Fallback providers
-   - Error context preservation
+2. Request Flow
+```
+Client Request -> aiohttp Router -> Handler -> Data Layer -> Response
+```
 
-### Async Error Handling
-1. Decorator Pattern
-   ```python
-   def with_retry(retries=3, delay=1.0):
-       async def decorator(func):
-           async def wrapper(*args, **kwargs):
-               for attempt in range(retries):
-                   try:
-                       return await func(*args, **kwargs)
-                   except Exception as e:
-                       if attempt == retries - 1:
-                           raise
-                       await asyncio.sleep(delay)
-           return wrapper
-       return decorator
-   ```
+3. WebSocket Flow
+```
+Client Connect -> WS Handshake -> Subscribe to Updates -> Receive Data -> Process & Display
+```
 
-## Resource Management
+### Security Measures
 
-### Connection Management
-1. Provider Lifecycle
-   - Initialization
-   - Health checks
-   - Graceful shutdown
+1. Connection Security
+- CORS configuration
+- WebSocket authentication
+- Rate limiting
+- Input validation
 
-2. WebSocket Connections
-   - Connection pooling
-   - Auto-reconnection
-   - Event handling
+2. Data Security
+- Secure configuration handling
+- Sensitive data masking
+- Error message sanitization
+- Session management
 
-### Memory Management
-1. Caching Strategy
-   ```python
-   class CacheManager:
-       def __init__(self, ttl=30):
-           self._cache = {}
-           self._ttl = ttl
+### Error Handling
 
-       async def get_or_fetch(self, key, fetch_func):
-           if key in self._cache:
-               value, timestamp = self._cache[key]
-               if time.time() - timestamp < self._ttl:
-                   return value
-           value = await fetch_func()
-           self._cache[key] = (value, time.time())
-           return value
-   ```
+1. WebSocket Errors
+- Connection drops
+- Message parsing failures
+- Client timeout handling
+- Reconnection logic
 
-2. Resource Cleanup
-   - Proper connection closing
-   - Cache invalidation
-   - Memory leak prevention
+2. Server Errors
+- Resource cleanup
+- Graceful degradation
+- Error logging
+- Recovery procedures
 
-## Performance Optimization
+### Performance Optimization
 
-### Batch Operations
-1. Request Batching
-   ```python
-   async def batch_request(self, requests):
-       return await asyncio.gather(
-           *[self.make_request(req) for req in requests]
-       )
-   ```
+1. Data Updates
+- Batched updates
+- Throttled notifications
+- Efficient serialization
+- Cache utilization
 
-2. Transaction Bundling
-   - MEV protection
-   - Gas optimization
-   - Atomic execution
+2. Resource Management
+- Connection pooling
+- Memory optimization
+- CPU utilization control
+- I/O optimization
 
-### Monitoring
-1. Performance Metrics
-   - Response times
-   - Success rates
-   - Resource usage
+### Monitoring & Logging
 
-2. Health Checks
-   - Provider status
-   - Connection health
-   - System resources
+1. System Metrics
+- Component health
+- Performance metrics
+- Resource utilization
+- Error rates
 
-## Security Considerations
+2. Logging Strategy
+- Structured logging
+- Log levels
+- Log rotation
+- Error tracking
 
-### Transaction Security
-1. Input Validation
-   - Parameter checking
-   - Address validation
-   - Amount verification
+## Implementation Status
 
-2. MEV Protection
-   - Flashbots integration
-   - Bundle optimization
-   - Private transactions
+### Completed Components
+- Base server setup
+- Template system
+- Static file serving
+- WebSocket server
+- Basic routing
 
-### Key Management
-1. Wallet Security
-   - Secure key storage
-   - Access control
-   - Transaction signing
+### In Progress
+- Async manager implementation
+- Real-time data integration
+- Error handling system
+- Performance optimization
 
-2. API Security
-   - Rate limiting
-   - Request validation
-   - Error masking
+### Pending
+- Unit tests
+- Integration tests
+- Performance benchmarks
+- Documentation updates
+
+## Future Improvements
+
+1. Short Term
+- Complete async manager
+- Implement error handling
+- Add real-time updates
+- Optimize performance
+
+2. Long Term
+- Add data visualization
+- Implement advanced analytics
+- Add user customization
+- Enhance monitoring capabilities

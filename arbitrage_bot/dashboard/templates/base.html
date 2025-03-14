@@ -3,94 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Arbitrage Dashboard{% endblock %}</title>
-    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/test.css') }}">
-    <script src="{{ url_for('static', path='js/chart.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/moment.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/chartjs-adapter-date-fns.min.js') }}"></script>
-    {% block extra_head %}{% endblock %}
+    <title>{% block title %}Arbitrage Bot Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <nav class="main-nav">
-        <div class="nav-brand">Arbitrage Dashboard</div>
-        <ul class="nav-links">
-            <li><a href="/" class="nav-link">Overview</a></li>
-            <li><a href="/performance" class="nav-link">Performance</a></li>
-            <li><a href="/opportunities" class="nav-link">Opportunities</a></li>
-            <li><a href="/system" class="nav-link">System</a></li>
-        </ul>
-    </nav>
+    <div class="container">
+        <header>
+            <h1>Arbitrage Bot Dashboard</h1>
+            <nav>
+                <ul>
+                    <li><a href="/" {% if request.path == '/' %}class="active"{% endif %}>Overview</a></li>
+                    <li><a href="/metrics" {% if request.path == '/metrics' %}class="active"{% endif %}>Metrics</a></li>
+                    <li><a href="/opportunities" {% if request.path == '/opportunities' %}class="active"{% endif %}>Opportunities</a></li>
+                    <li><a href="/history" {% if request.path == '/history' %}class="active"{% endif %}>History</a></li>
+                    <li><a href="/analytics" {% if request.path == '/analytics' %}class="active"{% endif %}>Analytics</a></li>
+                    <li><a href="/memory" {% if request.path == '/memory' %}class="active"{% endif %}>Memory</a></li>
+                    <li><a href="/storage" {% if request.path == '/storage' %}class="active"{% endif %}>Storage</a></li>
+                    <li><a href="/distribution" {% if request.path == '/distribution' %}class="active"{% endif %}>Distribution</a></li>
+                    <li><a href="/execution" {% if request.path == '/execution' %}class="active"{% endif %}>Execution</a></li>
+                    <li><a href="/settings" {% if request.path == '/settings' %}class="active"{% endif %}>Settings</a></li>
+                </ul>
+            </nav>
+        </header>
 
-    <div class="main-container">
-        <div class="status-bar">
-            <div class="status-item" id="connection-status">
-                <span class="status-label">Connection:</span>
-                <span class="status-value">Connecting...</span>
-            </div>
-            <div class="status-item" id="memory-status">
-                <span class="status-label">Memory Usage:</span>
-                <span class="status-value">-</span>
-            </div>
-            <div class="status-item" id="update-time">
-                <span class="status-label">Last Update:</span>
-                <span class="status-value">-</span>
-            </div>
-        </div>
-
-        <main class="content">
+        <main>
             {% block content %}{% endblock %}
         </main>
     </div>
 
-    <script>
-        // WebSocket connection
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        const connectionStatus = document.querySelector('#connection-status .status-value');
-        const memoryStatus = document.querySelector('#memory-status .status-value');
-        const updateTime = document.querySelector('#update-time .status-value');
-
-        ws.onopen = () => {
-            console.log('WebSocket connection established');
-            connectionStatus.textContent = 'Connected';
-            connectionStatus.classList.add('connected');
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket connection closed');
-            connectionStatus.textContent = 'Disconnected';
-            connectionStatus.classList.remove('connected');
-            setTimeout(() => {
-                window.location.reload();
-            }, 5000);
-        };
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            console.log('Raw WebSocket data:', JSON.stringify(data, null, 2));
-            
-            if (data.type === 'memory_update') {
-                // Update memory status
-                const stats = data.data.memory_stats;
-                memoryStatus.textContent = `Market: ${stats.market_data_size} | Tx: ${stats.transactions_size} | Analytics: ${stats.analytics_size}`;
-                
-                // Update timestamp
-                updateTime.textContent = moment(data.timestamp).format('HH:mm:ss');
-                
-                // Trigger custom event for page-specific updates
-                const updateEvent = new CustomEvent('memoryUpdate', { detail: data });
-                document.dispatchEvent(updateEvent);
-            }
-        };
-
-        // Error handling
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            connectionStatus.textContent = 'Error';
-            connectionStatus.classList.remove('connected');
-        };
-    </script>
-
-    {% block extra_scripts %}{% endblock %}
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

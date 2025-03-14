@@ -1,4 +1,12 @@
 {
+  "network": {
+    "rpc_endpoints": [
+      "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
+      "https://base-mainnet.infura.io/v3/863c326dab1a444dba3f41ae7a07ccce"
+    ],
+    "chain": "base_mainnet",
+    "flashbots_rpc": "https://relay-builder-base.flashbots.net"
+  },
   "web3": {
     "chain_id": 8453,
     "rpc_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
@@ -10,8 +18,7 @@
         "api_key": "kRXhWVt8YU_8LnGS20145F5uBDFbL_k0"
       },
       "backup": [
-        "https://base-mainnet.infura.io/v3/863c326dab1a444dba3f41ae7a07ccce",
-        "wss://base-mainnet.infura.io/ws/v3/863c326dab1a444dba3f41ae7a07ccce"
+        "https://base-mainnet.infura.io/v3/863c326dab1a444dba3f41ae7a07ccce"
       ]
     },
     "alchemy": {
@@ -94,13 +101,6 @@
       "version": "v3",
       "fee": 30,
       "enabled": true
-    },
-    "rocketswap": {
-      "factory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
-      "router": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-      "version": "v2",
-      "fee": 30,
-      "enabled": true
     }
   },
 
@@ -115,13 +115,6 @@
     "cache_ttl": 30
   },
 
-  "balancer": {
-    "vault_address": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
-    "pool_registry": "0x5c6Ee304399DBdB9C8Ef030aB642B10820DB8F56",
-    "min_liquidity": "1000000000000000000",
-    "max_pools": 100
-  },
-
   "flash_loan": {
     "enabled": true,
     "use_flashbots": true,
@@ -129,15 +122,15 @@
     "max_trade_size": "1000000000000000000",
     "slippage_tolerance": 50,
     "transaction_timeout": 180,
-    "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+    "aave_pool": "0x0716E86C56C4Cf4B9e10E6E2176B58FE6eBe33Bd",
     "max_parallel_pools": 10,
     "min_liquidity_ratio": 1.5,
     "gas_buffer": 1.2
   },
 
   "flashbots": {
-    "relay_url": "https://relay.flashbots.net",
-    "auth_key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "relay_url": "https://relay-builder-base.flashbots.net",
+    "auth_key": "0x5127c66bfc607750f5bd309d45ab922255c514d3607b7ff8507f44e73f64dc0d",
     "min_profit": "170000000000000",
     "max_gas_price": "500000000000"
   },

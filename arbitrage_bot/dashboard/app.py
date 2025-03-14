@@ -14,7 +14,7 @@ import aiohttp_cors
 from aiohttp_sse import sse_response
 import aiohttp_jinja2
 import jinja2
-from ..core.memory.bank import create_memory_bank
+from ..core.memory import get_memory_bank
 from ..core.storage.factory import create_storage_hub
 from ..core.distribution.manager import DistributionManager
 from ..core.distribution.config import DistributionConfig
@@ -24,7 +24,7 @@ from ..core.web3.web3_manager import create_web3_manager
 from ..core.metrics.portfolio_tracker import create_portfolio_tracker
 from ..core.gas.gas_optimizer import create_gas_optimizer
 from ..core.analysis import create_memory_market_analyzer
-from ..utils.config_loader import resolve_secure_values
+from ..utils.config_loader import load_config, resolve_secure_values
 from decimal import Decimal
 from .websocket_server import WebSocketServer
 
@@ -41,8 +41,6 @@ async def create_app(memory_bank=None, storage_hub=None) -> Tuple[web.Applicatio
         # Initialize async manager
         try:
             await async_init()
-            if not manager._initialized:
-                raise RuntimeError("Failed to initialize async manager")
             logger.info("Successfully initialized async event loop")
         except Exception as e:
             logger.error("Failed to initialize async manager: %s", str(e))
@@ -70,25 +68,20 @@ async def create_app(memory_bank=None, storage_hub=None) -> Tuple[web.Applicatio
             )
         })
 
-        # Load config
-        config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'config.json')
-        with open(config_path) as f:
-            config = json.load(f)
+        # Load production config
+        config = load_config()
 
         # Resolve secure values in config
         config = resolve_secure_values(config)
         logger.info("Resolved secure values in config")
 
         # Initialize components with delays between each
-        web3_manager = await create_web3_manager(
-            provider_url=os.getenv('BASE_RPC_URL'),
-            chain_id=config['network']['chainId']
-        )
+        web3_manager = await create_web3_manager(config)
         await asyncio.sleep(INIT_WAIT)
 
         # Use provided memory_bank or create new one
         if memory_bank is None:
-            memory_bank = await create_memory_bank()
+            memory_bank = await get_memory_bank()
         await asyncio.sleep(INIT_WAIT)
 
         # Use provided storage_hub or create new one

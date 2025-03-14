@@ -4,7 +4,7 @@ import logging
 import json
 import asyncio
 from typing import Dict, Any, Optional
-from flask_socketio import SocketIO, emit
+from aiohttp import web, WSMsgType
 from decimal import Decimal
 from datetime import datetime
 
@@ -15,7 +15,7 @@ class WebSocketServer:
 
     def __init__(
         self,
-        socketio: SocketIO,
+        app: web.Application,
         market_analyzer: Any = None,
         portfolio_tracker: Any = None,
         memory_bank: Any = None,
@@ -25,7 +25,7 @@ class WebSocketServer:
         gas_optimizer: Any = None
     ):
         """Initialize WebSocket server."""
-        self.socketio = socketio
+        self.app = app
         self.market_analyzer = market_analyzer
         self.portfolio_tracker = portfolio_tracker
         self.memory_bank = memory_bank
@@ -35,14 +35,15 @@ class WebSocketServer:
         self.gas_optimizer = gas_optimizer
         self.is_running = False
         self.update_interval = 5  # seconds
+        self.clients = set()
         logger.debug("WebSocket server initialized")
 
-    def initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Initialize server components."""
         try:
             # Verify all required components
             if not all([
-                self.socketio,
+                self.app,
                 self.market_analyzer,
                 self.portfolio_tracker,
                 self.memory_bank,
@@ -54,8 +55,8 @@ class WebSocketServer:
                 logger.error("Missing required components")
                 return False
 
-            # Register event handlers
-            self._register_handlers()
+            # Register WebSocket route
+            self.app.router.add_get('/ws', self.websocket_handler)
             logger.debug("WebSocket server initialized successfully")
             return True
 
@@ -63,7 +64,7 @@ class WebSocketServer:
             logger.error("Failed to initialize WebSocket server: %s", str(e))
             return False
 
-    def start(self):
+    async def start(self):
         """Start WebSocket server."""
         try:
             self.is_running = True
@@ -75,127 +76,144 @@ class WebSocketServer:
             self.is_running = False
             raise
 
-    def stop(self):
+    async def stop(self):
         """Stop WebSocket server."""
         self.is_running = False
+        # Close all client connections
+        for ws in self.clients:
+            await ws.close()
+        self.clients.clear()
         logger.debug("WebSocket server stopped")
 
-    def _register_handlers(self):
-        """Register WebSocket event handlers."""
-        
-        @self.socketio.on('connect')
-        def handle_connect():
-            """Handle client connection."""
-            logger.debug("Client connected")
-            self._send_initial_data()
+    async def websocket_handler(self, request):
+        """Handle WebSocket connections."""
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        self.clients.add(ws)
 
-        @self.socketio.on('disconnect')
-        def handle_disconnect():
-            """Handle client disconnection."""
-            logger.debug("Client disconnected")
+        try:
+            # Send initial data
+            await self._send_initial_data(ws)
 
-        @self.socketio.on('request_update')
-        def handle_update_request(data):
-            """Handle update request from client."""
-            try:
-                update_type = data.get('type')
-                if update_type == 'market_data':
-                    self._send_market_data()
-                elif update_type == 'portfolio':
-                    self._send_portfolio_data()
-                elif update_type == 'memory':
-                    self._send_memory_data()
-                elif update_type == 'storage':
-                    self._send_storage_data()
-                elif update_type == 'distribution':
-                    self._send_distribution_data()
-                elif update_type == 'execution':
-                    self._send_execution_data()
-                elif update_type == 'gas':
-                    self._send_gas_data()
-                else:
-                    logger.warning("Unknown update type requested: %s", update_type)
-            except Exception as e:
-                logger.error("Error handling update request: %s", str(e))
+            async for msg in ws:
+                if msg.type == WSMsgType.TEXT:
+                    try:
+                        data = json.loads(msg.data)
+                        await self._handle_message(ws, data)
+                    except json.JSONDecodeError:
+                        logger.error("Invalid JSON received")
+                elif msg.type == WSMsgType.ERROR:
+                    logger.error('WebSocket connection closed with exception %s', ws.exception())
+
+        finally:
+            self.clients.remove(ws)
+            await ws.close()
+
+        return ws
+
+    async def _handle_message(self, ws: web.WebSocketResponse, data: Dict[str, Any]):
+        """Handle incoming WebSocket messages."""
+        try:
+            update_type = data.get('type')
+            if update_type == 'market_data':
+                await self._send_market_data(ws)
+            elif update_type == 'portfolio':
+                await self._send_portfolio_data(ws)
+            elif update_type == 'memory':
+                await self._send_memory_data(ws)
+            elif update_type == 'storage':
+                await self._send_storage_data(ws)
+            elif update_type == 'distribution':
+                await self._send_distribution_data(ws)
+            elif update_type == 'execution':
+                await self._send_execution_data(ws)
+            elif update_type == 'gas':
+                await self._send_gas_data(ws)
+            else:
+                logger.warning("Unknown update type requested: %s", update_type)
+        except Exception as e:
+            logger.error("Error handling message: %s", str(e))
 
     async def _update_loop(self):
         """Main update loop for pushing data to clients."""
         while self.is_running:
             try:
-                self._send_market_data()
-                self._send_portfolio_data()
-                self._send_memory_data()
-                self._send_storage_data()
-                self._send_distribution_data()
-                self._send_execution_data()
-                self._send_gas_data()
+                if self.clients:  # Only send updates if there are connected clients
+                    for ws in self.clients:
+                        await self._send_market_data(ws)
+                        await self._send_portfolio_data(ws)
+                        await self._send_memory_data(ws)
+                        await self._send_storage_data(ws)
+                        await self._send_distribution_data(ws)
+                        await self._send_execution_data(ws)
+                        await self._send_gas_data(ws)
                 await asyncio.sleep(self.update_interval)
             except Exception as e:
                 logger.error("Error in update loop: %s", str(e))
                 await asyncio.sleep(1)  # Brief delay before retry
 
-    def _send_initial_data(self):
+    async def _send_initial_data(self, ws: web.WebSocketResponse):
         """Send initial data to newly connected client."""
         try:
-            self._send_market_data()
-            self._send_portfolio_data()
-            self._send_memory_data()
-            self._send_storage_data()
-            self._send_distribution_data()
-            self._send_execution_data()
-            self._send_gas_data()
+            await self._send_market_data(ws)
+            await self._send_portfolio_data(ws)
+            await self._send_memory_data(ws)
+            await self._send_storage_data(ws)
+            await self._send_distribution_data(ws)
+            await self._send_execution_data(ws)
+            await self._send_gas_data(ws)
         except Exception as e:
             logger.error("Error sending initial data: %s", str(e))
 
-    def _send_market_data(self):
+    async def _send_market_data(self, ws: web.WebSocketResponse):
         """Send market data update."""
         try:
-            market_data = self.market_analyzer.get_market_summary()
-            self.socketio.emit('market_update', market_data)
+            market_data = await self.market_analyzer.get_market_summary()
+            await ws.send_json({'type': 'market_update', 'data': market_data})
         except Exception as e:
             logger.error("Error sending market data: %s", str(e))
 
-    def _send_portfolio_data(self):
+    async def _send_portfolio_data(self, ws: web.WebSocketResponse):
         """Send portfolio data update."""
         try:
-            portfolio_data = self.portfolio_tracker.get_portfolio_summary()
-            self.socketio.emit('portfolio_update', portfolio_data)
+            portfolio_data = await self.portfolio_tracker.get_performance_summary()
+            await ws.send_json({'type': 'portfolio_update', 'data': portfolio_data})
         except Exception as e:
             logger.error("Error sending portfolio data: %s", str(e))
 
-    def _send_memory_data(self):
+    async def _send_memory_data(self, ws: web.WebSocketResponse):
         """Send memory bank data update."""
         try:
-            memory_data = self.memory_bank.get_status()
-            self.socketio.emit('memory_update', memory_data)
+            memory_data = await self.memory_bank.get_all_context()
+            await ws.send_json({'type': 'memory_update', 'data': memory_data})
         except Exception as e:
             logger.error("Error sending memory data: %s", str(e))
 
-    def _send_storage_data(self):
+    async def _send_storage_data(self, ws: web.WebSocketResponse):
         """Send storage hub data update."""
         try:
-            storage_data = self.storage_hub.get_status()
-            self.socketio.emit('storage_update', storage_data)
+            storage_data = await self.storage_hub.get_status()
+            await ws.send_json({'type': 'storage_update', 'data': storage_data})
         except Exception as e:
             logger.error("Error sending storage data: %s", str(e))
 
-    def _send_distribution_data(self):
+    async def _send_distribution_data(self, ws: web.WebSocketResponse):
         """Send distribution data update."""
         try:
-            distribution_data = self.distribution_manager.get_metrics()
-            self.socketio.emit('distribution_update', distribution_data)
+            distribution_data = await self.distribution_manager.get_metrics()
+            await ws.send_json({'type': 'distribution_update', 'data': distribution_data})
         except Exception as e:
             logger.error("Error sending distribution data: %s", str(e))
 
-    def _send_execution_data(self):
+    async def _send_execution_data(self, ws: web.WebSocketResponse):
         """Send execution data update."""
         try:
-            execution_data = self.execution_manager.get_metrics()
-            self.socketio.emit('execution_update', execution_data)
+            execution_data = await self.execution_manager.get_metrics()
+            await ws.send_json({'type': 'execution_update', 'data': execution_data})
         except Exception as e:
             logger.error("Error sending execution data: %s", str(e))
 
-    def _send_gas_data(self):
+    async def _send_gas_data(self, ws: web.WebSocketResponse):
         """Send gas price update."""
         try:
             gas_data = {
@@ -211,6 +229,6 @@ class WebSocketServer:
                     'historical_prices': self.gas_optimizer.gas_metrics['historical_prices'][-10:]  # Last 10 entries
                 }
             }
-            self.socketio.emit('gas_update', gas_data)
+            await ws.send_json({'type': 'gas_update', 'data': gas_data})
         except Exception as e:
             logger.error("Error sending gas data: %s", str(e))

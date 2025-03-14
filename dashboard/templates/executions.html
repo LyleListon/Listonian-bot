@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Executions - Listonian Arbitrage Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/dashboard.css') }}">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-graph-up-arrow"></i> Listonian Arbitrage
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/opportunities"><i class="bi bi-lightning-charge"></i> Opportunities</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/executions"><i class="bi bi-arrow-repeat"></i> Executions</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/metrics"><i class="bi bi-graph-up"></i> Metrics</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings"><i class="bi bi-gear"></i> Settings</a>
+                    </li>
+                </ul>
+                <div class="ms-auto d-flex align-items-center">
+                    <div id="systemStatus" class="d-flex align-items-center me-3">
+                        <span class="badge bg-secondary me-2">Status: Unknown</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <!-- Filters -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">Execution Filters</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Status</label>
+                                <select id="status" class="form-select">
+                                    <option value="">All</option>
+                                    <option value="SUCCESS">Success</option>
+                                    <option value="FAILED">Failed</option>
+                                    <option value="PENDING">Pending</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Min Profit (ETH)</label>
+                                <input type="number" id="minProfit" class="form-control" value="0" step="0.001" min="0">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Time Range</label>
+                                <select id="timeRange" class="form-select">
+                                    <option value="1h">Last Hour</option>
+                                    <option value="24h" selected>Last 24 Hours</option>
+                                    <option value="7d">Last 7 Days</option>
+                                    <option value="30d">Last 30 Days</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Sort By</label>
+                                <select id="sortBy" class="form-select">
+                                    <option value="timestamp">Time</option>
+                                    <option value="profit">Profit</option>
+                                    <option value="gas">Gas Used</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted">Total Executions</h6>
+                        <h3 id="totalExecutions">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted">Success Rate</h6>
+                        <h3 id="successRate">0%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted">Total Profit</h6>
+                        <h3 id="totalProfit">0.00 ETH</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted">Average Gas Used</h6>
+                        <h3 id="avgGasUsed">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Executions Table -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Execution History</h5>
+                        <div>
+                            <button class="btn btn-sm btn-light me-2" onclick="refreshExecutions()">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                            </button>
+                            <div class="form-check form-switch d-inline-block ms-2">
+                                <input class="form-check-input" type="checkbox" id="autoRefresh">
+                                <label class="form-check-label text-light" for="autoRefresh">Auto-refresh</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Opportunity ID</th>
+                                        <th>Status</th>
+                                        <th>Profit</th>
+                                        <th>Gas Used</th>
+                                        <th>Transaction Hash</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="executionsList">
+                                    <tr>
+                                        <td colspan="7" class="text-center">Loading executions...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-dark text-light py-3 mt-auto">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-0">© 2025 Listonian Arbitrage Bot</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="mb-0">API Status: <span id="apiStatus" class="badge bg-secondary">Checking...</span></p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Execution Details Modal -->
+    <div class="modal fade" id="executionDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Execution Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="executionDetails">
+                        Loading details...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // API Endpoints
+        const API_BASE = '/api/arbitrage';
+        const EXECUTIONS_ENDPOINT = `${API_BASE}/executions`;
+        const STATUS_ENDPOINT = `${API_BASE}/status`;
+
+        // Update intervals
+        const STATUS_INTERVAL = 5000;
+        const AUTO_REFRESH_INTERVAL = 10000;
+        let autoRefreshInterval = null;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            loadExecutions();
+            updateSystemStatus();
+            
+            // Set up periodic updates
+            setInterval(updateSystemStatus, STATUS_INTERVAL);
+            
+            // Set up auto-refresh toggle
+            document.getElementById('autoRefresh').addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    autoRefreshInterval = setInterval(loadExecutions, AUTO_REFRESH_INTERVAL);
+                } else {
+                    clearInterval(autoRefreshInterval);
+                }
+            });
+
+            // Set up filter change handlers
+            ['status', 'minProfit', 'timeRange', 'sortBy'].forEach(id => {
+                document.getElementById(id).addEventListener('change', loadExecutions);
+            });
+        });
+
+        async function loadExecutions() {
+            try {
+                // Get filter values
+                const status = document.getElementById('status').value;
+                const minProfit = document.getElementById('minProfit').value;
+                const timeRange = document.getElementById('timeRange').value;
+                const sortBy = document.getElementById('sortBy').value;
+
+                // Build query string
+                const params = new URLSearchParams({
+                    max_results: 50
+                });
+                if (status) params.append('status', status);
+                if (minProfit > 0) params.append('min_profit', minProfit);
+                if (timeRange) params.append('time_range', timeRange);
+                if (sortBy) params.append('sort_by', sortBy);
+
+                const response = await fetch(`${EXECUTIONS_ENDPOINT}?${params}`);
+                if (!response.ok) throw new Error('Failed to fetch executions');
+
+                const executions = await response.json();
+                updateExecutionsTable(executions);
+                updateSummaryStats(executions);
+
+                document.getElementById('apiStatus').textContent = 'Online';
+                document.getElementById('apiStatus').className = 'badge bg-success';
+            } catch (error) {
+                console.error('Error loading executions:', error);
+                document.getElementById('apiStatus').textContent = 'Error';
+                document.getElementById('apiStatus').className = 'badge bg-danger';
+            }
+        }
+
+        function updateExecutionsTable(executions) {
+            const tbody = document.getElementById('executionsList');
+            
+            if (!executions || executions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">No executions found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = executions.map(exec => `
+                <tr>
+                    <td>${formatTimestamp(exec.timestamp)}</td>
+                    <td class="font-monospace">${exec.opportunity_id.substring(0, 8)}...</td>
+                    <td><span class="badge ${getStatusClass(exec.status)}">${exec.status}</span></td>
+                    <td class="${exec.actual_profit > 0 ? 'profit-positive' : 'profit-negative'}">
+                        ${exec.actual_profit ? exec.actual_profit.toFixed(6) + ' ETH' : 'N/A'}
+                    </td>
+                    <td>${exec.gas_used ? exec.gas_used.toLocaleString() : 'N/A'}</td>
+                    <td class="font-monospace">
+                        ${exec.transaction_hash ? 
+                            `<a href="https://basescan.org/tx/${exec.transaction_hash}" target="_blank">
+                                ${exec.transaction_hash.substring(0, 8)}...
+                            </a>` : 
+                            'N/A'}
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-info" onclick="showExecutionDetails('${exec.opportunity_id}')">
+                            View Details
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateSummaryStats(executions) {
+            const total = executions.length;
+            const successful = executions.filter(e => e.status === 'SUCCESS').length;
+            const totalProfit = executions.reduce((sum, e) => sum + (e.actual_profit || 0), 0);
+            const totalGas = executions.reduce((sum, e) => sum + (e.gas_used || 0), 0);
+
+            document.getElementById('totalExecutions').textContent = total;
+            document.getElementById('successRate').textContent = total ? ((successful / total) * 100).toFixed(1) + '%' : '0%';
+            document.getElementById('totalProfit').textContent = totalProfit.toFixed(6) + ' ETH';
+            document.getElementById('avgGasUsed').textContent = total ? Math.round(totalGas / total).toLocaleString() : '0';
+        }
+
+        async function showExecutionDetails(opportunityId) {
+            const modal = new bootstrap.Modal(document.getElementById('executionDetailsModal'));
+            const detailsContainer = document.getElementById('executionDetails');
+            
+            try {
+                const response = await fetch(`${API_BASE}/execution/${opportunityId}`);
+                if (!response.ok) throw new Error('Failed to fetch execution details');
+
+                const details = await response.json();
+                detailsContainer.innerHTML = `
+                    <div class="mb-3">
+                        <h6>Opportunity ID</h6>
+                        <p class="font-monospace">${details.opportunity_id}</p>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Transaction Details</h6>
+                        <ul class="list-unstyled">
+                            <li>Hash: <span class="font-monospace">${details.transaction_hash || 'N/A'}</span></li>
+                            <li>Block Number: ${details.block_number || 'N/A'}</li>
+                            <li>Gas Used: ${details.gas_used ? details.gas_used.toLocaleString() : 'N/A'}</li>
+                            <li>Gas Price: ${details.gas_price ? (details.gas_price / 1e9).toFixed(2) + ' Gwei' : 'N/A'}</li>
+                        </ul>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Profit Details</h6>
+                        <ul class="list-unstyled">
+                            <li>Expected: ${details.expected_profit.toFixed(6)} ETH</li>
+                            <li>Actual: ${details.actual_profit.toFixed(6)} ETH</li>
+                            <li>Gas Cost: ${details.gas_cost.toFixed(6)} ETH</li>
+                            <li>Net Profit: ${(details.actual_profit - details.gas_cost).toFixed(6)} ETH</li>
+                        </ul>
+                    </div>
+                    <div class="mb-3">
+                        <h6>Execution Path</h6>
+                        <pre class="bg-light p-2 rounded">${JSON.stringify(details.execution_path, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error fetching execution details:', error);
+                detailsContainer.innerHTML = '<div class="alert alert-danger">Failed to load execution details</div>';
+            }
+
+            modal.show();
+        }
+
+        function refreshExecutions() {
+            loadExecutions();
+        }
+
+        // Helper functions
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp * 1000).toLocaleString();
+        }
+
+        function getStatusClass(status) {
+            switch (status) {
+                case 'SUCCESS': return 'bg-success';
+                case 'FAILED': return 'bg-danger';
+                case 'PENDING': return 'bg-warning';
+                case 'IN_PROGRESS': return 'bg-info';
+                default: return 'bg-secondary';
+            }
+        }
+
+        async function updateSystemStatus() {
+            try {
+                const response = await fetch(STATUS_ENDPOINT);
+                if (!response.ok) throw new Error('Failed to fetch system status');
+
+                const status = await response.json();
+                const statusBadge = document.getElementById('systemStatus').querySelector('.badge');
+
+                if (status.running) {
+                    statusBadge.textContent = 'Status: Running';
+                    statusBadge.className = 'badge bg-success me-2';
+                } else {
+                    statusBadge.textContent = 'Status: Stopped';
+                    statusBadge.className = 'badge bg-danger me-2';
+                }
+            } catch (error) {
+                console.error('Error updating system status:', error);
+                const statusBadge = document.getElementById('systemStatus').querySelector('.badge');
+                statusBadge.textContent = 'Status: Unknown';
+                statusBadge.className = 'badge bg-secondary me-2';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+
+{% block title %}Trade History - Arbitrage Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    .history-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+    
+    .status-badge {
+        @apply px-2 py-1 rounded-full text-xs font-medium;
+    }
+    
+    .status-success {
+        @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200;
+    }
+    
+    .status-failed {
+        @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200;
+    }
+    
+    .status-pending {
+        @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Trade History Overview -->
+<div class="mb-8">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trade History</h1>
+        
+        <!-- Filters and Controls -->
+        <div class="flex items-center space-x-4">
+            <!-- Date Range -->
+            <div class="form-group mb-0">
+                <select id="dateRange" class="form-select w-40">
+                    <option value="24h">Last 24 Hours</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+            </div>
+            
+            <!-- Status Filter -->
+            <div class="form-group mb-0">
+                <select id="statusFilter" class="form-select w-40">
+                    <option value="all">All Status</option>
+                    <option value="success">Successful</option>
+                    <option value="failed">Failed</option>
+                </select>
+            </div>
+            
+            <!-- Export Button -->
+            <button id="exportHistory" class="btn btn-secondary">
+                Export CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="history-grid mb-6">
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h2 class="card-title">Total Trades</h2>
+            </div>
+            <div id="totalTrades" class="card-value">Loading...</div>
+            <div class="card-subtitle mt-2">
+                <span id="tradeChange" class="metric-neutral">Calculating...</span>
+            </div>
+        </div>
+        
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h2 class="card-title">Success Rate</h2>
+            </div>
+            <div id="successRate" class="card-value">Loading...</div>
+            <div class="card-subtitle mt-2">
+                <span id="successChange" class="metric-neutral">Calculating...</span>
+            </div>
+        </div>
+        
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h2 class="card-title">Total Profit</h2>
+            </div>
+            <div id="totalProfit" class="card-value">Loading...</div>
+            <div class="card-subtitle mt-2">
+                <span id="profitChange" class="metric-neutral">Calculating...</span>
+            </div>
+        </div>
+        
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h2 class="card-title">Average Gas Cost</h2>
+            </div>
+            <div id="avgGas" class="card-value">Loading...</div>
+            <div class="card-subtitle mt-2">
+                <span id="gasChange" class="metric-neutral">Calculating...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trade History Table -->
+    <div class="dashboard-card">
+        <div class="overflow-x-auto">
+            <table class="data-table">
+                <thead class="table-header">
+                    <tr>
+                        <th>Time</th>
+                        <th>Token Pair</th>
+                        <th>DEX</th>
+                        <th>Profit</th>
+                        <th>Gas Cost</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tradeHistory" class="table-body">
+                    <tr>
+                        <td colspan="7" class="table-cell text-center">Loading trade history...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        <div class="flex justify-between items-center mt-4">
+            <div class="text-sm text-gray-500 dark:text-gray-400">
+                Showing <span id="pageStart">0</span> to <span id="pageEnd">0</span> of <span id="totalEntries">0</span> entries
+            </div>
+            <div class="flex space-x-2">
+                <button id="prevPage" class="btn btn-secondary" disabled>Previous</button>
+                <button id="nextPage" class="btn btn-secondary" disabled>Next</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Trade Details Modal -->
+<div id="tradeModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center">
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4">
+        <div class="flex justify-between items-start mb-4">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white">Trade Details</h2>
+            <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div id="tradeDetails">
+            <!-- Details will be dynamically inserted here -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let trades = [];
+    let currentPage = 1;
+    const itemsPerPage = 10;
+    
+    // WebSocket message handler
+    document.addEventListener('websocket-message', function(event) {
+        const data = event.detail;
+        
+        if (data.type === 'trade_history_update') {
+            trades = data.data.trades;
+            updateStatistics(data.data.statistics);
+            renderTradeHistory();
+        }
+    });
+
+    function updateStatistics(stats) {
+        // Update total trades
+        document.getElementById('totalTrades').textContent = stats.total_trades;
+        document.getElementById('tradeChange').innerHTML = formatChange(stats.trade_change, true);
+        
+        // Update success rate
+        document.getElementById('successRate').textContent = `${(stats.success_rate * 100).toFixed(1)}%`;
+        document.getElementById('successChange').innerHTML = formatChange(stats.success_rate_change);
+        
+        // Update total profit
+        document.getElementById('totalProfit').textContent = `$${stats.total_profit.toFixed(2)}`;
+        document.getElementById('profitChange').innerHTML = formatChange(stats.profit_change);
+        
+        // Update average gas
+        document.getElementById('avgGas').textContent = `${stats.average_gas.toFixed(1)} GWEI`;
+        document.getElementById('gasChange').innerHTML = formatChange(stats.gas_change, false, true);
+    }
+
+    function formatChange(change, isCount = false, isGas = false) {
+        const prefix = change >= 0 ? '↑' : '↓';
+        const cssClass = change >= 0 ? 'metric-up' : 'metric-down';
+        const value = Math.abs(change);
+        
+        let formatted;
+        if (isCount) {
+            formatted = Math.round(value);
+        } else if (isGas) {
+            formatted = `${value.toFixed(1)} GWEI`;
+        } else {
+            formatted = `${(value * 100).toFixed(1)}%`;
+        }
+        
+        return `<span class="${cssClass}">${prefix} ${formatted}</span>`;
+    }
+
+    function renderTradeHistory() {
+        const filteredTrades = filterTrades();
+        const paginatedTrades = paginateTrades(filteredTrades);
+        
+        const tbody = document.getElementById('tradeHistory');
+        tbody.innerHTML = paginatedTrades.map(trade => `
+            <tr class="table-row" onclick="showTradeDetails('${trade.tx_hash}')">
+                <td class="table-cell">${moment(trade.timestamp).format('MM/DD/YYYY HH:mm:ss')}</td>
+                <td class="table-cell">${formatTokenPair(trade.token_pair)}</td>
+                <td class="table-cell">${trade.dex}</td>
+                <td class="table-cell ${trade.profit >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    $${trade.profit.toFixed(2)}
+                </td>
+                <td class="table-cell">${trade.gas_cost.toFixed(1)} GWEI</td>
+                <td class="table-cell">
+                    <span class="status-badge ${getStatusClass(trade.status)}">
+                        ${trade.status}
+                    </span>
+                </td>
+                <td class="table-cell">
+                    <button class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                            onclick="event.stopPropagation(); viewOnExplorer('${trade.tx_hash}')">
+                        View on Explorer
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+        
+        updatePagination(filteredTrades.length);
+    }
+
+    function filterTrades() {
+        const statusFilter = document.getElementById('statusFilter').value;
+        const dateRange = document.getElementById('dateRange').value;
+        
+        return trades.filter(trade => {
+            // Status filter
+            if (statusFilter !== 'all' && trade.status !== statusFilter) {
+                return false;
+            }
+            
+            // Date filter
+            const tradeDate = new Date(trade.timestamp);
+            const now = new Date();
+            
+            switch (dateRange) {
+                case '24h':
+                    return (now - tradeDate) <= 24 * 60 * 60 * 1000;
+                case '7d':
+                    return (now - tradeDate) <= 7 * 24 * 60 * 60 * 1000;
+                case '30d':
+                    return (now - tradeDate) <= 30 * 24 * 60 * 60 * 1000;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    function paginateTrades(filteredTrades) {
+        const start = (currentPage - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        return filteredTrades.slice(start, end);
+    }
+
+    function updatePagination(totalItems) {
+        const totalPages = Math.ceil(totalItems / itemsPerPage);
+        const start = (currentPage - 1) * itemsPerPage + 1;
+        const end = Math.min(start + itemsPerPage - 1, totalItems);
+        
+        document.getElementById('pageStart').textContent = totalItems === 0 ? 0 : start;
+        document.getElementById('pageEnd').textContent = end;
+        document.getElementById('totalEntries').textContent = totalItems;
+        
+        document.getElementById('prevPage').disabled = currentPage === 1;
+        document.getElementById('nextPage').disabled = currentPage === totalPages;
+    }
+
+    function formatTokenPair(pair) {
+        const [token1, token2] = pair.split('/');
+        return `${token1} → ${token2}`;
+    }
+
+    function getStatusClass(status) {
+        switch (status.toLowerCase()) {
+            case 'success':
+                return 'status-success';
+            case 'failed':
+                return 'status-failed';
+            default:
+                return 'status-pending';
+        }
+    }
+
+    function showTradeDetails(txHash) {
+        const trade = trades.find(t => t.tx_hash === txHash);
+        if (!trade) return;
+
+        const modal = document.getElementById('tradeModal');
+        const details = document.getElementById('tradeDetails');
+        
+        details.innerHTML = `
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Transaction Hash</div>
+                    <div class="text-sm font-mono text-gray-900 dark:text-white break-all">
+                        ${trade.tx_hash}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Status</div>
+                    <div class="status-badge ${getStatusClass(trade.status)}">
+                        ${trade.status}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Token Pair</div>
+                    <div class="text-lg font-bold text-gray-900 dark:text-white">
+                        ${formatTokenPair(trade.token_pair)}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">DEX</div>
+                    <div class="text-lg font-bold text-gray-900 dark:text-white">
+                        ${trade.dex}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Profit</div>
+                    <div class="text-lg font-bold ${trade.profit >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        $${trade.profit.toFixed(2)}
+                    </div>
+                </div>
+                <div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Gas Cost</div>
+                    <div class="text-lg font-bold text-gray-900 dark:text-white">
+                        ${trade.gas_cost.toFixed(1)} GWEI
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">Transaction Details</div>
+                <div class="bg-gray-100 dark:bg-gray-700 rounded p-3">
+                    <pre class="text-sm text-gray-900 dark:text-white">${JSON.stringify(trade.details, null, 2)}</pre>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-4">
+                <button onclick="closeModal()" class="btn btn-secondary">
+                    Close
+                </button>
+                <button onclick="viewOnExplorer('${trade.tx_hash}')" class="btn btn-primary">
+                    View on Explorer
+                </button>
+            </div>
+        `;
+        
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeModal() {
+        const modal = document.getElementById('tradeModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    function viewOnExplorer(txHash) {
+        window.open(`https://basescan.org/tx/${txHash}`, '_blank');
+    }
+
+    // Event Listeners
+    document.getElementById('dateRange').addEventListener('change', renderTradeHistory);
+    document.getElementById('statusFilter').addEventListener('change', renderTradeHistory);
+    
+    document.getElementById('prevPage').addEventListener('click', function() {
+        if (currentPage > 1) {
+            currentPage--;
+            renderTradeHistory();
+        }
+    });
+    
+    document.getElementById('nextPage').addEventListener('click', function() {
+        const totalPages = Math.ceil(filterTrades().length / itemsPerPage);
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderTradeHistory();
+        }
+    });
+    
+    document.getElementById('exportHistory').addEventListener('click', async function() {
+        try {
+            const response = await fetch('/api/history/export');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `trade_history_${moment().format('YYYYMMDD_HHmmss')}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } catch (error) {
+            console.error('Error exporting history:', error);
+            alert('Failed to export trade history');
+        }
+    });
+
+    // Close modal when clicking outside
+    document.getElementById('tradeModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeModal();
+        }
+    });
+</script>
+{% endblock %}

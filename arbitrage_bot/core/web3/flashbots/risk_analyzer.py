@@ -127,7 +127,12 @@ class RiskAnalyzer:
             start_time = time.time()
             try:
                 # Get current gas price
-                gas_price = await self.web3_manager.get_gas_price()
+                gas_prediction = await self.web3_manager.get_gas_price_prediction()
+                # Use the 'fast' gas price for risk analysis
+                gas_price = gas_prediction.get(
+                    'fast',
+                    await self.w3.eth.gas_price  # Fallback to basic gas price
+                )
                 gas_price = self._parse_hex_or_int(gas_price)
                 
                 # Get latest block

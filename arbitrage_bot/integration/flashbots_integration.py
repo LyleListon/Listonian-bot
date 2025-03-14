@@ -19,7 +19,7 @@ from ..core.web3.flashbots.flashbots_provider import FlashbotsProvider
 
 from ..core.web3.interfaces import Transaction
 from ..utils.async_manager import with_retry
-from ..core.flash_loan.balancer_flash_loan import BalancerFlashLoan, create_balancer_flash_loan
+from ..core.flash_loan.aave_flash_loan import AaveFlashLoan, create_aave_flash_loan
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class FlashbotsIntegration:
         self,
         web3_manager: Web3Client,
         flashbots_provider: FlashbotsProvider,
-        flash_loan_manager: BalancerFlashLoan,
+        flash_loan_manager: AaveFlashLoan,
         min_profit: int = 0
     ):
         """
@@ -61,11 +61,10 @@ async def setup_flashbots_rpc(
 
     Args:
         web3_manager: Web3 client instance
-        config: Configuration dictionary
- with required keys:
+        config: Configuration dictionary with required keys:
             - flashbots.relay_url: Flashbots relay URL
             - flashbots.auth_key: Authentication key
-            - balancer.vault_address: Balancer vault address
+            - flash_loan.aave_pool: Aave pool address
             - min_profit: Minimum profit in wei
 
     Returns:
@@ -84,10 +83,10 @@ async def setup_flashbots_rpc(
         if not auth_key.startswith('0x') or len(auth_key) != 66:
             raise ValueError("Invalid Flashbots auth key format - must be 32 bytes hex")
             
-        if not config.get('balancer', {}).get('vault_address'):
-            raise ValueError("Balancer vault address not configured")
-        if not is_hex_address(config['balancer']['vault_address']):
-            raise ValueError("Invalid Balancer vault address format")
+        if not config.get('flash_loan', {}).get('aave_pool'):
+            raise ValueError("Aave pool address not configured")
+        if not is_hex_address(config['flash_loan']['aave_pool']):
+            raise ValueError("Invalid Aave pool address format")
 
         # Create components
         flashbots_provider = FlashbotsProvider(
@@ -97,7 +96,7 @@ async def setup_flashbots_rpc(
             chain_id=web3_manager.chain_id
         )
 
-        flash_loan_manager = await create_balancer_flash_loan(
+        flash_loan_manager = await create_aave_flash_loan(
             w3=web3_manager.w3,
             config=config
         )

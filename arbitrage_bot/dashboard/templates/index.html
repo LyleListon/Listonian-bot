@@ -1,146 +1,95 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Arbitrage Bot Dashboard</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <style>
-        .data-section {
-            margin: 20px;
-            padding: 15px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-        }
-        .error { color: red; }
-        .success { color: green; }
-    </style>
-</head>
-<body>
-    <h1>Arbitrage Bot Dashboard</h1>
-    
-    <div class="data-section">
-        <h2>Market Data</h2>
-        <div id="market-data">Loading...</div>
+{% extends "base.html" %}
+
+{% block content %}
+<section id="overview">
+    <h2>System Overview</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Total Profit</h3>
+            <p id="total-profit">Loading...</p>
+        </div>
+        <div class="stat-card">
+            <h3>Success Rate</h3>
+            <p id="success-rate">Loading...</p>
+        </div>
+        <div class="stat-card">
+            <h3>Active Paths</h3>
+            <p id="active-paths">Loading...</p>
+        </div>
+        <div class="stat-card">
+            <h3>Gas Price</h3>
+            <p id="gas-price">Loading...</p>
+        </div>
     </div>
+</section>
 
-    <div class="data-section">
-        <h2>Analytics</h2>
-        <div id="analytics-data">Loading...</div>
+<section id="recent-activity">
+    <h2>Recent Activity</h2>
+    <div id="activity-feed">
+        <p>Loading activity...</p>
     </div>
+</section>
 
-    <div class="data-section">
-        <h2>Gas Prices</h2>
-        <div id="gas-data">Loading...</div>
+<section id="system-status">
+    <h2>System Status</h2>
+    <div class="status-grid">
+        <div class="status-card">
+            <h3>Web3 Connection</h3>
+            <p id="web3-status">Loading...</p>
+        </div>
+        <div class="status-card">
+            <h3>Memory Bank</h3>
+            <p id="memory-status">Loading...</p>
+        </div>
+        <div class="status-card">
+            <h3>Storage Hub</h3>
+            <p id="storage-status">Loading...</p>
+        </div>
+        <div class="status-card">
+            <h3>Flashbots RPC</h3>
+            <p id="flashbots-status">Loading...</p>
+        </div>
     </div>
+</section>
 
-    <div class="data-section">
-        <h2>Memory Stats</h2>
-        <div id="memory-data">Loading...</div>
+<section id="opportunities">
+    <h2>Current Opportunities</h2>
+    <div id="opportunities-list">
+        <p>Loading opportunities...</p>
     </div>
+</section>
 
-    <script>
-        // Connect to WebSocket server
-        const socket = io();
+<section id="gas-stats">
+    <h2>Gas Statistics</h2>
+    <div class="gas-stats-grid">
+        <div class="gas-stat-card">
+            <h3>Current Gas</h3>
+            <p id="current-gas">Loading...</p>
+        </div>
+        <div class="gas-stat-card">
+            <h3>Base Fee</h3>
+            <p id="base-fee">Loading...</p>
+        </div>
+        <div class="gas-stat-card">
+            <h3>Priority Fee</h3>
+            <p id="priority-fee">Loading...</p>
+        </div>
+        <div class="gas-stat-card">
+            <h3>Monthly Usage</h3>
+            <p id="monthly-gas">Loading...</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
 
-        // Handle connection events
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize WebSocket connection
+    const ws = new WebSocketManager();
 
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-        });
-
-        // Handle market data updates
-        socket.on('market_update', (data) => {
-            const marketDiv = document.getElementById('market-data');
-            if (data.error) {
-                marketDiv.innerHTML = `<span class="error">Error: ${data.error}</span>`;
-                return;
-            }
-            
-            let html = '<h3>Recent Opportunities</h3>';
-            if (data.opportunities && data.opportunities.length > 0) {
-                html += '<ul>';
-                data.opportunities.forEach(opp => {
-                    html += `<li>${opp.buy_dex} -> ${opp.sell_dex}: ${(opp.profit_margin * 100).toFixed(2)}% profit</li>`;
-                });
-                html += '</ul>';
-            } else {
-                html += '<p>No recent opportunities</p>';
-            }
-            marketDiv.innerHTML = html;
-        });
-
-        // Handle analytics updates
-        socket.on('analytics_update', (data) => {
-            const analyticsDiv = document.getElementById('analytics-data');
-            if (data.error) {
-                analyticsDiv.innerHTML = `<span class="error">Error: ${data.error}</span>`;
-                return;
-            }
-            
-            let html = '<h3>Recent Trades</h3>';
-            if (data.trade_history && data.trade_history.length > 0) {
-                html += '<ul>';
-                data.trade_history.slice(0, 5).forEach(trade => {
-                    const status = trade.success ? 
-                        `<span class="success">Success (${trade.net_profit} ETH)</span>` : 
-                        `<span class="error">Failed (${trade.error})</span>`;
-                    html += `<li>${trade.opportunity.buy_dex} -> ${trade.opportunity.sell_dex}: ${status}</li>`;
-                });
-                html += '</ul>';
-            } else {
-                html += '<p>No trade history</p>';
-            }
-            analyticsDiv.innerHTML = html;
-        });
-
-        // Handle gas price updates
-        socket.on('gas_update', (data) => {
-            const gasDiv = document.getElementById('gas-data');
-            if (data.error) {
-                gasDiv.innerHTML = `<span class="error">Error: ${data.error}</span>`;
-                return;
-            }
-            
-            gasDiv.innerHTML = `
-                <h3>Gas Prices (in gwei)</h3>
-                <p>Base Fee: ${(data.gas_prices.base_fee / 1e9).toFixed(2)}</p>
-                <p>Fast:</p>
-                <ul>
-                    <li>Max Fee: ${(data.gas_prices.fast.maxFeePerGas / 1e9).toFixed(2)}</li>
-                    <li>Priority Fee: ${(data.gas_prices.fast.maxPriorityFeePerGas / 1e9).toFixed(2)}</li>
-                </ul>
-                <p>Standard:</p>
-                <ul>
-                    <li>Max Fee: ${(data.gas_prices.standard.maxFeePerGas / 1e9).toFixed(2)}</li>
-                    <li>Priority Fee: ${(data.gas_prices.standard.maxPriorityFeePerGas / 1e9).toFixed(2)}</li>
-                </ul>
-                <p>Slow:</p>
-                <ul>
-                    <li>Max Fee: ${(data.gas_prices.slow.maxFeePerGas / 1e9).toFixed(2)}</li>
-                    <li>Priority Fee: ${(data.gas_prices.slow.maxPriorityFeePerGas / 1e9).toFixed(2)}</li>
-                </ul>
-                <p>Network Load: ${data.gas_prices.pending_txs} pending transactions</p>
-            `;
-        });
-
-        // Handle memory stats updates
-        socket.on('memory_update', (data) => {
-            const memoryDiv = document.getElementById('memory-data');
-            if (data.error) {
-                memoryDiv.innerHTML = `<span class="error">Error: ${data.error}</span>`;
-                return;
-            }
-            
-            const stats = data.memory_stats;
-            memoryDiv.innerHTML = `
-                <p>Cache Size: ${stats.cache_size} items</p>
-                <p>Total Entries: ${stats.total_entries}</p>
-                <p>Cache Hits: ${stats.cache_hits}</p>
-                <p>Cache Misses: ${stats.cache_misses}</p>
-            `;
-        });
-    </script>
-</body>
-</html>
+    // Initialize dashboard
+    const dashboard = new DashboardManager(ws);
+});
+</script>
+{% endblock %}

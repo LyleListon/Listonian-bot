@@ -5,6 +5,7 @@ This module provides functionality for:
 - Loading configuration files
 - Validating configuration settings
 - Providing default values
+- Resolving secure values
 """
 
 import json
@@ -12,6 +13,8 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+import base64
+from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +22,7 @@ DEFAULT_CONFIG_PATH = "configs/production.json"
 REQUIRED_SECTIONS = {
     "web3": ["rpc_url", "chain_id", "wallet_key"],
     "flashbots": ["relay_url", "auth_key", "min_profit", "max_gas_price"],
-    "balancer": ["vault_address"],
+    "flash_loan": ["enabled", "use_flashbots", "min_profit", "aave_pool"],
     "path_finder": ["max_paths_to_check", "max_path_length", "max_parallel_requests"],
     "scan": ["interval", "amount_wei", "max_paths"],
     "monitoring": ["stats_interval", "log_level"],
@@ -41,6 +44,70 @@ REQUIRED_SECTIONS = {
         "adaptive_gas"
     ]
 }
+
+def resolve_secure_values(config: Dict[str, Any], secure_key: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Resolve secure values in configuration.
+    
+    This function handles:
+    - Decryption of encrypted values
+    - Loading values from environment variables
+    - Loading values from secure files
+    
+    Args:
+        config: Configuration dictionary
+        secure_key: Optional encryption key for secure values
+        
+    Returns:
+        Configuration with resolved secure values
+    """
+    try:
+        # Create a copy to avoid modifying original
+        resolved = config.copy()
+        
+        # Get secure key from environment if not provided
+        if not secure_key:
+            secure_key = os.environ.get('SECURE_KEY')
+        
+        if secure_key:
+            # Initialize Fernet cipher
+            fernet = Fernet(base64.b64encode(secure_key.encode()))
+            
+            # Decrypt any encrypted values
+            for section in resolved:
+                if isinstance(resolved[section], dict):
+                    for key, value in resolved[section].items():
+                        if isinstance(value, str) and value.startswith('ENC['):
+                            # Extract encrypted value
+                            encrypted = value[4:-1]
+                            # Decrypt
+                            decrypted = fernet.decrypt(encrypted.encode())
+                            resolved[section][key] = decrypted.decode()
+        
+        # Load values from environment variables
+        for section in resolved:
+            if isinstance(resolved[section], dict):
+                for key, value in resolved[section].items():
+                    env_var = f"{section.upper()}_{key.upper()}"
+                    if env_var in os.environ:
+                        resolved[section][key] = os.environ[env_var]
+        
+        # Load values from secure files
+        secure_dir = Path("secure")
+        if secure_dir.exists():
+            for file in secure_dir.glob("*.json"):
+                with open(file) as f:
+                    secure_values = json.load(f)
+                    # Update config with secure values
+                    for section, values in secure_values.items():
+                        if section in resolved:
+                            resolved[section].update(values)
+        
+        return resolved
+    
+    except Exception as e:
+        logger.error(f"Error resolving secure values: {e}")
+        raise
 
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -106,6 +173,16 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
         if not relay_url.startswith(('http://', 'https://')):
             raise ValueError("Invalid Flashbots relay URL format")
 
+        # Validate flash loan configuration
+        flash_loan_config = config['flash_loan']
+        if not isinstance(flash_loan_config['enabled'], bool):
+            raise ValueError("flash_loan.enabled must be a boolean")
+        if not isinstance(flash_loan_config['use_flashbots'], bool):
+            raise ValueError("flash_loan.use_flashbots must be a boolean")
+        aave_pool = flash_loan_config['aave_pool']
+        if not aave_pool.startswith('0x'):
+            raise ValueError("Invalid Aave pool address format")
+
         # Validate MEV protection settings
         mev_config = config['mev_protection']
         if not isinstance(mev_config['enabled'], bool):
@@ -138,6 +215,9 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             "max_concurrent_paths": 10,
             "batch_size": 100
         })
+
+        # Resolve any secure values
+        config = resolve_secure_values(config)
 
         logger.info("Configuration loaded successfully")
         return config

@@ -10,6 +10,7 @@ Manages Web3 interactions with enhanced Alchemy support for:
 
 import logging
 import asyncio
+import time
 from typing import Dict, List, Any, Optional, Union
 from web3 import Web3, AsyncWeb3
 from web3.types import RPCEndpoint, RPCResponse
@@ -97,7 +98,7 @@ class Web3Manager:
 
         except Exception as e:
             logger.error(f"Failed to initialize Web3 manager: {e}")
-            return False
+            raise  # Raise the exception instead of returning False
 
     @staticmethod
     def to_wei(value: Union[int, float, str, Decimal], unit: str = 'ether') -> int:
@@ -127,7 +128,7 @@ class Web3Manager:
         Returns:
             Dict mapping token addresses to prices
         """
-        now = asyncio.get_event_loop().time()
+        now = time.monotonic()  # Use monotonic time instead of event loop time
         
         # Check cache first
         if not force_refresh:
@@ -186,7 +187,7 @@ class Web3Manager:
         Returns:
             Dict containing gas price predictions
         """
-        now = asyncio.get_event_loop().time()
+        now = time.monotonic()  # Use monotonic time instead of event loop time
         
         # Check cache
         if not force_refresh and self._last_gas_prediction:
@@ -236,7 +237,7 @@ class Web3Manager:
         Monitor mempool for pending transactions.
 
         Args:
-            filter_criteria: Optional filtering criteria
+            filter_criteria: Optional criteria to filter transactions
 
         Returns:
             List of pending transactions

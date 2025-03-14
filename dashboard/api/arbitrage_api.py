@@ -4,6 +4,7 @@ Arbitrage System API
 This module provides FastAPI endpoints for the arbitrage system dashboard.
 """
 
+import os
 import logging
 import json
 from typing import Dict, List, Any, Optional
@@ -45,6 +46,102 @@ class PerformanceMetricsResponse(BaseModel):
     average_gas_used: Optional[int]
     average_execution_time: Optional[float]
     timestamp: float
+
+class Web3Settings(BaseModel):
+    chain_id: int
+    rpc_url: str
+    wallet_key: str
+    providers: Dict[str, Any]
+    alchemy: Dict[str, Any]
+
+class WalletSettings(BaseModel):
+    min_eth_balance: str
+    max_eth_balance: str
+    target_token_ratios: Dict[str, float]
+    rebalance_threshold: float
+    profit_withdrawal: Dict[str, Any]
+    balance_check_interval: int
+
+class TokenSettings(BaseModel):
+    address: str
+    decimals: int
+
+class DexSettings(BaseModel):
+    factory: str
+    router: str
+    version: str
+    fee: int
+    quoter: Optional[str] = None
+    pool_deployer: Optional[str] = None
+    enabled: Optional[bool] = None
+
+class PathFinderSettings(BaseModel):
+    max_path_length: int
+    min_profit_threshold: str
+    max_paths_to_check: int
+    min_liquidity_ratio: float
+    max_price_impact: float
+    max_parallel_requests: int
+    parallel_search: bool
+    cache_ttl: int
+
+class FlashLoanSettings(BaseModel):
+    enabled: bool
+    use_flashbots: bool
+    min_profit_threshold_eth: float
+    max_trade_size: str
+    slippage_tolerance: int
+    transaction_timeout: int
+    aave_pool: str
+    max_parallel_pools: int
+    min_liquidity_ratio: float
+    gas_buffer: float
+
+class FlashbotsSettings(BaseModel):
+    relay_url: str
+    auth_key: str
+    min_profit: str
+    max_gas_price: str
+
+class MevProtectionSettings(BaseModel):
+    enabled: bool
+    use_flashbots: bool
+    max_bundle_size: int
+    max_blocks_ahead: int
+    min_priority_fee: str
+    max_priority_fee: str
+    sandwich_detection: bool
+    frontrun_detection: bool
+    backrun_detection: bool
+    time_bandit_detection: bool
+    profit_threshold: str
+    gas_threshold: str
+    confidence_threshold: str
+    adaptive_gas: bool
+
+class ScanSettings(BaseModel):
+    interval: float
+    amount_wei: str
+    max_paths: int
+
+class RateLimitSettings(BaseModel):
+    requests_per_second: int
+    max_backoff: float
+    batch_size: int
+    cache_ttl: int
+
+class Settings(BaseModel):
+    web3: Web3Settings
+    wallet: WalletSettings
+    tokens: Dict[str, TokenSettings]
+    dexes: Dict[str, DexSettings]
+    path_finder: PathFinderSettings
+    flash_loan: FlashLoanSettings
+    flashbots: FlashbotsSettings
+    mev_protection: MevProtectionSettings
+    scan: ScanSettings
+    monitoring: Dict[str, Any]
+    rate_limits: RateLimitSettings
 
 # Global variable to store the arbitrage system instance
 _arbitrage_system = None
@@ -208,4 +305,86 @@ async def get_system_status(arbitrage_system=Depends(get_arbitrage_system)):
         }
     except Exception as e:
         logger.error(f"Error getting system status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/settings", response_model=Settings)
+async def get_settings():
+    """Get all system settings."""
+    try:
+        # Load settings from config file
+        config_path = os.environ.get("CONFIG_PATH", "configs/default_config.json")
+        with open(config_path, "r") as f:
+            settings = json.load(f)
+        return Settings(**settings)
+    except Exception as e:
+        logger.error(f"Error getting settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/settings/{section}")
+async def update_settings(section: str, settings: Dict[str, Any]):
+    """Update settings for a specific section."""
+    valid_sections = {"web3", "wallet", "tokens", "dexes", "path_finder", "flash_loan", "flashbots", "mev_protection", "scan", "monitoring", "rate_limits"}
+    if section not in valid_sections:
+        raise HTTPException(status_code=400, detail=f"Invalid section. Must be one of: {valid_sections}")
+
+    try:
+        # Load current settings
+        config_path = os.environ.get("CONFIG_PATH", "configs/default_config.json")
+        with open(config_path, "r") as f:
+            current_settings = json.load(f)
+
+        # Update specified section
+        current_settings[section] = settings
+
+        # Validate settings using Pydantic model
+        Settings(**current_settings)
+
+        # Save updated settings
+        with open(config_path, "w") as f:
+            json.dump(current_settings, f, indent=2)
+
+        return {"status": "success", "message": f"{section} settings updated"}
+    except Exception as e:
+        logger.error(f"Error updating {section} settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/settings/{section}/reset")
+async def reset_settings(section: str):
+    """Reset settings for a specific section to default values."""
+    valid_sections = {"web3", "wallet", "tokens", "dexes", "path_finder", "flash_loan", "flashbots", "mev_protection", "scan", "monitoring", "rate_limits"}
+    if section not in valid_sections:
+        raise HTTPException(status_code=400, detail=f"Invalid section. Must be one of: {valid_sections}")
+
+    try:
+        # Load default settings
+        with open("configs/default_config.json", "r") as f:
+            default_settings = json.load(f)
+
+        # Load current settings
+        config_path = os.environ.get("CONFIG_PATH", "configs/default_config.json")
+        if config_path != "configs/default_config.json":
+            with open(config_path, "r") as f:
+                current_settings = json.load(f)
+        else:
+            current_settings = default_settings.copy()
+
+        # Reset specified section
+        if section in default_settings:
+            current_settings[section] = default_settings[section]
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Section {section} not found in default settings"
+            )
+
+        # Validate settings using Pydantic model
+        Settings(**current_settings)
+
+        # Save updated settings
+        with open(config_path, "w") as f:
+            json.dump(current_settings, f, indent=2)
+
+        return {"status": "success", "message": f"{section} settings reset to default"}
+    except Exception as e:
+        logger.error(f"Error resetting {section} settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))

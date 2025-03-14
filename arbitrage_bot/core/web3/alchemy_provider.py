@@ -153,7 +153,7 @@ class AlchemyProvider(CustomAsyncProvider):
 
     async def get_gas_price_prediction(self) -> Dict[str, int]:
         """
-        Get gas price predictions using Alchemy's gas estimator.
+        Get gas price predictions using EIP-1559 methods for Base chain.
 
         Returns:
             Dict containing:
@@ -163,28 +163,50 @@ class AlchemyProvider(CustomAsyncProvider):
                 - fastest: Fastest gas price
         """
         try:
-            url = f"{self.base_api_url}{self.api_key}/gas-api/getPrices"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        raise ValueError(f"HTTP {response.status}: {await response.text()}")
-                    
-                    data = await response.json()
-                    return {
-                        "safe_low": int(data["safeLow"]),
-                        "standard": int(data["standard"]),
-                        "fast": int(data["fast"]),
-                        "fastest": int(data["fastest"])
-                    }
+            # Get base fee
+            base_fee_result = await self.make_request(
+                RPCEndpoint("eth_baseFeePerGas"),
+                []
+            )
+            base_fee = int(base_fee_result, 16)
+
+            # Get max priority fee
+            priority_fee_result = await self.make_request(
+                RPCEndpoint("eth_maxPriorityFeePerGas"),
+                []
+            )
+            priority_fee = int(priority_fee_result, 16)
+
+            # Calculate gas prices with different priority fee multipliers
+            safe_low_multiplier = 1.0
+            standard_multiplier = 1.2
+            fast_multiplier = 1.5
+            fastest_multiplier = 2.0
+
+            return {
+                "safe_low": base_fee + int(priority_fee * safe_low_multiplier),
+                "standard": base_fee + int(priority_fee * standard_multiplier),
+                "fast": base_fee + int(priority_fee * fast_multiplier),
+                "fastest": base_fee + int(priority_fee * fastest_multiplier)
+            }
 
         except Exception as e:
-            logger.error(f"Failed to get gas price prediction: {e}")
-            return {
-                "safe_low": 0,
-                "standard": 0,
-                "fast": 0,
-                "fastest": 0
-            }
+            # Fallback to eth_gasPrice if EIP-1559 methods fail
+            try:
+                gas_price_result = await self.make_request(
+                    RPCEndpoint("eth_gasPrice"),
+                    []
+                )
+                gas_price = int(gas_price_result, 16)
+                return {
+                    "safe_low": gas_price,
+                    "standard": int(gas_price * 1.1),
+                    "fast": int(gas_price * 1.2),
+                    "fastest": int(gas_price * 1.3)
+                }
+            except Exception as e2:
+                logger.error(f"Failed to get gas price prediction: {e2}")
+                return {"safe_low": 0, "standard": 0, "fast": 0, "fastest": 0}
 
     async def simulate_asset_changes(
         self,

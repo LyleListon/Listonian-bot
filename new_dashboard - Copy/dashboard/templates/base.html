@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %}</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', path='css/test.css') }}">
+    
+    <!-- JavaScript Libraries -->
+    <script src="{{ url_for('static', path='js/chart.min.js') }}"></script>
+    <script src="{{ url_for('static', path='js/moment.min.js') }}"></script>
+    
+    <!-- Custom Styles -->
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="dashboard-card">
+        <div class="container">
+            <div class="card-header">
+                <!-- Logo and Brand -->
+                <div class="card-title">Test Dashboard</div>
+                
+                <!-- System Status Indicator -->
+                <div id="systemStatus">
+                    <span class="status-dot"></span>
+                    <span>Connecting...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="dashboard-card">
+        <div class="container">
+            <div class="card-header">
+                <div>
+                    <span id="uptime">Uptime: Calculating...</span>
+                </div>
+                <div>
+                    <span id="lastUpdate">Last Update: Never</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Base JavaScript -->
+    <script>
+        // WebSocket Connection
+        let socket = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        const reconnectDelay = 5000;
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/test`;
+
+            if (socket) {
+                socket.close();
+            }
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = function() {
+                console.log('WebSocket connected');
+                document.getElementById('systemStatus').innerHTML = `
+                    <span class="status-dot connected"></span>
+                    <span>Connected</span>
+                `;
+                reconnectAttempts = 0;
+            };
+
+            socket.onclose = function() {
+                console.log('WebSocket disconnected');
+                document.getElementById('systemStatus').innerHTML = `
+                    <span class="status-dot disconnected"></span>
+                    <span>Disconnected</span>
+                `;
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    setTimeout(connectWebSocket, reconnectDelay);
+                }
+            };
+
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+                updateLastUpdate();
+            };
+        }
+
+        function handleWebSocketMessage(data) {
+            // Dispatch custom event for page-specific handlers
+            const customEvent = new CustomEvent('websocket-message', { detail: data });
+            document.dispatchEvent(customEvent);
+        }
+
+        function updateLastUpdate() {
+            const now = moment().format('HH:mm:ss');
+            document.getElementById('lastUpdate').textContent = `Last Update: ${now}`;
+        }
+
+        // Initialize WebSocket connection
+        connectWebSocket();
+    </script>
+
+    <!-- Page-specific JavaScript -->
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

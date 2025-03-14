@@ -1,0 +1,105 @@
+ARBITRAGE BOT PROJECT - FILE STRUCTURE MAP
+=====================================
+
+ROOT DIRECTORY
+│
+├── start_new_dashboard.bat ───────────────────┐ Root-level launcher scripts
+├── start_new_dashboard.ps1 ───────────────────┘ (Entry points)
+│
+├── NEW DASHBOARD (Replacement)
+│   │
+│   ├── app.py ─────────────────────────────────┐ Core application
+│   │                                            │ - FastAPI backend
+│   │                                            │ - Handles web requests
+│   │                                            │ - Connects to blockchain 
+│   │                                            └─ Serves UI & API endpoints
+│   │
+│   ├── templates/ ──────────────────────────────┐ UI Templates
+│   │   └── index.html ───────────────────────────┘ Main dashboard view
+│   │
+│   ├── static/ ─────────────────────────────────┐ Static assets
+│   │   ├── css/ ───────────────────────────────┐│
+│   │   │   └── styles.css ──────────────────────┘│ UI styling
+│   │   └── js/ ────────────────────────────────┘ JavaScript (future use)
+│   │
+│   ├── dashboard_requirements.txt ──────────────┐ Dependencies
+│   │                                            │ - FastAPI
+│   │                                            │ - Uvicorn
+│   │                                            │ - Web3
+│   │                                            └─ Jinja2
+│   │
+│   ├── start_dashboard.bat ─────────────────────┐ Dashboard starters
+│   ├── start_dashboard.ps1 ─────────────────────┘ (Called by root scripts)
+│   │
+│   ├── README.md ──────────────────────────────── Documentation
+│   └── FILE_STRUCTURE.md ─────────────────────────┘ (This file)
+│
+├── CONFIGURATION
+│   │
+│   ├── configs/ ────────────────────────────────┐ Configuration directory
+│   │   ├── config.json ─────────────────────────┤ Main config
+│   │   └── production.json ─────────────────┬───┘ Production settings
+│   │                                        │
+│   └──────────────────────────────────────┐ │
+                                           │ │
+NEW DASHBOARD DATA FLOW                    │ │
+====================                       │ │
+                                           │ │
+  ┌─────────────┐        ┌─────────────┐   │ │
+  │   User      │◄─────►│  Dashboard  │◄──┘ │
+  └─────────────┘        └─────┬───────┘     │
+                               │             │
+                         ┌─────▼───────┐     │
+                         │ Web3 Client │◄────┘
+                         └─────┬───────┘
+                               │
+                         ┌─────▼───────┐
+                         │ Blockchain  │
+                         └─────────────┘
+
+OLD DASHBOARD COMPONENTS (Being Replaced)
+│
+├── minimal_dashboard.py ────────────────────────┐ Old dashboard
+├── start_dashboard.bat ────────────────────────┐│ Old starters
+└── start_dashboard.ps1 ────────────────────────┘│ (Being replaced)
+                                                 └─ Complex, error-prone
+
+CORE ARBITRAGE SYSTEM
+│
+├── arbitrage_bot/ ───────────────────────────┐ Main package
+│   ├── core/ ─────────────────────────────┐  │
+│   │   ├── dex/ ───────────────────────┐  │  │
+│   │   │   ├── dex_manager.py ─────────┼──┼──┼── DEX management
+│   │   │   └── [DEX implementations] ───┘  │  │
+│   │   │                                   │  │
+│   │   ├── web3/ ──────────────────────┐   │  │
+│   │   │   └── web3_manager.py ────────┼───┼──┼── Blockchain connection
+│   │   │                               │   │  │
+│   │   └── flash_loan_manager_async.py ┘   │  │
+│   │                                       │  │
+│   └── integration/ ─────────────────────┐ │  │
+│       └── mev_protection.py ────────────┼─┼──┼── MEV protection
+│                                         │ │  │
+└── [Other core files] ───────────────────┘ │  │
+                                            │  │
+                                            │  │
+RELATIONSHIP BETWEEN COMPONENTS              │  │
+                                            │  │
+New Dashboard ◄─────────────────────────────┘  │
+  - Independent implementation                  │
+  - Reads the same config files                 │
+  - Direct Web3 connection                      │
+  - No dependency on arbitrage_bot package      │
+                                               │
+Old Dashboard ◄─────────────────────────────────┘
+  - Complex dependencies
+  - Multiple points of failure
+  - High memory usage
+
+KEY DIFFERENCES:
+===============
+1. Old dashboard had complex dependencies on arbitrage_bot components
+2. New dashboard connects directly to the blockchain
+3. New dashboard has a more modular, maintainable design
+4. New dashboard uses modern frameworks (FastAPI vs Flask)
+5. New dashboard has better error handling and recovery

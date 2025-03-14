@@ -1,0 +1,34 @@
+{
+  "general": {
+    "network": "base_mainnet",
+    "log_level": "INFO"
+  },
+  "arbitrage": {
+    "min_profit_threshold_eth": 0.005,
+    "max_gas_price_gwei": 100,
+    "auto_execute": true,
+    "max_concurrent_executions": 3
+  },
+  "network": {
+    "rpc_endpoints": [
+      "https://mainnet.base.org"
+    ],
+    "chain": "base_mainnet",
+    "flashbots_rpc": "https://relay.flashbots.net"
+  },
+  "strategy": {
+    "flash_loan_provider": "balancer",
+    "max_path_length": 3,
+    "dexes": {
+      "aerodrome": true,
+      "baseswap": true,
+      "swapbased": true
+    }
+  },
+  "monitoring": {
+    "error_threshold": 5,
+    "performance_threshold": 1000,
+    "notification_method": "console",
+    "log_level": "INFO"
+  }
+}

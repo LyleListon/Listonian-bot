@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import our arbitrage API module
-from api import arbitrage_api
+from dashboard.api import arbitrage_api
 
 # Configure logging
 logging.basicConfig(
@@ -73,7 +73,7 @@ async def startup_event():
     
     # Load configuration
     try:
-        config_path = os.environ.get("CONFIG_PATH", "configs/production_config.json")
+        config_path = os.environ.get("CONFIG_PATH", "configs/production.json")
         if not os.path.exists(config_path):
             logger.warning(f"Configuration file {config_path} not found, using default")
             config_path = "configs/default_config.json"
@@ -93,7 +93,7 @@ async def startup_event():
         logger.info(f"Loaded configuration from {config_path}")
         
         # Initialize arbitrage system
-        await initialize_arbitrage_system(config)
+        await initialize_arbitrage_system(config, config_path)
         
     except Exception as e:
         logger.error(f"Error during startup: {e}", exc_info=True)
@@ -116,28 +116,51 @@ async def shutdown_event():
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
 
-async def initialize_arbitrage_system(config: Dict[str, Any]):
+async def initialize_arbitrage_system(config: Dict[str, Any], config_path: str):
     """
     Initialize the arbitrage system with the provided configuration.
     
     Args:
         config: Configuration dictionary
+        config_path: Path to the config file
     """
     try:
-        from arbitrage_bot.core.arbitrage.factory import create_arbitrage_system_from_config
+        # Validate required config fields
+        network_config = config.get("network", {})
+        rpc_endpoints = network_config.get("rpc_endpoints", [])
+        flashbots_rpc = network_config.get("flashbots_rpc")
+        chain = network_config.get("chain")
+
+        if not rpc_endpoints:
+            raise ValueError("No RPC endpoints configured")
+        if not flashbots_rpc:
+            raise ValueError("Flashbots RPC endpoint not configured")
+        if not chain:
+            raise ValueError("Chain not configured")
+
+        from arbitrage_bot.core.arbitrage.factory import create_arbitrage_system
+        from arbitrage_bot.core.web3.client import Web3ClientImpl
         
-        # Use a temporary path to config file
-        temp_config_path = "configs/temp_dashboard_config.json"
-        with open(temp_config_path, "w") as f:
-            json.dump(config, f, indent=2)
+        # Create Web3 client
+        logger.info("Creating Web3 client")
+        web3_client = Web3ClientImpl(
+            rpc_endpoint=rpc_endpoints[0],
+            chain=chain
+        )
+        await web3_client.initialize()
         
         # Create arbitrage system
         logger.info("Creating arbitrage system")
-        arbitrage_system = await create_arbitrage_system_from_config(temp_config_path)
+        arbitrage_system = await create_arbitrage_system(
+            web3_client=web3_client,
+            config=config
+        )
         
-        # Set in API module
+        # Initialize the system
+        logger.info("Initializing arbitrage system")
+        await arbitrage_system.initialize()
+        
         arbitrage_api.set_arbitrage_system(arbitrage_system)
-        
         logger.info("Arbitrage system initialized successfully")
         
     except Exception as e:
@@ -184,4 +207,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("dashboard.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8080, reload=True)

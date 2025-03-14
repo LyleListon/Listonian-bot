@@ -16,7 +16,7 @@ from eth_typing import ChecksumAddress
 from web3 import Web3
 
 from ..utils.async_manager import with_retry, AsyncLock
-from .web3.interfaces import Web3Client, Transaction
+from .web3.interfaces import Web3Client, Transaction, ContractWrapper
 from .dex.dex_manager import DexManager
 from .web3.balance_validator import BalanceValidator
 from .web3.flashbots.flashbots_provider import FlashbotsProvider
@@ -34,7 +34,7 @@ class UnifiedFlashLoanManager:
         dex_manager: DexManager,
         balance_validator: BalanceValidator,
         flashbots_provider: FlashbotsProvider,
-        balancer_vault: ChecksumAddress,
+        aave_pool: ChecksumAddress,
         min_profit: int = 0,
         max_parallel_pools: int = 10,
         min_liquidity_ratio: float = 1.5,  # Require 150% of flash loan amount in liquidity
@@ -48,7 +48,7 @@ class UnifiedFlashLoanManager:
             dex_manager: DEX manager instance
             balance_validator: Balance validator instance
             flashbots_provider: Flashbots provider instance
-            balancer_vault: Balancer vault address
+            aave_pool: Aave pool address
             min_profit: Minimum profit required (in wei)
             max_parallel_pools: Maximum number of pools to scan in parallel
             min_liquidity_ratio: Minimum ratio of pool liquidity to flash loan amount
@@ -58,7 +58,7 @@ class UnifiedFlashLoanManager:
         self.dex_manager = dex_manager
         self.balance_validator = balance_validator
         self.flashbots_provider = flashbots_provider
-        self.balancer_vault = balancer_vault
+        self.aave_pool = aave_pool
         self.min_profit = min_profit
         self.max_parallel_pools = max_parallel_pools
         self.min_liquidity_ratio = min_liquidity_ratio
@@ -72,6 +72,24 @@ class UnifiedFlashLoanManager:
         self._liquidity_cache: Dict[str, Tuple[int, int]] = {}  # (amount, timestamp)
         self._cache_ttl = 30  # 30 seconds
 
+        # Initialize Aave pool contract
+        self.aave_pool_contract = self.web3_manager.contract(
+            address=aave_pool,
+            abi=[{
+                "inputs": [
+                    {"name": "assets", "type": "address[]"},
+                    {"name": "amounts", "type": "uint256[]"},
+                    {"name": "premiums", "type": "uint256[]"},
+                    {"name": "initiator", "type": "address"},
+                    {"name": "params", "type": "bytes"}
+                ],
+                "name": "flashLoan",
+                "outputs": [{"name": "", "type": "bool"}],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }]
+        )
+
         logger.info(
             f"Flash loan manager initialized with min profit: {min_profit}"
         )
@@ -82,32 +100,38 @@ class UnifiedFlashLoanManager:
     ) -> Dict[ChecksumAddress, Dict[str, Any]]:
         """Get pool info in batches using request batching."""
         try:
-            # Prepare batch requests for each pool
-            requests = []
-            for pool in pool_addresses:
-                # Add liquidity request
-                requests.append(
-                    ("eth_call", [{
-                        "to": pool,
-                        "data": self.web3_manager._raw_w3.eth.abi.encode_function_call(
-                            {
-                                "name": "getReserves",
-                                "type": "function",
-                                "inputs": [],
-                                "outputs": [
-                                    {"type": "uint112", "name": "reserve0"},
-                                    {"type": "uint112", "name": "reserve1"},
-                                    {"type": "uint32", "name": "blockTimestampLast"}
-                                ]
-                            },
-                            []
-                        )
-                    }, "latest"])
-                )
+            # Create contract wrappers for each pool
+            contracts = {
+                addr: self.web3_manager.contract(
+                    address=addr,
+                    abi=[{
+                        "name": "getReserves",
+                        "type": "function",
+                        "inputs": [],
+                        "outputs": [
+                            {"type": "uint112", "name": "reserve0"},
+                            {"type": "uint112", "name": "reserve1"},
+                            {"type": "uint32", "name": "blockTimestampLast"}
+                        ]
+                    }]
+                ) for addr in pool_addresses
+            }
 
-            # Execute batch request
-            results = await self.web3_manager.batch_call(requests)
-            return dict(zip(pool_addresses, results))
+            # Get reserves for each pool
+            results = {}
+            for addr, contract in contracts.items():
+                try:
+                    reserves = await contract.functions.getReserves().call()
+                    results[addr] = {
+                        'reserve0': reserves[0],
+                        'reserve1': reserves[1],
+                        'blockTimestampLast': reserves[2]
+                    }
+                except Exception as e:
+                    logger.error(f"Failed to get reserves for pool {addr}: {e}")
+                    continue
+
+            return results
 
         except Exception as e:
             logger.error(f"Failed to batch get pool info: {e}")
@@ -183,7 +207,6 @@ class UnifiedFlashLoanManager:
             True if valid, False otherwise
         """
         try:
-            
             async with self._validation_lock:
                 # Check token balance
                 balance = await self.balance_validator.get_token_balance(
@@ -293,37 +316,27 @@ class UnifiedFlashLoanManager:
                 nonce = await self.web3_manager.get_nonce(
                     self.web3_manager.wallet_address
                 )
-                flash_loan_tx = {
-                    'to': self.balancer_vault,
-                    'value': 0,
-                    'data': self.web3_manager.w3.eth.abi.encode_abi(
-                        [
-                            'function flashLoan('
-                            'address recipient,'
-                            'address token,'
-                            'uint256 amount,'
-                            'bytes calldata data'
-                            ')'
-                        ],
-                        [
-                            target_contract,
-                            token_address,
-                            amount,
-                            callback_data
-                        ]
-                    )
-,
-                    'gasPrice': gas_price,
+
+                # Prepare flash loan parameters
+                flash_loan_tx = await self.aave_pool_contract.functions.flashLoan(
+                    [token_address],  # assets
+                    [amount],  # amounts
+                    [0],  # modes (0 = no debt, 1 = stable, 2 = variable)
+                    target_contract,  # onBehalfOf
+                    callback_data  # params
+                ).build_transaction({
+                    'from': self.web3_manager.wallet_address,
                     'gas': gas_limit,
+                    'gasPrice': gas_price,
                     'nonce': nonce
-                }
+                })
 
                 # Create transaction bundle
                 transactions = [Transaction(flash_loan_tx)]
 
                 # Add path-specific transactions if provided
                 if path:
-                    for step in path.steps:
+                    for idx, step in enumerate(path.steps):
                         swap_tx = await self.dex_manager.build_swap_transaction(
                             step.dex,
                             step.token_in,
@@ -368,11 +381,10 @@ class UnifiedFlashLoanManager:
                 str(e),
                 "execution_error",
                 {
-   
                     "token": token_address,
                     "amount": amount,
-                'success': False,
-                'error': str(e)
+                    'success': False,
+                    'error': str(e)
                 })
 
     async def close(self):
@@ -408,10 +420,9 @@ async def create_unified_flash_loan_manager(
         dex_manager=dex_manager,
         balance_validator=balance_validator,
         flashbots_provider=flashbots_provider,
-        balancer_vault=config['flash_loan']['balancer_vault'],
+        aave_pool=config['flash_loan']['aave_pool'],
         min_profit=min_profit_wei,
         max_parallel_pools=config['flash_loan'].get('max_parallel_pools', 10),
-        min_liquidity_ratio=config['flash_loan'].get('min_liquidity_ratio', 1.5)
-,
+        min_liquidity_ratio=config['flash_loan'].get('min_liquidity_ratio', 1.5),
         gas_buffer=config['flash_loan'].get('gas_buffer', 1.2)
     )

@@ -1,234 +1,232 @@
-# System Design Patterns
+# System Architecture Patterns
 
-## Async Component Pattern
-This pattern is used for components that require asynchronous initialization and operations.
+## Dashboard Architecture Patterns
 
-### Structure
+### Component Patterns
+1. WebSocket Communication
 ```python
-class AsyncComponent:
-    def __init__(self, config):
-        # Synchronous initialization
-        self.config = config
-        self._setup_basic_attributes()
+class WebSocketServer:
+    def __init__(self, app, components...):
+        self.app = app
+        self.clients = set()
+        self.initialize_components()
 
     async def initialize(self):
-        # Async initialization
-        await self._setup_async_resources()
-        return True
-
-    @classmethod
-    async def create(cls, config):
-        # Factory method
-        instance = cls(config)
-        await instance.initialize()
-        return instance
+        # Set up routes and handlers
+        self.app.router.add_get('/ws', self.websocket_handler)
+        
+    async def websocket_handler(self, request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        self.clients.add(ws)
+        try:
+            await self._handle_connection(ws)
+        finally:
+            self.clients.remove(ws)
 ```
 
-### Usage
-- Web3Manager
-- WalletManager
-- FlashbotsProvider
-- DexManager
-
-## Provider Pattern
-Used for managing external service connections with proper async handling.
-
-### Structure
+2. Event Loop Management
 ```python
-class AsyncProvider:
-    def __init__(self, endpoint):
-        self.endpoint = endpoint
-        self._connection = None
-        self._lock = AsyncLock()
+class AsyncManager:
+    def __init__(self):
+        self.loop = None
+        self.initialized = False
 
-    async def connect(self):
+    async def initialize(self):
+        self.loop = asyncio.get_running_loop()
+        self.initialized = True
+
+    async def cleanup(self):
+        if self.loop and self.loop.is_running():
+            # Cleanup tasks
+            pending = asyncio.all_tasks(self.loop)
+            for task in pending:
+                task.cancel()
+```
+
+3. Template Rendering
+```python
+# Setup
+aiohttp_jinja2.setup(
+    app,
+    loader=jinja2.FileSystemLoader('templates')
+)
+
+# Usage
+@aiohttp_jinja2.template('index.html')
+async def index(request):
+    return {'data': await get_data()}
+```
+
+### Resource Management Patterns
+
+1. Connection Management
+```python
+class ConnectionManager:
+    def __init__(self):
+        self._connections = set()
+        self._lock = asyncio.Lock()
+
+    async def add(self, connection):
         async with self._lock:
-            if not self._connection:
-                self._connection = await self._establish_connection()
+            self._connections.add(connection)
 
-    async def request(self, method, params):
-        await self.connect()
-        return await self._make_request(method, params)
+    async def remove(self, connection):
+        async with self._lock:
+            self._connections.remove(connection)
 ```
 
-### Usage
-- CustomAsyncProvider
-- AlchemyProvider
-- FlashbotsProvider
-
-## Resource Management Pattern
-Ensures proper cleanup of resources in async context.
-
-### Structure
+2. Resource Cleanup
 ```python
-class ManagedResource:
+class ResourceManager:
     async def __aenter__(self):
         await self.initialize()
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self.cleanup()
-
-    async def initialize(self):
-        # Setup resources
-        pass
-
-    async def cleanup(self):
-        # Cleanup resources
-        pass
 ```
 
-### Usage
-- Connection pools
-- Cache managers
-- Event subscriptions
+### Error Handling Patterns
 
-## Event Loop Management Pattern
-Handles event loop creation and cleanup for async operations.
-
-### Structure
+1. WebSocket Error Handling
 ```python
-def manage_event_loop(func):
-    async def wrapper(*args, **kwargs):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        try:
-            return await func(*args, **kwargs)
-        finally:
-            if not loop.is_running():
-                loop.close()
-    return wrapper
+async def handle_websocket(ws):
+    try:
+        async for msg in ws:
+            if msg.type == WSMsgType.TEXT:
+                await process_message(msg)
+            elif msg.type == WSMsgType.ERROR:
+                logger.error(f"WebSocket error: {ws.exception()}")
+    except Exception as e:
+        logger.error(f"WebSocket handler error: {e}")
+    finally:
+        await cleanup_connection(ws)
 ```
 
-### Usage
-- CustomAsyncProvider
-- Web3Manager
-- Event handlers
-
-## Retry Pattern
-Implements retry logic for async operations with exponential backoff.
-
-### Structure
+2. Request Error Handling
 ```python
-def with_retry(retries=3, delay=1.0):
-    async def decorator(func):
-        async def wrapper(*args, **kwargs):
-            last_error = None
-            for attempt in range(retries):
-                try:
-                    return await func(*args, **kwargs)
-                except Exception as e:
-                    last_error = e
-                    if attempt < retries - 1:
-                        await asyncio.sleep(delay * (2 ** attempt))
-            raise last_error
-        return wrapper
-    return decorator
+@web.middleware
+async def error_middleware(request, handler):
+    try:
+        response = await handler(request)
+        return response
+    except web.HTTPException as ex:
+        return web.json_response({'error': str(ex)}, status=ex.status)
+    except Exception as ex:
+        logger.error(f"Unhandled error: {ex}")
+        return web.json_response(
+            {'error': 'Internal server error'},
+            status=500
+        )
 ```
 
-### Usage
-- Web3 requests
-- API calls
-- Network operations
+### Data Flow Patterns
 
-## Cache Pattern
-Implements TTL-based caching for async operations.
-
-### Structure
+1. Real-time Updates
 ```python
-class AsyncCache:
-    def __init__(self, ttl):
-        self._cache = {}
-        self._ttl = ttl
-        self._lock = AsyncLock()
-
-    async def get_or_set(self, key, getter):
-        async with self._lock:
-            if key in self._cache:
-                value, timestamp = self._cache[key]
-                if time.time() - timestamp < self._ttl:
-                    return value
-            value = await getter()
-            self._cache[key] = (value, time.time())
-            return value
-```
-
-### Usage
-- Price data
-- Gas estimates
-- Contract state
-
-## Factory Pattern
-Creates and initializes async components.
-
-### Structure
-```python
-class AsyncFactory:
-    @classmethod
-    async def create_component(cls, config):
-        # Create instance
-        instance = cls._create_instance(config)
-        # Initialize async resources
-        await instance.initialize()
-        return instance
-
-    @classmethod
-    def _create_instance(cls, config):
-        # Create basic instance
-        return cls(config)
-```
-
-### Usage
-- Web3Manager creation
-- DexManager creation
-- Provider initialization
-
-## Observer Pattern
-Implements async event handling and notifications.
-
-### Structure
-```python
-class AsyncObserver:
+class DataStream:
     def __init__(self):
-        self._handlers = set()
+        self.subscribers = set()
 
-    async def subscribe(self, handler):
-        self._handlers.add(handler)
-
-    async def unsubscribe(self, handler):
-        self._handlers.remove(handler)
-
-    async def notify(self, event):
-        for handler in self._handlers:
-            await handler(event)
+    async def publish(self, data):
+        for subscriber in self.subscribers:
+            try:
+                await subscriber.send_json(data)
+            except Exception as e:
+                logger.error(f"Failed to send to subscriber: {e}")
+                await self.remove_subscriber(subscriber)
 ```
 
-### Usage
-- Price updates
-- Block notifications
-- Transaction events
-
-## Lock Pattern
-Manages concurrent access to shared resources.
-
-### Structure
+2. Data Caching
 ```python
-class AsyncResourceManager:
+class DataCache:
     def __init__(self):
-        self._lock = AsyncLock()
-        self._resource = None
+        self.cache = {}
+        self.ttl = {}
+        self._lock = asyncio.Lock()
 
-    async def get_resource(self):
+    async def get(self, key):
         async with self._lock:
-            if not self._resource:
-                self._resource = await self._create_resource()
-            return self._resource
+            if key in self.cache and not self._is_expired(key):
+                return self.cache[key]
+            return None
 ```
 
-### Usage
-- Connection pools
-- Shared state
-- Resource initialization
+### Integration Patterns
+
+1. Memory Bank Integration
+```python
+class MemoryBankMonitor:
+    def __init__(self, memory_bank):
+        self.memory_bank = memory_bank
+        self.subscribers = set()
+
+    async def start_monitoring(self):
+        while True:
+            state = await self.memory_bank.get_state()
+            await self.notify_subscribers(state)
+            await asyncio.sleep(5)
+```
+
+2. Storage Integration
+```python
+class StorageMonitor:
+    def __init__(self, storage_hub):
+        self.storage_hub = storage_hub
+        self.metrics = {}
+
+    async def update_metrics(self):
+        self.metrics = {
+            'size': await self.storage_hub.get_size(),
+            'usage': await self.storage_hub.get_usage(),
+            'performance': await self.storage_hub.get_performance()
+        }
+```
+
+### Testing Patterns
+
+1. WebSocket Testing
+```python
+async def test_websocket():
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect('/ws') as ws:
+            await ws.send_json({'type': 'test'})
+            response = await ws.receive_json()
+            assert response['status'] == 'ok'
+```
+
+2. Template Testing
+```python
+async def test_template_rendering():
+    async with client.get('/') as response:
+        assert response.status == 200
+        text = await response.text()
+        assert 'Dashboard' in text
+```
+
+### Monitoring Patterns
+
+1. Performance Monitoring
+```python
+class PerformanceMonitor:
+    def __init__(self):
+        self.metrics = {}
+
+    async def record_metric(self, name, value):
+        timestamp = time.time()
+        if name not in self.metrics:
+            self.metrics[name] = []
+        self.metrics[name].append((timestamp, value))
+```
+
+2. Health Monitoring
+```python
+class HealthMonitor:
+    async def check_health(self):
+        return {
+            'websocket': await self.check_websocket(),
+            'memory': await self.check_memory(),
+            'storage': await self.check_storage(),
+            'web3': await self.check_web3()
+        }

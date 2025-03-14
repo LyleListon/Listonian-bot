@@ -85,21 +85,21 @@ class CustomAsyncProvider(BaseProvider):
     def request_func(self, method: RPCEndpoint, params: Any) -> Any:
         """
         Synchronous request function required by BaseProvider.
-        Wraps async request in sync call using asyncio.
+        Uses the current event loop if one is running, otherwise creates a temporary one.
         """
         try:
-            # Create a new event loop for each sync request
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
-                return loop.run_until_complete(self.make_request(method, params))
-            finally:
-                loop.close()
-                # Reset to the original event loop if there was one
-                try:
-                    asyncio.get_event_loop()
-                except RuntimeError:
-                    asyncio.set_event_loop(None)
+                # Try to get the current running loop
+                loop = asyncio.get_running_loop()
+                # Create a future in the current loop
+                future = asyncio.run_coroutine_threadsafe(
+                    self.make_request(method, params),
+                    loop
+                )
+                return future.result()
+            except RuntimeError:
+                # No running loop, create a temporary one
+                return asyncio.run(self.make_request(method, params))
         except Exception as e:
             logger.error(f"Sync request failed: {e}")
             raise

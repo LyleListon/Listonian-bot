@@ -92,6 +92,35 @@ class AsyncRetryManager:
         self.base_delay = base_delay
         self.max_delay = max_delay
         self._lock = AsyncLock()
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """
+        Initialize the retry manager.
+
+        Returns:
+            True if initialization successful
+        """
+        try:
+            async with self._lock:
+                if self._initialized:
+                    return True
+
+                # Perform any necessary initialization
+                await self._setup()
+                
+                self._initialized = True
+                logger.info("Async retry manager initialized successfully")
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to initialize async retry manager: {e}")
+            return False
+
+    async def _setup(self):
+        """Perform any necessary setup."""
+        # Add any required setup steps here
+        pass
 
     async def execute(
         self,
@@ -113,6 +142,9 @@ class AsyncRetryManager:
         Raises:
             Exception: If all retries fail
         """
+        if not self._initialized:
+            await self.initialize()
+
         last_error = None
         current_delay = self.base_delay
 
@@ -152,11 +184,35 @@ class AsyncRateLimiter:
         self.interval = 1.0 / requests_per_second
         self.last_request = 0.0
         self._lock = AsyncLock()
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """
+        Initialize the rate limiter.
+
+        Returns:
+            True if initialization successful
+        """
+        try:
+            async with self._lock:
+                if self._initialized:
+                    return True
+
+                self._initialized = True
+                logger.info("Rate limiter initialized successfully")
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to initialize rate limiter: {e}")
+            return False
 
     async def acquire(self):
         """Acquire rate limit slot."""
+        if not self._initialized:
+            await self.initialize()
+
         async with self._lock:
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()  # Use get_running_loop instead of get_event_loop
             wait_time = max(0, self.interval - (now - self.last_request))
             if wait_time > 0:
                 await asyncio.sleep(wait_time)
@@ -169,4 +225,6 @@ rate_limiter = AsyncRateLimiter(5.0)  # 5 requests per second default
 # Async initialization helper
 async def async_init():
     """Initialize async components."""
-    pass
+    await manager.initialize()
+    await rate_limiter.initialize()
+    logger.info("Async components initialized successfully")

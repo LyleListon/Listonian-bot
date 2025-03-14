@@ -7,6 +7,7 @@ Manages persistent storage and retrieval of system state and context.
 import logging
 import asyncio
 import json
+import time
 from typing import Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
@@ -89,7 +90,7 @@ class MemoryBank:
         """Sync memory to disk."""
         try:
             async with self._lock:
-                current_time = asyncio.get_event_loop().time()
+                current_time = time.monotonic()  # Use monotonic time instead of event loop time
                 if current_time - self._last_sync < self._sync_interval:
                     return
                     
@@ -148,6 +149,84 @@ class MemoryBank:
             raise RuntimeError("Memory bank not initialized")
             
         return self.context.copy()
+
+    async def store_trade_result(
+        self,
+        opportunity: Dict[str, Any],
+        success: bool,
+        net_profit: Optional[float] = None,
+        gas_cost: Optional[float] = None,
+        tx_hash: Optional[str] = None,
+        error: Optional[str] = None
+    ):
+        """
+        Store trade result in memory bank.
+
+        Args:
+            opportunity: Trade opportunity details
+            success: Whether trade was successful
+            net_profit: Optional net profit amount
+            gas_cost: Optional gas cost
+            tx_hash: Optional transaction hash
+            error: Optional error message
+        """
+        try:
+            if not self.initialized:
+                raise RuntimeError("Memory bank not initialized")
+
+            # Create trade record
+            trade_record = {
+                'timestamp': datetime.now().isoformat(),
+                'opportunity': opportunity,
+                'success': success,
+                'net_profit': net_profit,
+                'gas_cost': gas_cost,
+                'tx_hash': tx_hash,
+                'error': error
+            }
+
+            # Update progress file
+            progress_path = self.memory_dir / 'progress.md'
+            try:
+                if progress_path.exists():
+                    current_content = await self.get_context('progress.md')
+                else:
+                    current_content = "# Trading Progress\n\n"
+
+                # Add trade record
+                trade_entry = (
+                    f"\n## Trade at {trade_record['timestamp']}\n"
+                    f"- Success: {success}\n"
+                    f"- Net Profit: {net_profit if net_profit is not None else 'N/A'}\n"
+                    f"- Gas Cost: {gas_cost if gas_cost is not None else 'N/A'}\n"
+                    f"- TX Hash: {tx_hash if tx_hash else 'N/A'}\n"
+                )
+                if error:
+                    trade_entry += f"- Error: {error}\n"
+
+                # Update context
+                await self.update_context('progress.md', current_content + trade_entry)
+
+            except Exception as e:
+                logger.error(f"Failed to update progress file: {e}")
+                # Continue even if progress update fails
+
+            # Store detailed trade data
+            trades_dir = self.memory_dir / 'trades'
+            trades_dir.mkdir(exist_ok=True)
+            
+            trade_file = trades_dir / f"trade_{int(time.time())}.json"
+            with open(trade_file, 'w') as f:
+                json.dump(trade_record, f, indent=2)
+
+            logger.info(
+                f"Trade result stored: success={success}, "
+                f"profit={net_profit}, gas={gas_cost}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to store trade result: {e}")
+            raise
 
 async def get_memory_bank() -> MemoryBank:
     """
