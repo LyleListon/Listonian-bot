@@ -66,7 +66,7 @@ class Contract:
     def functions(self) -> Any:
         """Get contract functions."""
         raise NotImplementedError
-
+    
     @property
     def address(self) -> ChecksumAddress:
         """Get contract address."""
@@ -79,15 +79,23 @@ class Web3Client(Protocol):
     def eth(self) -> Any:
         """Get eth module."""
         raise NotImplementedError
-
+    
+    async def initialize(self) -> None:
+        """Initialize the Web3 connection."""
+        raise NotImplementedError
+    
+    async def close(self) -> None:
+        """Close the Web3 connection and cleanup resources."""
+        raise NotImplementedError
+    
     def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
         """Create contract instance."""
         raise NotImplementedError
-
+    
     async def get_gas_price(self) -> int:
         """Get current gas price in wei."""
         raise NotImplementedError
-
+    
     async def get_block(self, block_identifier: Union[str, int]) -> Dict[str, Any]:
         """Get block by number or hash."""
         raise NotImplementedError

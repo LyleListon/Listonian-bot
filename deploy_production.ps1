@@ -1,4 +1,4 @@
-# Arbitrage System Production Deployment Script
+# rrbitrage System Production Deployment Script
 # This script automates the deployment of the arbitrage system to production
 
 # Set error action preference to stop on error

@@ -1,46 +1,45 @@
 """
-Arbitrage Dashboard FastAPI Application
-
-This module provides the main FastAPI application for the arbitrage dashboard.
+Simple Arbitrage Dashboard
 """
 
 import os
-import asyncio
 import logging
 import json
+import asyncio
 from typing import Dict, Any, Optional
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, Request
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, HTMLResponse
+from web3.exceptions import Web3Exception
 
-# Import our arbitrage API module
-from dashboard.api import arbitrage_api
-
-# Configure logging
+# Configure detailed logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("logs/dashboard.log")
-    ]
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-
 logger = logging.getLogger("dashboard")
+
+# Import WebSocket handler
+from .websocket_handler import setup_websocket_routes, websocket_manager
+from .arbitrage_monitor import ArbitrageMonitor
+
+# Initialize templates
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Create FastAPI app
 app = FastAPI(
-    title="Listonian Arbitrage Dashboard",
-    description="Dashboard for monitoring and controlling the arbitrage system",
+    title="Arbitrage Dashboard",
+    description="Dashboard for monitoring blockchain status",
     version="1.0.0"
 )
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to your domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,161 +48,284 @@ app.add_middleware(
 # Mount static files
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 
-# Set up templates
-templates = Jinja2Templates(directory="dashboard/templates")
+class DashboardState:
+    """Global dashboard state."""
+    def __init__(self):
+        self.web3_client = None
+        self.initialization_error: Optional[str] = None
+        self.last_error_time: Optional[float] = None
+        self.initialization_lock = asyncio.Lock()
+        self.monitor = ArbitrageMonitor()
+        self.metrics_task: Optional[asyncio.Task] = None
+        self.retry_count = 0
+        self.max_retries = 3
 
-# Include our API router
-app.include_router(arbitrage_api.router)
+async def init_web3_client() -> Dict[str, Any]:
+    """Initialize Web3 client."""
+    state = app.state
+    
+    if state.web3_client and not state.initialization_error:
+        logger.debug("Web3 client already initialized")
+        return {"status": "success"}
+        
+    async with state.initialization_lock:
+        try:
+            # Load config
+            logger.debug("Loading configuration from configs/production.json")
+            with open("configs/production.json", "r") as f:
+                config = json.load(f)
+                
+            rpc_url = config["web3"]["rpc_url"]
+            logger.debug(f"Using RPC URL: {rpc_url}")
+                
+            # Initialize Web3 client
+            logger.debug("Creating Web3 client instance")
+            from arbitrage_bot.core.web3.client import Web3ClientImpl
+            
+            web3_client = Web3ClientImpl(
+                rpc_endpoint=rpc_url,
+                chain="base_mainnet"
+            )
+            
+            # Initialize with timeout
+            logger.debug("Starting Web3 client initialization")
+            try:
+                await asyncio.wait_for(web3_client.initialize(), timeout=30.0)
+                logger.info("Web3 client initialized successfully")
+                
+                # Store client and clear error state
+                state.web3_client = web3_client
+                state.initialization_error = None
+                state.last_error_time = None
+                state.retry_count = 0
+                
+                return {"status": "success"}
+                
+            except asyncio.TimeoutError as e:
+                error_msg = "Web3 client initialization timed out after 30 seconds"
+                logger.error(error_msg)
+                await web3_client.close()
+                raise HTTPException(status_code=503, detail=error_msg)
+                
+        except FileNotFoundError:
+            error_msg = "Configuration file not found at configs/production.json"
+            logger.error(error_msg)
+            state.initialization_error = error_msg
+            raise HTTPException(status_code=500, detail=error_msg)
+            
+        except json.JSONDecodeError as e:
+            error_msg = f"Invalid JSON in configuration file: {str(e)}"
+            logger.error(error_msg)
+            state.initialization_error = error_msg
+            raise HTTPException(status_code=500, detail=error_msg)
+            
+        except Web3Exception as e:
+            error_msg = f"Web3 error during initialization: {str(e)}"
+            logger.error(error_msg)
+            state.initialization_error = error_msg
+            state.retry_count += 1
+            raise HTTPException(status_code=503, detail=error_msg)
+            
+        except Exception as e:
+            error_msg = f"Error initializing Web3 client: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            state.initialization_error = error_msg
+            state.retry_count += 1
+            raise HTTPException(status_code=500, detail=error_msg)
+
+async def collect_and_broadcast_metrics():
+    """Collect metrics and broadcast via WebSocket."""
+    state = app.state
+    while True:
+        try:
+            # Get latest metrics
+            metrics = {
+                'arbitrage': await state.monitor.get_arbitrage_metrics(),
+                'flash_loan': await state.monitor.get_flash_loan_metrics(),
+                'mev_protection': await state.monitor.get_mev_protection_metrics(),
+                'gas': await state.monitor.get_gas_metrics(),
+                'profit': await state.monitor.get_profit_metrics()
+            }
+            
+            # Broadcast metrics
+            await websocket_manager.broadcast_metrics(metrics)
+            
+            # Check for alerts
+            await check_alerts(metrics)
+            
+        except Exception as e:
+            logger.error(f"Error collecting metrics: {e}", exc_info=True)
+            
+        await asyncio.sleep(1)  # Update every second
+
+async def check_alerts(metrics: Dict[str, Any]):
+    """Check metrics for alert conditions."""
+    try:
+        # Check profit alerts
+        if 'profit' in metrics:
+            profit = metrics['profit']
+            if profit.get('total_profit', 0) > 0.1:  # Alert on profits > 0.1 ETH
+                await websocket_manager.broadcast_alert(
+                    'profit',
+                    f"High profit detected: {profit['total_profit']} ETH",
+                    'success'
+                )
+        
+        # Check MEV alerts
+        if 'mev_protection' in metrics:
+            mev = metrics['mev_protection']
+            if mev.get('attacks_detected', 0) > 0:
+                await websocket_manager.broadcast_alert(
+                    'mev',
+                    f"MEV attack detected! Risk level: {mev.get('risk_level', 'unknown')}",
+                    'warning'
+                )
+        
+        # Check gas alerts
+        if 'gas' in metrics:
+            gas = metrics['gas']
+            if gas.get('average_gas_price', 0) > 100:  # Alert on high gas prices
+                await websocket_manager.broadcast_alert(
+                    'gas',
+                    f"High gas price: {gas['average_gas_price']} GWEI",
+                    'warning'
+                )
+                
+    except Exception as e:
+        logger.error(f"Error checking alerts: {e}", exc_info=True)
 
 @app.on_event("startup")
 async def startup_event():
-    """
-    Initialize the application on startup.
-    
-    This will:
-    1. Create necessary directories
-    2. Load configuration
-    3. Initialize the arbitrage system
-    """
+    """Initialize the application."""
     logger.info("Starting arbitrage dashboard")
     
-    # Create necessary directories
-    os.makedirs("logs", exist_ok=True)
-    os.makedirs("data", exist_ok=True)
+    # Initialize state and components
+    app.state = DashboardState()
     
-    # Load configuration
     try:
-        config_path = os.environ.get("CONFIG_PATH", "configs/production.json")
-        if not os.path.exists(config_path):
-            logger.warning(f"Configuration file {config_path} not found, using default")
-            config_path = "configs/default_config.json"
-            
-            # If default config doesn't exist either, create a minimal one
-            if not os.path.exists(config_path):
-                os.makedirs(os.path.dirname(config_path), exist_ok=True)
-                with open(config_path, "w") as f:
-                    json.dump({
-                        "general": {"network": "base_mainnet", "log_level": "INFO"},
-                        "arbitrage": {"min_profit_threshold_eth": 0.005}
-                    }, f, indent=2)
+        # Initialize Web3 client
+        await init_web3_client()
         
-        with open(config_path, "r") as f:
-            config = json.load(f)
-            
-        logger.info(f"Loaded configuration from {config_path}")
+        # Initialize WebSocket routes
+        await setup_websocket_routes(app)
         
-        # Initialize arbitrage system
-        await initialize_arbitrage_system(config, config_path)
+        # Start metrics collection
+        app.state.metrics_task = asyncio.create_task(collect_and_broadcast_metrics())
         
     except Exception as e:
-        logger.error(f"Error during startup: {e}", exc_info=True)
-        # Continue startup even if there's an error, but the API will return errors
-        # until the arbitrage system is properly initialized
+        logger.error(f"Error during startup: {str(e)}", exc_info=True)
+        # Don't raise here - let the app start even if Web3 init fails
+        # The status endpoint will show the error state
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """
-    Clean up resources on shutdown.
-    """
+    """Clean up resources."""
     logger.info("Shutting down arbitrage dashboard")
     
-    # Get arbitrage system if it's initialized
-    try:
-        arbitrage_system = arbitrage_api.get_arbitrage_system()
-        if arbitrage_system and arbitrage_system.is_running:
-            logger.info("Stopping arbitrage system")
-            await arbitrage_system.stop()
-    except Exception as e:
-        logger.error(f"Error during shutdown: {e}")
-
-async def initialize_arbitrage_system(config: Dict[str, Any], config_path: str):
-    """
-    Initialize the arbitrage system with the provided configuration.
+    # Cancel metrics collection task
+    if app.state.metrics_task:
+        app.state.metrics_task.cancel()
+        await asyncio.gather(app.state.metrics_task, return_exceptions=True)
     
-    Args:
-        config: Configuration dictionary
-        config_path: Path to the config file
-    """
-    try:
-        # Validate required config fields
-        network_config = config.get("network", {})
-        rpc_endpoints = network_config.get("rpc_endpoints", [])
-        flashbots_rpc = network_config.get("flashbots_rpc")
-        chain = network_config.get("chain")
+    if app.state.web3_client:
+        try:
+            await app.state.web3_client.close()
+            logger.info("Web3 client closed successfully")
+        except Exception as e:
+            logger.error(f"Error closing Web3 client: {str(e)}", exc_info=True)
 
-        if not rpc_endpoints:
-            raise ValueError("No RPC endpoints configured")
-        if not flashbots_rpc:
-            raise ValueError("Flashbots RPC endpoint not configured")
-        if not chain:
-            raise ValueError("Chain not configured")
-
-        from arbitrage_bot.core.arbitrage.factory import create_arbitrage_system
-        from arbitrage_bot.core.web3.client import Web3ClientImpl
-        
-        # Create Web3 client
-        logger.info("Creating Web3 client")
-        web3_client = Web3ClientImpl(
-            rpc_endpoint=rpc_endpoints[0],
-            chain=chain
-        )
-        await web3_client.initialize()
-        
-        # Create arbitrage system
-        logger.info("Creating arbitrage system")
-        arbitrage_system = await create_arbitrage_system(
-            web3_client=web3_client,
-            config=config
-        )
-        
-        # Initialize the system
-        logger.info("Initializing arbitrage system")
-        await arbitrage_system.initialize()
-        
-        arbitrage_api.set_arbitrage_system(arbitrage_system)
-        logger.info("Arbitrage system initialized successfully")
-        
-    except Exception as e:
-        logger.error(f"Error initializing arbitrage system: {e}", exc_info=True)
-        # API will return errors until arbitrage system is properly initialized
-
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Serve the main dashboard page."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    """Serve the dashboard HTML page."""
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request}
+    )
 
-@app.get("/opportunities")
-async def opportunities_page(request: Request):
-    """Serve the opportunities page."""
-    return templates.TemplateResponse("opportunities.html", {"request": request})
-
-@app.get("/executions")
-async def executions_page(request: Request):
-    """Serve the executions page."""
-    return templates.TemplateResponse("executions.html", {"request": request})
-
-@app.get("/metrics")
-async def metrics_page(request: Request):
-    """Serve the metrics page."""
-    return templates.TemplateResponse("metrics.html", {"request": request})
-
-@app.get("/settings")
-async def settings_page(request: Request):
-    """Serve the settings page."""
-    return templates.TemplateResponse("settings.html", {"request": request})
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
+@app.get("/api/status")
+async def get_status():
+    """Get blockchain connection status."""
+    state = app.state
+    
     try:
-        # Try to get arbitrage system to check if it's initialized
-        arbitrage_api.get_arbitrage_system()
-        return {"status": "healthy"}
-    except HTTPException:
-        # Return degraded if arbitrage system is not initialized
-        return {"status": "degraded", "reason": "arbitrage_system_not_initialized"}
+        # Check if we need to retry initialization
+        if (state.initialization_error and 
+            state.retry_count < state.max_retries):
+            try:
+                logger.info(f"Retrying Web3 initialization (attempt {state.retry_count + 1}/{state.max_retries})")
+                await init_web3_client()
+            except Exception as e:
+                logger.error(f"Retry failed: {str(e)}")
+        
+        if not state.web3_client:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_connected",
+                    "reason": state.initialization_error or "Web3 client not initialized",
+                    "retries": state.retry_count,
+                    "max_retries": state.max_retries
+                }
+            )
+            
+        try:
+            # Get latest block with timeout
+            logger.debug("Fetching latest block")
+            block = await asyncio.wait_for(
+                state.web3_client.get_block("latest"),
+                timeout=10.0
+            )
+            
+            # Get gas price with timeout
+            logger.debug("Fetching gas price")
+            gas_price = await asyncio.wait_for(
+                state.web3_client.get_gas_price(),
+                timeout=10.0
+            )
+            
+            logger.info(f"Status check successful - Block: {block['number']}, Gas: {gas_price / 10**9} gwei")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "connected",
+                    "latest_block": block["number"],
+                    "gas_price_gwei": gas_price / 10**9,
+                    "chain": state.web3_client.chain
+                }
+            )
+            
+        except asyncio.TimeoutError:
+            error_msg = "Blockchain request timed out after 10 seconds"
+            logger.error(error_msg)
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "error",
+                    "reason": error_msg
+                }
+            )
+            
+        except Web3Exception as e:
+            error_msg = f"Web3 error: {str(e)}"
+            logger.error(error_msg)
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "error",
+                    "reason": error_msg
+                }
+            )
+            
     except Exception as e:
-        return {"status": "unhealthy", "reason": str(e)}
+        error_msg = f"Error getting status: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "reason": error_msg
+            }
+        )
 
 if __name__ == "__main__":
     import uvicorn

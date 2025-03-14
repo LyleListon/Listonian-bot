@@ -1,4 +1,4 @@
-@echo off
+@Secho off
 echo ==========================================
 echo Python Installation Diagnostic
 echo ==========================================
