@@ -3,7 +3,10 @@ Arbitrage Dashboard with Base Network Integration
 """
 
 from aiohttp import web
+import os
+import socketio
 import logging
+import psutil
 import json
 import asyncio
 from web3 import Web3, AsyncWeb3
@@ -24,6 +27,118 @@ with open('configs/config.json', 'r') as f:
 # Initialize Web3
 w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(config['provider_url']))
 
+# Initialize Socket.IO
+sio = socketio.AsyncServer(
+    async_mode='aiohttp',
+    cors_allowed_origins='*',
+    logger=False,
+    engineio_logger=False
+)
+
+# Socket.IO event handlers
+@sio.event
+async def connect(sid, environ):
+    """Handle client connection."""
+    logger.info(f"Client connected: {sid}")
+
+@sio.event
+async def disconnect(sid):
+    """Handle client disconnection."""
+    logger.info(f"Client disconnected: {sid}")
+
+@sio.event
+async def request_update(sid, data=None):
+    """Handle update request from client."""
+    try:
+        # Get system metrics
+        process = psutil.Process(os.getpid())
+        memory_percent = process.memory_percent()
+
+        # Emit system status
+        await sio.emit('system_status', {
+            'status': 'online',
+            'memory_usage': memory_percent,
+            'cpu_percent': process.cpu_percent(),
+            'active_positions': len(dashboard.active_positions),
+            'profit_24h': dashboard.profit_24h
+        }, room=sid)
+
+        # Emit blockchain status
+        network_data = await get_dashboard_data()
+        await sio.emit('blockchain_status', network_data, room=sid)
+
+    except Exception as e:
+        logger.error(f"Error handling update request: {e}")
+        await sio.emit('error', {'message': str(e)}, room=sid)
+
+@sio.event
+async def update_opportunities(sid, data):
+    """Handle new opportunities data."""
+    try:
+        dashboard.opportunities = data.get('opportunities', [])
+        await sio.emit('opportunities', {
+            'opportunities': dashboard.opportunities
+        }, room=sid)
+    except Exception as e:
+        logger.error(f"Error handling opportunities update: {e}")
+
+@sio.event
+async def update_mev_protection(sid, data):
+    """Handle MEV protection status update."""
+    try:
+        dashboard.mev_stats = {
+            'active': data.get('active', False),
+            'blocked_attacks': data.get('blocked_attacks', 0),
+            'risk_level': data.get('risk_level', 'low')
+        }
+        await sio.emit('mev_protection', dashboard.mev_stats, room=sid)
+    except Exception as e:
+        logger.error(f"Error handling MEV protection update: {e}")
+
+@sio.event
+async def update_profit(sid, data):
+    """Handle profit updates."""
+    try:
+        dashboard.profit_24h = float(data.get('profit_24h', 0))
+        dashboard.total_profit = float(data.get('total_profit', 0))
+        await sio.emit('profit_update', {
+            'profit_24h': dashboard.profit_24h,
+            'total_profit': dashboard.total_profit
+        }, room=sid)
+    except Exception as e:
+        logger.error(f"Error handling profit update: {e}")
+
+# Periodic update task
+async def periodic_updates():
+    """Send periodic updates to all connected clients."""
+    while True:
+        try:
+            # Get system metrics
+            process = psutil.Process(os.getpid())
+            memory_percent = process.memory_percent()
+
+            # Prepare update data
+            status_data = {
+                'status': 'online',
+                'memory_usage': memory_percent,
+                'active_positions': len(dashboard.active_positions),
+                'profit_24h': dashboard.profit_24h
+            }
+
+            # Emit updates to all clients
+            await sio.emit('system_status', status_data)
+            await sio.emit('mev_protection', dashboard.mev_stats)
+            await sio.emit('opportunities', {'opportunities': dashboard.opportunities})
+            await sio.emit('profit_update', {
+                'profit_24h': dashboard.profit_24h,
+                'total_profit': dashboard.total_profit
+            })
+
+        except Exception as e:
+            logger.error(f"Error in periodic updates: {e}")
+
+        await asyncio.sleep(5)  # Update every 5 seconds
+
 class DashboardStats:
     """Real-time dashboard statistics."""
     def __init__(self):
@@ -32,6 +147,12 @@ class DashboardStats:
         self.network_load = 0.0
         self.dex_stats = {}
         self.last_update = None
+        self.active_positions = []
+        self.profit_24h = 0.0
+        self.total_profit = 0.0
+        self.opportunities = []
+        self.mev_stats = {'active': False, 'blocked_attacks': 0, 'risk_level': 'low'}
+        self.update_task = None
 
         # Contract addresses
         self.dex_contracts = {
@@ -169,6 +290,7 @@ async def handle_index(request):
     <html>
     <head>
         <title>Base Network Arbitrage Dashboard</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
         <style>
             body {
                 font-family: Arial, sans-serif;
@@ -204,63 +326,118 @@ async def handle_index(request):
                 background: #f8f9fa;
                 border-radius: 4px;
             }
+            .profit-info {
+                margin-top: 10px;
+                padding: 10px;
+                background: #e8f5e9;
+                border-radius: 4px;
+            }
+            .opportunity-info {
+                margin-top: 10px;
+                padding: 10px;
+                background: #e3f2fd;
+                border-radius: 4px;
+            }
         </style>
         <script>
-            async function updateStats() {
+            document.addEventListener('DOMContentLoaded', () => {
+                const socket = io();
+
+                socket.on('connect', () => {
+                    console.log('Connected to server');
+                    document.getElementById('connection-status').textContent = 'Connected';
+                });
+
+                socket.on('disconnect', () => {
+                    console.log('Disconnected from server');
+                    document.getElementById('connection-status').textContent = 'Disconnected';
+                });
+
+                socket.on('system_status', (data) => {
+                    document.getElementById('memory-usage').textContent = `${data.memory_usage.toFixed(2)}%`;
+                    document.getElementById('active-positions').textContent = data.active_positions;
+                    document.getElementById('profit-24h').textContent = `${data.profit_24h} ETH`;
+                });
+
+                socket.on('mev_protection', (data) => {
+                    document.getElementById('mev-status').textContent = data.active ? 'Active' : 'Inactive';
+                    document.getElementById('blocked-attacks').textContent = data.blocked_attacks;
+                    document.getElementById('risk-level').textContent = data.risk_level;
+                });
+
+                socket.on('opportunities', (data) => {
+                    const container = document.getElementById('opportunities');
+                    container.innerHTML = '';
+                    data.opportunities.forEach(opp => {
+                        const div = document.createElement('div');
+                        div.className = 'opportunity-info';
+                        div.innerHTML = `
+                            <p><strong>${opp.token_pair}</strong></p>
+                            <p>Potential Profit: ${opp.potential_profit} ETH</p>
+                            <p>Route: ${opp.route}</p>
+                            <p>Confidence: ${opp.confidence}%</p>
+                        `;
+                        container.appendChild(div);
+                    });
+                });
+
+                socket.on('profit_update', (data) => {
+                    document.getElementById('total-profit').textContent = `${data.profit} ETH`;
+                });
+
+                // Request initial update
+                socket.emit('request_update');
+
+                // Setup periodic update requests
+                setInterval(() => {
+                    socket.emit('request_update');
+                }, 5000);
+            });
+
+            function formatTimestamp(timestamp) {
                 try {
-                    const response = await fetch('/api/stats');
-                    const data = await response.json();
-                    
-                    // Update network stats
-                    if (data.network) {
-                        document.getElementById('block-number').textContent = data.network.block_number;
-                        document.getElementById('gas-price').textContent = data.network.gas_price;
-                        document.getElementById('network-load').textContent = data.network.network_load;
-                    }
-                    
-                    // Update DEX stats
-                    if (data.dexes) {
-                        const dexContainer = document.getElementById('dex-stats');
-                        dexContainer.innerHTML = '';
-                        
-                        for (const [name, stats] of Object.entries(data.dexes)) {
-                            const dexCard = document.createElement('div');
-                            dexCard.className = 'dex-info';
-                            dexCard.innerHTML = `
-                                <h3>${name}</h3>
-                                <p>Total Pairs: ${stats.pair_count}</p>
-                                <p>WETH-USDC Pool: ${stats.weth_usdc_liquidity ? 'Active' : 'Not Found'}</p>
-                            `;
-                            dexContainer.appendChild(dexCard);
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error updating stats:', error);
+                    const date = new Date(timestamp);
+                    return date.toLocaleString();
+                } catch (e) {
+                    return timestamp;
                 }
             }
-
-            // Update stats every 5 seconds
-            setInterval(updateStats, 5000);
-            
-            // Initial update
-            updateStats();
         </script>
     </head>
     <body>
+        <h1>Base Network Arbitrage Dashboard</h1>
+        <p>Status: <span id="connection-status">Connecting...</span></p>
+        
         <div class="container">
             <div class="card">
-                <h2>Network Status</h2>
+                <h2>System Status</h2>
                 <div>
-                    <p>Block Number: <span id="block-number" class="stat-value">-</span></p>
-                    <p>Gas Price: <span id="gas-price" class="stat-value">-</span></p>
-                    <p>Network Load: <span id="network-load" class="stat-value">-</span></p>
+                    <p>Memory Usage: <span id="memory-usage" class="stat-value">-</span></p>
+                    <p>Active Positions: <span id="active-positions" class="stat-value">-</span></p>
+                    <p>24h Profit: <span id="profit-24h" class="stat-value">-</span></p>
                 </div>
             </div>
             
             <div class="card">
-                <h2>DEX Status</h2>
-                <div id="dex-stats">
-                    Loading DEX information...
+                <h2>MEV Protection</h2>
+                <div>
+                    <p>Status: <span id="mev-status" class="stat-value">-</span></p>
+                    <p>Blocked Attacks: <span id="blocked-attacks" class="stat-value">-</span></p>
+                    <p>Risk Level: <span id="risk-level" class="stat-value">-</span></p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Profit Overview</h2>
+                <div class="profit-info">
+                    <p>Total Profit: <span id="total-profit" class="stat-value">-</span></p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Recent Opportunities</h2>
+                <div id="opportunities">
+                    Loading opportunities...
                 </div>
             </div>
         </div>
@@ -272,15 +449,34 @@ async def handle_index(request):
 async def init_app():
     """Initialize the application."""
     app = web.Application()
+    
+    # Attach Socket.IO
+    sio.attach(app)
+    
+    # Start periodic updates
+    asyncio.create_task(periodic_updates())
+    
+    # Add routes
     app.router.add_get('/', handle_index)
     app.router.add_get('/api/stats', handle_stats)
+    
     return app
 
-def main():
+async def main():
     """Run the dashboard server."""
     port = 9095
     logger.info(f"Starting dashboard on http://localhost:{port}")
-    web.run_app(init_app(), port=port)
+    
+    try:
+        app = await init_app()
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, 'localhost', port)
+        await site.start()
+        await asyncio.Event().wait()  # run forever
+    except Exception as e:
+        logger.error(f"Error starting dashboard: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

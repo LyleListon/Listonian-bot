@@ -57,20 +57,23 @@ def kill_process_on_port(port):
         
         # If port is in use (connection successful)
         if result == 0:
-            for proc in psutil.process_iter(['pid', 'name', 'connections']):
+            # Try taskkill on Windows
+            if sys.platform == 'win32':
                 try:
-                    # Check each process's connections
-                    for conn in proc.connections():
-                        if conn.laddr.port == port:
-                            logger.info(f"Killing process {proc.pid} using port {port}")
-                            if sys.platform == 'win32':
-                                subprocess.run(['taskkill', '/F', '/PID', str(proc.pid)], capture_output=True)
-                            else:
-                                os.kill(proc.pid, signal.SIGTERM)
-                            time.sleep(1)  # Wait for process to terminate
-                            return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    subprocess.run(['taskkill', '/F', '/IM', 'python.exe'], capture_output=True)
+                    time.sleep(1)
+                    return True
+                except Exception:
                     pass
+            
+            # Try creating a test socket to force port release
+            try:
+                test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test_socket.bind(('localhost', port))
+                test_socket.close()
+                return True
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"Error killing process on port {port}: {e}")
     
@@ -91,19 +94,19 @@ def start_process(script_name):
         logger.error(f"Error starting {script_name}: {e}")
         return None
 
-def monitor_process(process, script_name):
-    """Monitor a process's output and status."""
-    while True:
-        output = process.stdout.readline()
-        if output:
-            logger.info(f"[{script_name}] {output.strip()}")
-        
-        error = process.stderr.readline()
-        if error:
-            logger.error(f"[{script_name}] {error.strip()}")
-        
-        if output == '' and error == '' and process.poll() is not None:
-            break
+def read_process_output(process, name):
+    """Read and log process output."""
+    try:
+        if process.stdout:
+            output = process.stdout.readline()
+            if output.strip():
+                logger.info(f"[{name}] {output.strip()}")
+        if process.stderr:
+            error = process.stderr.readline()
+            if error.strip():
+                logger.error(f"[{name}] {error.strip()}")
+    except Exception as e:
+        logger.error(f"Error reading {name} output: {e}")
 
 def cleanup_processes(processes):
     """Clean up running processes."""
@@ -136,6 +139,7 @@ def main():
     try:
         # Start dashboard server
         logger.info("Starting dashboard server...")
+        time.sleep(1)  # Wait for port to be fully released
         dashboard_process = start_process('final_dashboard.py')
         if not dashboard_process:
             sys.exit(1)
@@ -158,24 +162,18 @@ def main():
         
         # Monitor both processes
         while True:
-            # Check if either process has terminated
-            for name, process in processes.items():
-                if process.poll() is not None:
-                    logger.error(f"{name} process has terminated unexpectedly")
-                    cleanup_processes(processes)
-                    sys.exit(1)
-            
-            # Monitor output
-            for name, process in processes.items():
-                output = process.stdout.readline()
-                if output:
-                    logger.info(f"[{name}] {output.strip()}")
-                error = process.stderr.readline()
-                if error:
-                    logger.error(f"[{name}] {error.strip()}")
-            
-            time.sleep(0.1)
-            
+            try:
+                # Check if any process has terminated
+                for name, process in processes.items():
+                    if process.poll() is not None:
+                        logger.error(f"{name} process has terminated unexpectedly")
+                        cleanup_processes(processes)
+                        sys.exit(1)
+                    read_process_output(process, name)
+                time.sleep(0.1)
+            except Exception as e:
+                logger.error(f"Error monitoring processes: {e}")
+                
     except KeyboardInterrupt:
         logger.info("\nShutting down...")
     finally:

@@ -1,4 +1,4 @@
-r""
+"""
 Monitor for the arbitrage bot dashboard with real-time data collection.
 """
 
@@ -63,7 +63,7 @@ class DashboardMonitor:
         @self.sio.on('request_update')
         def on_request_update(data):
             """Handle manual update requests from the dashboard."""
-            asyncio.create_task(self.collect_and_emit_data())
+            self.sio.start_background_task(self.collect_and_emit_data)
     
     async def collect_system_metrics(self) -> Dict:
         """Collect system performance metrics."""
@@ -229,23 +229,26 @@ class DashboardMonitor:
             logger.error(f"Failed to connect to dashboard: {e}")
             return False
     
+    async def periodic_updates(self):
+        """Send periodic updates to the dashboard."""
+        while True:
+            try:
+                await self.collect_and_emit_data()
+                await asyncio.sleep(1)  # Update every second
+            except Exception as e:
+                logger.error(f"Error in periodic updates: {e}")
+    
     async def run_async(self):
         """Run the dashboard monitor asynchronously."""
         try:
-            # Start blockchain monitoring
-            monitor_task = asyncio.create_task(self.monitor_blockchain())
-            trading_task = asyncio.create_task(self.simulate_trading())
-            
-            # Start regular data updates
-            while True:
-                await self.collect_and_emit_data()
-                await asyncio.sleep(1)  # Update every second
-                
+            tasks = [
+                asyncio.create_task(self.monitor_blockchain()),
+                asyncio.create_task(self.simulate_trading()),
+                asyncio.create_task(self.periodic_updates())
+            ]
+            await asyncio.gather(*tasks)
         except Exception as e:
             logger.error(f"Error in monitor: {e}")
-        finally:
-            monitor_task.cancel()
-            trading_task.cancel()
     
     def run(self):
         """Run the dashboard monitor."""
@@ -255,7 +258,7 @@ class DashboardMonitor:
                 return
             
             logger.info("Starting monitor tasks...")
-            asyncio.run(self.run_async())
+            asyncio.get_event_loop().run_until_complete(self.run_async())
             
         except KeyboardInterrupt:
             logger.info("Stopping monitor...")
