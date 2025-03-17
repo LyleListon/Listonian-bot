@@ -27,7 +27,7 @@ setup(
         "cytoolz>=0.12.0",
         "eth-bloom>=2.0.0",
         "typing-extensions>=4.5.0",
-        "python-dotenv==0.16.0",  # Fixed version for compatibility
+        "python-dotenv==1.0.1",  # Fixed version for compatibility
         "requests>=2.31.0",
         "pycryptodome>=3.20.0"  # For crypto operations
     ],
