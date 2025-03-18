@@ -12,17 +12,26 @@
     "aerodrome": {
       "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
       "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-      "enabled": true
+      "enabled": true,
+      "version": "aerodrome"
     },
     "baseswap": {
       "factory": "0xFDa619b6d20975be80a10332cD39b9a4b0FAa8BB",
       "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
-      "enabled": true
+      "enabled": true,
+      "version": "v2"
     },
     "swapbased": {
-      "factory": "0x36218B2F7b672A41f0B76fc1D5E7F88355a8bC25",
-      "router": "0xBb5e1777A331ED93E07cF043363e48d320eb96c4",
-      "enabled": true
+      "factory": "0xb5620F90e803C7F957A9EF351B8DB3C746021BEa",
+      "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
+      "enabled": true,
+      "version": "v3",
+      "pools": {
+        "WETH-USDC": "0x8D4B74fe1dfa2789CAa367F670eB4AC202107635",
+        "USDC-USDbC": "0xF6062550e8711dd6A38Ca87299b14dCD6D45d783",
+        "wstETH-ETH": "0x31AfD670cF750F33b5145612130198594E5dd6BE",
+        "cbETH-ETH": "0xC5866F9D5e051c0D1a377c9494bEA1a90E4fDF7d"
+      }
     }
   },
   "flashbots": {

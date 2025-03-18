@@ -9,8 +9,9 @@ import logging
 import psutil
 import json
 import asyncio
+import sys
 from web3 import Web3, AsyncWeb3
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 from decimal import Decimal
 
 # Configure logging
@@ -32,7 +33,11 @@ sio = socketio.AsyncServer(
     async_mode='aiohttp',
     cors_allowed_origins='*',
     logger=False,
-    engineio_logger=False
+    engineio_logger=False,
+    ping_timeout=60,
+    ping_interval=25,
+    reconnection=True,
+    reconnection_attempts=5
 )
 
 # Socket.IO event handlers
@@ -158,7 +163,8 @@ class DashboardStats:
         self.dex_contracts = {
             name: {
                 'factory': w3.to_checksum_address(dex['factory']),
-                'router': w3.to_checksum_address(dex['router'])
+                'router': w3.to_checksum_address(dex['router']),
+                'version': dex.get('version', 'v2')  # Default to v2 if not specified
             }
             for name, dex in config['dexes'].items()
             if dex.get('enabled', True)
@@ -188,49 +194,163 @@ class DashboardStats:
             logger.error(f"Error updating network stats: {e}")
             return False
 
+    async def get_pool_address(self, factory_contract, dex_name: str, token0: str, token1: str) -> Optional[str]:
+        """Get pool address based on DEX version."""
+        try:
+            # Sort tokens to match DEX's internal ordering
+            token0, token1 = sorted([token0, token1])
+            
+            if self.dex_contracts[dex_name]['version'] == 'v2':
+                # V2-style getPair
+                try:
+                    pool_address = await factory_contract.functions.getPair(
+                        token0, token1
+                    ).call()
+                    if pool_address and pool_address != '0x' + '0' * 40:
+                        return pool_address
+                except Exception as e:
+                    logger.error(f"Error getting pair info for {dex_name}: {e}")
+                    return None
+
+            elif self.dex_contracts[dex_name]['version'] in ['v3', 'swapbased']:
+                # V3-style getPool with fee parameter
+                try:
+                    # For SwapBased V3, use predefined pool addresses
+                    if dex_name == 'swapbased' and 'pools' in config['dexes'][dex_name]:
+                        token0_symbol = next((k for k, v in self.tokens.items() if v.lower() == token0.lower()), '')
+                        token1_symbol = next((k for k, v in self.tokens.items() if v.lower() == token1.lower()), '')
+                        pool_key = f"{token0_symbol}-{token1_symbol}"
+                        if pool_key in config['dexes'][dex_name]['pools']:
+                            return w3.to_checksum_address(config['dexes'][dex_name]['pools'][pool_key])
+                    else:
+                        pool_address = await factory_contract.functions.getPool(
+                            token0, token1, 3000  # Default fee tier
+                        ).call()
+                        if pool_address and pool_address != '0x' + '0' * 40:
+                            return pool_address
+                except Exception as e:
+                    logger.error(f"Error getting pool info for {dex_name}: {e}")
+                    return None
+
+            elif self.dex_contracts[dex_name]['version'] == 'aerodrome':
+                # Aerodrome-style getPool with stable parameter
+                try:
+                    # Try both stable and volatile pools
+                    for stable in [True, False]:
+                        pool_address = await factory_contract.functions.getPool(
+                            token0, token1, stable
+                        ).call()
+                        if pool_address and pool_address != '0x' + '0' * 40:
+                            return pool_address
+                except Exception as e:
+                    logger.error(f"Error getting pool info for {dex_name}: {e}")
+                    return None
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting pool address for {dex_name}: {e}")
+            return None
+
+    async def get_pool_data(self, pool_address: str, dex_name: str) -> Optional[dict]:
+        """Get pool data based on DEX version."""
+        try:
+            # Load appropriate ABI
+            try:
+                with open(f"abi/{dex_name}_v3_pool.json" if self.dex_contracts[dex_name]['version'] in ['v3', 'swapbased'] else f"abi/{dex_name}_pool.json", 'r') as f:
+                    pool_abi = json.load(f)
+            except FileNotFoundError:
+                try:
+                    with open(f"abi/{dex_name}_pair.json", 'r') as f:
+                        pool_abi = json.load(f)
+                except FileNotFoundError:
+                    logger.error(f"No pool/pair ABI found for {dex_name}")
+                    return None
+
+            pool_contract = w3.eth.contract(
+                address=pool_address,
+                abi=pool_abi
+            )
+
+            if self.dex_contracts[dex_name]['version'] in ['v3', 'swapbased']:
+                # V3 pools
+                try:
+                    # Get pool data based on DEX version
+                    if dex_name == 'swapbased':
+                        # SwapBased V3 uses different function names
+                        current_state = await pool_contract.functions.currentState().call()
+                        return {
+                            'sqrtPriceX96': current_state[0],
+                            'tick': current_state[1],
+                            'liquidity': current_state[2]
+                        }
+                    else:
+                        slot0 = await pool_contract.functions.slot0().call()
+                        liquidity = await pool_contract.functions.liquidity().call()
+                    return {
+                        'sqrtPriceX96': slot0[0],
+                        'tick': slot0[1],
+                        'liquidity': liquidity
+                    }
+                except Exception as e:
+                    logger.error(f"Error getting V3 pool data for {dex_name}: {e}")
+                    return None
+            else:
+                # V2 pairs and Aerodrome pools
+                try:
+                    reserves = await pool_contract.functions.getReserves().call()
+                    return {
+                        'reserve0': reserves[0],
+                        'reserve1': reserves[1],
+                        'timestamp': reserves[2]
+                    }
+                except Exception as e:
+                    logger.error(f"Error getting pool data for {dex_name}: {e}")
+                    return None
+
+        except Exception as e:
+            logger.error(f"Error getting pool data for {dex_name}: {e}")
+            return None
+
     async def update_dex_stats(self):
         """Update DEX statistics."""
         try:
             for dex_name, contracts in self.dex_contracts.items():
-                factory_contract = w3.eth.contract(
-                    address=contracts['factory'],
-                    abi=self.load_abi(f"abi/{dex_name}_factory.json")
-                )
-
-                # Get basic DEX stats
-                pair_count = await factory_contract.functions.allPairsLength().call()
-                
-                # Get WETH-USDC pair info if it exists
                 try:
-                    pair_address = await factory_contract.functions.getPair(
+                    # Load factory ABI
+                    with open(f"abi/{dex_name}_factory.json", 'r') as f:
+                        factory_abi = json.load(f)
+
+                    factory_contract = w3.eth.contract(
+                        address=contracts['factory'],
+                        abi=factory_abi
+                    )
+
+                    # Get WETH-USDC pool/pair
+                    pool_address = await self.get_pool_address(
+                        factory_contract,
+                        dex_name,
                         self.tokens['WETH'],
                         self.tokens['USDC']
-                    ).call()
-                    
-                    if pair_address and pair_address != '0x' + '0' * 40:
-                        pair_contract = w3.eth.contract(
-                            address=pair_address,
-                            abi=self.load_abi(f"abi/{dex_name}_pair.json")
-                        )
-                        reserves = await pair_contract.functions.getReserves().call()
-                        
+                    )
+
+                    if pool_address:
+                        pool_data = await self.get_pool_data(pool_address, dex_name)
                         self.dex_stats[dex_name] = {
-                            'pair_count': pair_count,
                             'weth_usdc_liquidity': True,
-                            'reserves': reserves
+                            'pool_data': pool_data
                         }
                     else:
                         self.dex_stats[dex_name] = {
-                            'pair_count': pair_count,
                             'weth_usdc_liquidity': False,
-                            'reserves': None
+                            'pool_data': None
                         }
+
                 except Exception as e:
-                    logger.error(f"Error getting pair info for {dex_name}: {e}")
+                    logger.error(f"Error updating stats for {dex_name}: {e}")
                     self.dex_stats[dex_name] = {
-                        'pair_count': pair_count,
                         'weth_usdc_liquidity': False,
-                        'reserves': None
+                        'pool_data': None
                     }
 
             return True
@@ -341,7 +461,15 @@ async def handle_index(request):
         </style>
         <script>
             document.addEventListener('DOMContentLoaded', () => {
-                const socket = io();
+                const socket = io({
+                    transports: ['websocket'],
+                    reconnection: true,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    timeout: 20000,
+                    autoConnect: true
+                });
 
                 socket.on('connect', () => {
                     console.log('Connected to server');
@@ -382,7 +510,7 @@ async def handle_index(request):
                 });
 
                 socket.on('profit_update', (data) => {
-                    document.getElementById('total-profit').textContent = `${data.profit} ETH`;
+                    document.getElementById('total-profit').textContent = `${data.total_profit} ETH`;
                 });
 
                 // Request initial update
@@ -471,6 +599,7 @@ async def main():
         app = await init_app()
         runner = web.AppRunner(app)
         await runner.setup()
+        await asyncio.sleep(1)  # Give the server a moment to initialize
         site = web.TCPSite(runner, 'localhost', port)
         await site.start()
         await asyncio.Event().wait()  # run forever

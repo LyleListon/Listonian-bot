@@ -1,0 +1,75 @@
+{
+    "timestamp": "2025-01-11T04:22:02Z",
+    "system_health": {
+        "cpu_usage": 45.2,
+        "memory_usage": 62.8,
+        "disk_usage": 58.3,
+        "network_latency": 42
+    },
+    "dex_status": [
+        {
+            "name": "BaseSwap",
+            "status": "active",
+            "latency": 120,
+            "last_block": 12345678,
+            "pools_monitored": 42,
+            "errors_24h": 0
+        },
+        {
+            "name": "PancakeSwap",
+            "status": "active",
+            "latency": 150,
+            "last_block": 12345677,
+            "pools_monitored": 38,
+            "errors_24h": 1
+        },
+        {
+            "name": "SushiSwap",
+            "status": "active",
+            "latency": 135,
+            "last_block": 12345678,
+            "pools_monitored": 31,
+            "errors_24h": 0
+        }
+    ],
+    "arbitrage_stats": {
+        "opportunities_found": 156,
+        "opportunities_executed": 42,
+        "success_rate": 95.2,
+        "average_profit": 0.0125,
+        "total_profit_24h": 0.525,
+        "gas_spent_24h": 0.182,
+        "net_profit_24h": 0.343
+    },
+    "active_pairs": [
+        {
+            "token0": "WETH",
+            "token1": "USDC",
+            "pools": 5,
+            "volume_24h": 1250000,
+            "opportunities_24h": 28
+        },
+        {
+            "token0": "WETH",
+            "token1": "USDT",
+            "pools": 4,
+            "volume_24h": 980000,
+            "opportunities_24h": 22
+        },
+        {
+            "token0": "WETH",
+            "token1": "DAI",
+            "pools": 3,
+            "volume_24h": 750000,
+            "opportunities_24h": 18
+        }
+    ],
+    "errors": [],
+    "warnings": [
+        {
+            "timestamp": "2025-01-11T04:15:32Z",
+            "level": "WARNING",
+            "message": "High network latency detected: 180ms"
+        }
+    ]
+}

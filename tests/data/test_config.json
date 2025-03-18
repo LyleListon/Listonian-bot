@@ -1,43 +1,87 @@
 {
-    "network": {
-        "rpc_url": "http://localhost:8545",
-        "chain_id": 8453
+    "test_environment": {
+        "network": "base-testnet",
+        "rpc_url": "https://testnet.base.org",
+        "chain_id": 84531,
+        "block_time": 2,
+        "confirmation_blocks": 1
     },
-    "dexes": {
-        "aerodrome": {
-            "factory": "0x420000000000000000000000000000000000000A",
-            "router": "0x420000000000000000000000000000000000000B",
-            "pools": {
-                "0x4200000000000000000000000000000000000006/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": {
-                    "stable": "0x420000000000000000000000000000000000000C",
-                    "volatile": "0x420000000000000000000000000000000000000D"
-                }
-            }
+    "test_accounts": {
+        "deployer": {
+            "address": "0x0000000000000000000000000000000000000001",
+            "private_key": "test_deployer_key"
         },
-        "aerodrome_v3": {
-            "factory": "0x420000000000000000000000000000000000000E",
-            "router": "0x420000000000000000000000000000000000000F",
-            "quoter": "0x4200000000000000000000000000000000000010",
-            "pools": {
-                "0x4200000000000000000000000000000000000006/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": {
-                    "fee_100": "0x4200000000000000000000000000000000000011",
-                    "fee_500": "0x4200000000000000000000000000000000000012",
-                    "fee_3000": "0x4200000000000000000000000000000000000013"
-                }
-            }
+        "trader": {
+            "address": "0x0000000000000000000000000000000000000002",
+            "private_key": "test_trader_key"
+        },
+        "flashloan": {
+            "address": "0x0000000000000000000000000000000000000003",
+            "private_key": "test_flashloan_key"
         }
     },
-    "tokens": {
-        "WETH": "0x4200000000000000000000000000000000000006",
-        "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    "test_tokens": {
+        "WETH": {
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18,
+            "symbol": "WETH"
+        },
+        "USDC": {
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6,
+            "symbol": "USDC"
+        },
+        "USDT": {
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 6,
+            "symbol": "USDT"
+        }
     },
-    "process": {
-        "max_memory_mb": 1024,
-        "max_cpu_percent": 50,
-        "max_tasks": 100
+    "test_pools": {
+        "baseswap_weth_usdc": {
+            "address": "0x0000000000000000000000000000000000000010",
+            "fee": 300,
+            "token0": "WETH",
+            "token1": "USDC"
+        },
+        "pancake_weth_usdc": {
+            "address": "0x0000000000000000000000000000000000000011",
+            "fee": 500,
+            "token0": "WETH",
+            "token1": "USDC"
+        },
+        "sushi_weth_usdc": {
+            "address": "0x0000000000000000000000000000000000000012",
+            "fee": 300,
+            "token0": "WETH",
+            "token1": "USDC"
+        }
     },
-    "optimization": {
-        "cache_size": 1000,
-        "cache_ttl": 10
+    "test_parameters": {
+        "max_slippage_bps": 50,
+        "min_profit_eth": "0.01",
+        "gas_limit": 350000,
+        "priority_fee_gwei": "0.1",
+        "max_hops": 3,
+        "timeout_seconds": 30,
+        "retry_attempts": 3,
+        "retry_delay_seconds": 1
+    },
+    "test_monitoring": {
+        "log_level": "DEBUG",
+        "metrics_interval_seconds": 5,
+        "health_check_interval_seconds": 30,
+        "alert_thresholds": {
+            "high_slippage_bps": 100,
+            "high_gas_limit": 500000,
+            "low_profit_eth": "0.005",
+            "high_latency_ms": 2000
+        }
+    },
+    "test_mocks": {
+        "block_number": 12345678,
+        "gas_price_gwei": "15",
+        "timestamp": 1704942122,
+        "base_fee_gwei": "12"
     }
 }

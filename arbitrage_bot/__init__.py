@@ -2,10 +2,10 @@
 Arbitrage Bot Package
 
 This package provides functionality for:
-- Automated arbitrage trading
-- Flash loan integration
-- MEV protection
-- Multi-DEX support
+1. DEX interactions
+2. Price monitoring
+3. Arbitrage opportunity detection
+4. Transaction execution
 """
 
 __version__ = "0.1.0"
