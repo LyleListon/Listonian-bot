@@ -1,35 +1,21 @@
 """
-Web3 Integration Package
+Web3 interaction layer.
 
-This package provides functionality for:
-- Web3 client management
-- Provider failover
-- Contract interactions
-- Transaction management
-- Flashbots integration
+This module provides:
+1. Provider management with fallback
+2. Contract interactions
+3. Transaction handling
+4. Gas estimation
 """
 
-from .web3_manager import Web3Manager, create_web3_manager
-from .web3_client_wrapper import Web3ClientWrapper
-from .errors import Web3Error
-from .interfaces import (
-    Web3Client,
-    Contract,
-    ContractFunction,
-    Transaction,
-    TransactionReceipt,
-    AccessList
+from .web3 import (
+    Web3Manager,
+    Web3Error,
+    get_web3_manager
 )
 
 __all__ = [
     'Web3Manager',
     'Web3Error',
-    'create_web3_manager',
-    'Web3ClientWrapper',
-    'Web3Client',
-    'Contract',
-    'ContractFunction',
-    'Transaction',
-    'TransactionReceipt',
-    'AccessList'
+    'get_web3_manager'
 ]

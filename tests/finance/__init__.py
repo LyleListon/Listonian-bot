@@ -1,3 +1,0 @@
-"""
-Finance package tests.
-"""

@@ -1,170 +1,94 @@
-"""
-Common test fixtures and configuration.
+"""Test configuration and shared fixtures."""
 
-This module provides:
-1. Shared test fixtures
-2. Mock implementations
-3. Helper functions
-4. Test configuration
-"""
-
-import os
-import json
 import pytest
-import asyncio
-import logging
-from typing import Dict, Any, Optional
-from decimal import Decimal
-from pathlib import Path
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Test data directory
-TEST_DATA_DIR = Path(__file__).parent / 'data'
+from unittest.mock import AsyncMock, MagicMock
+from web3 import Web3
+from arbitrage_bot.core.web3.web3_manager import Web3Manager
 
 @pytest.fixture
-def test_config() -> Dict[str, Any]:
-    """Load test configuration."""
-    config_path = TEST_DATA_DIR / 'test_config.json'
-    with open(config_path) as f:
-        return json.load(f)
+def mock_eth():
+    """Create mock eth object."""
+    eth = AsyncMock()
+    eth.chain_id = 8453
+    eth.get_block = AsyncMock(return_value={'baseFeePerGas': 1000000000})
+    eth.max_priority_fee = 100000000
+    eth.get_contract = AsyncMock()
+    eth.call_contract_function = AsyncMock()
+    return eth
 
 @pytest.fixture
-def monitoring_data() -> Dict[str, Any]:
-    """Load monitoring data."""
-    data_path = TEST_DATA_DIR / 'monitoring_sample.json'
-    with open(data_path) as f:
-        return json.load(f)
+def mock_w3(mock_eth):
+    """Create mock Web3 instance."""
+    w3 = MagicMock()
+    w3.eth = mock_eth
+    w3.to_checksum_address = Web3.to_checksum_address
+    w3.to_wei = Web3.to_wei
+    return w3
 
 @pytest.fixture
-def dex_response() -> Dict[str, Any]:
-    """Load DEX response data."""
-    response_path = TEST_DATA_DIR / 'dex_response_baseswap.json'
-    with open(response_path) as f:
-        return json.load(f)
+def web3_config():
+    """Create test Web3 configuration."""
+    return {
+        'web3': {
+            'chain_id': 8453,  # Base chain ID
+            'wallet_key': '0x' + '1' * 64,  # Mock private key
+            'providers': {
+                'primary': 'http://localhost:8545',  # Mock RPC endpoint
+                'backup': []
+            }
+        }
+    }
 
 @pytest.fixture
-def sample_transactions() -> Dict[str, Any]:
-    """Load sample transaction data."""
-    transactions_path = TEST_DATA_DIR / 'sample_transactions.json'
-    with open(transactions_path) as f:
-        return json.load(f)
-
-@pytest.fixture
-async def mock_web3_provider():
-    """Mock Web3 provider."""
-    class MockWeb3:
-        async def eth_call(self, *args, **kwargs):
-            return "0x" + "0" * 64
-        
-        async def eth_get_balance(self, *args, **kwargs):
-            return "0x" + "0" * 64
-        
-        async def eth_get_block_number(self, *args, **kwargs):
-            return 12345678
+async def web3_manager(web3_config, mock_w3):
+    """Create Web3Manager instance for testing."""
+    manager = Web3Manager(web3_config)
+    manager.w3 = mock_w3
+    manager.initialized = True
     
-    return MockWeb3()
-
-@pytest.fixture
-async def mock_contract():
-    """Mock contract instance."""
-    class MockContract:
-        async def functions(self):
-            return self
-        
-        async def call(self, *args, **kwargs):
-            return [
-                "1234567890",  # sqrtPriceX96
-                12345,         # tick
-                "1000000"      # liquidity
-            ]
+    # Mock contract loading
+    async def mock_get_contract(*args, **kwargs):
+        contract = AsyncMock()
+        contract.functions = MagicMock()
+        contract.functions.getReserves = AsyncMock(return_value=[10**18, 10**6, 0])  # Mock liquidity
+        contract.functions.token0 = AsyncMock(return_value="0x4200000000000000000000000000000000000006")
+        contract.functions.getPair = AsyncMock(return_value="0x1234567890123456789012345678901234567890")
+        return contract
     
-    return MockContract()
-
-@pytest.fixture
-async def mock_pool():
-    """Mock pool instance with standard V3 interface."""
-    class MockPool:
-        def __init__(self):
-            self.token0 = "0x4200000000000000000000000000000000000006"
-            self.token1 = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            self.fee = 300
-            self.liquidity = "1000000"
-            self.sqrt_price_x96 = "1234567890"
-            self.tick = 12345
-        
-        async def slot0(self):
-            return [
-                self.sqrt_price_x96,
-                self.tick,
-                0,  # observation index
-                0,  # observation cardinality
-                0,  # observation cardinality next
-                0,  # fee protocol
-                True  # unlocked
-            ]
-        
-        async def liquidity(self):
-            return self.liquidity
+    manager.get_contract = mock_get_contract
+    manager._load_abi = AsyncMock(return_value={})
     
-    return MockPool()
+    return manager
 
 @pytest.fixture
-def event_loop():
-    """Create and provide a new event loop."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    loop.close()
+def weth_address():
+    """WETH token address on Base."""
+    return "0x4200000000000000000000000000000000000006"
 
 @pytest.fixture
-async def mock_cache():
-    """Mock cache implementation."""
-    class MockCache:
-        def __init__(self):
-            self._data = {}
-        
-        async def get(self, key: str) -> Optional[Any]:
-            return self._data.get(key)
-        
-        async def set(self, key: str, value: Any, expire: Optional[int] = None) -> None:
-            self._data[key] = value
-        
-        async def delete(self, key: str) -> None:
-            self._data.pop(key, None)
-    
-    return MockCache()
+def usdc_address():
+    """USDC token address on Base."""
+    return "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 @pytest.fixture
-async def mock_db():
-    """Mock database implementation."""
-    class MockDB:
-        async def execute(self, query: str, *args, **kwargs):
-            return True
-        
-        async def fetchone(self):
-            return [1]
-        
-        async def fetchall(self):
-            return [[1, 'test']]
-        
-        async def __aenter__(self):
-            return self
-        
-        async def __aexit__(self, *args):
-            pass
-    
-    return MockDB()
+def test_addresses():
+    """Common test addresses."""
+    return {
+        "WETH": "0x4200000000000000000000000000000000000006",
+        "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "USDT": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+    }
 
-def pytest_configure(config):
-    """Configure pytest."""
-    config.addinivalue_line(
-        "markers",
-        "integration: mark test as integration test"
-    )
-    config.addinivalue_line(
-        "markers",
-        "async_test: mark test as async test"
-    )
+@pytest.fixture
+def sushiswap_config():
+    """Create test configuration for Sushiswap."""
+    return {
+        "name": "Sushiswap",
+        "version": "v2",
+        "factory": "0x71524B4f93c58fcbF659783284E38825f0622859",
+        "router": "0x6BDED42c6DA8FD5E8147f8E45D437fBf146A3999",
+        "fee": 3000,
+        "enabled": True,
+        "min_liquidity_usd": 10000,
+        "weth_address": "0x4200000000000000000000000000000000000006"
+    }

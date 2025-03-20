@@ -1,5 +1,18 @@
-"""Dashboard package initialization."""
+"""
+Dashboard package for arbitrage bot monitoring.
 
-from .app import create_app
+This package provides:
+1. FastAPI application
+2. WebSocket server
+3. Metrics collection
+4. Real-time monitoring
+"""
 
-__all__ = ['create_app']
+from .app import app
+from .run import DashboardRunner, main
+
+__all__ = [
+    'app',
+    'DashboardRunner',
+    'main'
+]

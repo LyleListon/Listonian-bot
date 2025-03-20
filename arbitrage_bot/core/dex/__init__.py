@@ -7,12 +7,16 @@ This package provides functionality for:
 - Price fetching
 """
 
-from .dex_manager import DexManager, DexInfo
-from .path_finder import PathFinder, create_path_finder
+from .base_dex import BaseDEX
+from .base_dex_v2 import BaseDEXV2
+from .base_dex_v3 import BaseDEXV3
+from .swapbased import SwapBased
+from .sushiswap import SushiswapDEX
 
 __all__ = [
-    'DexManager',
-    'DexInfo',
-    'PathFinder',
-    'create_path_finder'
+    'BaseDEX',
+    'BaseDEXV2',
+    'BaseDEXV3',
+    'SwapBased',
+    'SushiswapDEX'
 ]

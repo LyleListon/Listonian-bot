@@ -8,32 +8,30 @@ This package provides:
 3. Cache management
 4. System monitoring
 5. Resource management
+6. WebSocket management
+7. Metrics collection
 """
 
 from typing import Dict, Any
-from .storage import get_db_pool
-from .cache import get_cache
-
-from .dex import (
-    get_token_symbol,
-    generate_pool_key,
-    get_pool_data,
-    calculate_price,
-    validate_liquidity,
-    BaseDEX,
-    SwapBasedV3
-)
-
+from .storage import StorageManager
+from .cache import get_cache, Cache
+from .websocket import get_ws_manager, WebSocketManager
+from .metrics import get_metrics_collector, MetricsCollector
 from .web3 import (
     Web3Manager,
-    load_contract,
-    build_transaction,
-    estimate_gas,
-    setup_event_filter,
-    batch_call,
-    handle_web3_error,
-    validate_address,
+    Web3Error,
     get_web3_manager
 )
 
-__all__ = ['get_db_pool', 'get_cache', 'get_token_symbol', 'generate_pool_key', 'get_pool_data', 'calculate_price', 'validate_liquidity', 'BaseDEX', 'SwapBasedV3', 'Web3Manager', 'load_contract', 'build_transaction', 'estimate_gas', 'setup_event_filter', 'batch_call', 'handle_web3_error', 'validate_address', 'get_web3_manager']
+__all__ = [
+    'StorageManager',
+    'get_cache',
+    'Cache',
+    'get_ws_manager',
+    'WebSocketManager',
+    'get_metrics_collector',
+    'MetricsCollector',
+    'Web3Manager',
+    'Web3Error',
+    'get_web3_manager'
+]

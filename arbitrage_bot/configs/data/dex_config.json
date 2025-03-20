@@ -59,6 +59,16 @@
             "min_liquidity_usd": 10000,
             "tick_spacing": 10,
             "weth_address": "0x4200000000000000000000000000000000000006"
+        },
+        "sushiswap": {
+            "name": "Sushiswap",
+            "version": "v2",
+            "factory": "0x71524B4f93c58fcbF659783284E38825f0622859",
+            "router": "0x6BDED42c6DA8FD5E8147f8E45D437fBf146A3999",
+            "fee": 3000,
+            "enabled": true,
+            "min_liquidity_usd": 10000,
+            "weth_address": "0x4200000000000000000000000000000000000006"
         }
     },
     "tokens": {

@@ -1,4 +1,12 @@
-"""Run the dashboard application."""
+"""
+Dashboard runner script.
+
+This module:
+1. Loads environment variables
+2. Initializes core components
+3. Starts the FastAPI application
+4. Handles graceful shutdown
+"""
 
 import os
 import sys
@@ -6,122 +14,147 @@ import asyncio
 import logging
 import signal
 from pathlib import Path
-from aiohttp import web
-from typing import Optional, Tuple, Any
+from typing import Optional
+from dotenv import load_dotenv
 
-# Add parent directory to sys.path to allow absolute imports
-sys.path.append(str(Path(__file__).parent.parent.parent))
+import uvicorn
+from web3 import Web3
 
-from arbitrage_bot.dashboard.app import create_app
+from ..core import (
+    get_cache,
+    get_ws_manager,
+    get_metrics_collector,
+    get_web3_manager
+)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 class DashboardRunner:
-    """Manages the dashboard application lifecycle."""
-
+    """Manages the dashboard lifecycle."""
+    
     def __init__(self):
         """Initialize the dashboard runner."""
-        self.app: Optional[web.Application] = None
-        self.runner: Optional[web.AppRunner] = None
-        self.site: Optional[web.TCPSite] = None
-        self.ws_server = None
-        self.shutdown_event = asyncio.Event()
-
-    async def setup(self) -> Tuple[web.Application, Any]:
-        """Set up the dashboard application."""
+        self.should_exit = False
+        self._setup_signal_handlers()
+        
+        # Load environment variables
+        env_path = Path(__file__).parent.parent.parent / '.env'
+        load_dotenv(env_path)
+        
+        # Validate environment variables
+        required_vars = [
+            'RPC_URL',
+            'CHAIN_ID',
+            'DASHBOARD_HOST',
+            'DASHBOARD_PORT'
+        ]
+        
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        if missing_vars:
+            logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+            sys.exit(1)
+            
+        # Validate RPC URL format
+        rpc_url = os.getenv('RPC_URL')
+        if not rpc_url.startswith(('http://', 'https://')):
+            logger.error(f"Invalid RPC URL format: {rpc_url}")
+            sys.exit(1)
+            
+        # Log configuration
+        logger.info(f"Using RPC URL: {rpc_url}")
+        logger.info(f"Using Chain ID: {os.getenv('CHAIN_ID')}")
+        
+        # Core components
+        self.cache = get_cache()
+        self.ws_manager = get_ws_manager()
+        self.metrics_collector = get_metrics_collector()
+        self.web3 = get_web3_manager()
+    
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown."""
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, self._handle_signal)
+    
+    def _handle_signal(self, signum: int, frame: Optional[object]) -> None:
+        """Handle termination signals."""
+        logger.info(f"Received signal {signum}")
+        self.should_exit = True
+    
+    async def initialize(self) -> None:
+        """Initialize core components."""
         try:
-            # Create application
-            self.app, self.ws_server = await create_app()
+            # Start cache cleanup task
+            await self.cache.start_cleanup_task()
             
-            # Set up runner
-            self.runner = web.AppRunner(self.app)
-            await self.runner.setup()
+            # Start WebSocket manager
+            await self.ws_manager.start()
             
-            # Configure port
-            port = int(os.environ.get('DASHBOARD_PORT', 5000))
-            self.site = web.TCPSite(self.runner, '0.0.0.0', port)
+            # Start metrics collector
+            await self.metrics_collector.start()
             
-            return self.app, self.ws_server
-
+            logger.info("Core components initialized")
+            
         except Exception as e:
-            logger.error(f"Failed to set up dashboard: {e}")
-            await self.cleanup()
+            logger.error(f"Error initializing components: {e}")
             raise
-
-    async def start(self):
-        """Start the dashboard server."""
+    
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
         try:
-            if not self.site:
-                raise RuntimeError("Dashboard not set up. Call setup() first.")
+            # Stop metrics collector
+            await self.metrics_collector.stop()
             
-            # Start the site
-            await self.site.start()
-            logger.info(f"Dashboard running on http://0.0.0.0:{self.site._port}")
+            # Stop WebSocket manager
+            await self.ws_manager.stop()
             
-            # Wait for shutdown signal
-            await self.shutdown_event.wait()
-
-        except Exception as e:
-            logger.error(f"Error running dashboard: {e}")
-            raise
-
-        finally:
-            await self.cleanup()
-
-    async def cleanup(self):
-        """Clean up resources."""
-        try:
-            # Stop WebSocket server
-            if self.ws_server:
-                await self.ws_server.stop()
-                logger.info("WebSocket server stopped")
-
-            # Clean up site and runner
-            if self.site:
-                await self.site.stop()
-                logger.info("Site stopped")
-
-            if self.runner:
-                await self.runner.cleanup()
-                logger.info("Runner cleaned up")
-
+            # Stop cache cleanup
+            await self.cache.stop_cleanup_task()
+            
+            logger.info("Core components stopped")
+            
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+            raise
 
-    def signal_handler(self, signame: str):
-        """Handle shutdown signals."""
-        logger.info(f"Received signal {signame}, initiating shutdown...")
-        self.shutdown_event.set()
-
-async def run_async():
-    """Run the async application."""
-    runner = DashboardRunner()
-    
-    # Set up signal handlers
-    for signame in ('SIGINT', 'SIGTERM'):
-        loop = asyncio.get_running_loop()
-        loop.add_signal_handler(
-            getattr(signal, signame),
-            lambda s=signame: runner.signal_handler(s)
-        )
-
+async def main() -> None:
+    """Main entry point."""
     try:
-        # Set up and start the dashboard
-        await runner.setup()
-        await runner.start()
+        # Initialize runner
+        runner = DashboardRunner()
+        await runner.initialize()
+        
+        # Configure uvicorn
+        config = uvicorn.Config(
+            "arbitrage_bot.dashboard.app:app",
+            host=os.getenv('DASHBOARD_HOST', '127.0.0.1'),
+            port=int(os.getenv('DASHBOARD_PORT', '8000')),
+            reload=False,
+            log_level="info"
+        )
+        
+        # Start server
+        server = uvicorn.Server(config)
+        
+        # Run until signal received
+        await server.serve()
         
     except Exception as e:
-        logger.error(f"Dashboard failed to start: {e}")
-        await runner.cleanup()
-        sys.exit(1)
+        logger.error(f"Error running dashboard: {e}")
+        raise
+    finally:
+        if 'runner' in locals():
+            await runner.cleanup()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(run_async())
+        asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt, shutting down...")
+        logger.info("Dashboard stopped by user")
     except Exception as e:
-        logger.error(f"Unhandled exception: {e}")
+        logger.error(f"Fatal error: {e}")
         sys.exit(1)

@@ -1,232 +1,234 @@
-# System Architecture Patterns
+# System Patterns and Architecture - March 18, 2025
 
-## Dashboard Architecture Patterns
+## Core Architectural Patterns
 
-### Component Patterns
-1. WebSocket Communication
+### 1. Async First
 ```python
-class WebSocketServer:
-    def __init__(self, app, components...):
-        self.app = app
-        self.clients = set()
-        self.initialize_components()
-
-    async def initialize(self):
-        # Set up routes and handlers
-        self.app.router.add_get('/ws', self.websocket_handler)
-        
-    async def websocket_handler(self, request):
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
-        self.clients.add(ws)
-        try:
-            await self._handle_connection(ws)
-        finally:
-            self.clients.remove(ws)
+async def get_pool_data(contract: Contract) -> Dict[str, Any]:
+    async with self._lock:
+        return await contract.functions.currentState().call()
 ```
+- All operations are async/await
+- Proper error handling
+- Resource management
+- Event loop consideration
 
-2. Event Loop Management
+### 2. Thread Safety
 ```python
-class AsyncManager:
+class Cache:
     def __init__(self):
-        self.loop = None
-        self.initialized = False
-
-    async def initialize(self):
-        self.loop = asyncio.get_running_loop()
-        self.initialized = True
-
-    async def cleanup(self):
-        if self.loop and self.loop.is_running():
-            # Cleanup tasks
-            pending = asyncio.all_tasks(self.loop)
-            for task in pending:
-                task.cancel()
-```
-
-3. Template Rendering
-```python
-# Setup
-aiohttp_jinja2.setup(
-    app,
-    loader=jinja2.FileSystemLoader('templates')
-)
-
-# Usage
-@aiohttp_jinja2.template('index.html')
-async def index(request):
-    return {'data': await get_data()}
-```
-
-### Resource Management Patterns
-
-1. Connection Management
-```python
-class ConnectionManager:
-    def __init__(self):
-        self._connections = set()
         self._lock = asyncio.Lock()
-
-    async def add(self, connection):
+        self._data = {}
+    
+    async def get(self, key: str) -> Optional[Any]:
         async with self._lock:
-            self._connections.add(connection)
-
-    async def remove(self, connection):
-        async with self._lock:
-            self._connections.remove(connection)
+            return self._data.get(key)
 ```
+- Lock management
+- Atomic operations
+- Resource protection
+- State consistency
 
-2. Resource Cleanup
+### 3. Resource Management
 ```python
-class ResourceManager:
-    async def __aenter__(self):
-        await self.initialize()
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        await self.cleanup()
-```
-
-### Error Handling Patterns
-
-1. WebSocket Error Handling
-```python
-async def handle_websocket(ws):
+@asynccontextmanager
+async def managed_resource():
     try:
-        async for msg in ws:
-            if msg.type == WSMsgType.TEXT:
-                await process_message(msg)
-            elif msg.type == WSMsgType.ERROR:
-                logger.error(f"WebSocket error: {ws.exception()}")
-    except Exception as e:
-        logger.error(f"WebSocket handler error: {e}")
+        yield resource
     finally:
-        await cleanup_connection(ws)
+        await cleanup()
 ```
+- Context managers
+- Cleanup handlers
+- Error boundaries
+- Resource tracking
 
-2. Request Error Handling
+### 4. Error Handling
 ```python
-@web.middleware
-async def error_middleware(request, handler):
-    try:
-        response = await handler(request)
-        return response
-    except web.HTTPException as ex:
-        return web.json_response({'error': str(ex)}, status=ex.status)
-    except Exception as ex:
-        logger.error(f"Unhandled error: {ex}")
-        return web.json_response(
-            {'error': 'Internal server error'},
-            status=500
-        )
+try:
+    async with timeout(5):
+        result = await operation()
+except TimeoutError:
+    logger.error("Operation timed out")
+    raise OperationError("Timeout")
+except Exception as e:
+    logger.error(f"Operation failed: {e}")
+    raise
 ```
+- Context preservation
+- Logging
+- Recovery strategies
+- Error propagation
 
-### Data Flow Patterns
+## Implementation Patterns
 
-1. Real-time Updates
+### 1. DEX Integration
 ```python
-class DataStream:
-    def __init__(self):
-        self.subscribers = set()
+class BaseDEX:
+    async def get_price(self) -> Decimal:
+        pass
 
-    async def publish(self, data):
-        for subscriber in self.subscribers:
-            try:
-                await subscriber.send_json(data)
-            except Exception as e:
-                logger.error(f"Failed to send to subscriber: {e}")
-                await self.remove_subscriber(subscriber)
+class SwapBasedV3(BaseDEX):
+    async def get_price(self) -> Decimal:
+        data = await self.get_pool_data()
+        return self.calculate_price(data)
 ```
+- Inheritance hierarchy
+- Interface contracts
+- Version specifics
+- Common functionality
 
-2. Data Caching
+### 2. Cache Management
 ```python
-class DataCache:
-    def __init__(self):
-        self.cache = {}
-        self.ttl = {}
-        self._lock = asyncio.Lock()
-
-    async def get(self, key):
+class Cache:
+    async def set(self, key: str, value: Any, ttl: int) -> None:
         async with self._lock:
-            if key in self.cache and not self._is_expired(key):
-                return self.cache[key]
-            return None
+            self._data[key] = {
+                'value': value,
+                'expires': time.time() + ttl
+            }
 ```
+- TTL-based invalidation
+- Thread safety
+- Memory efficiency
+- Background cleanup
 
-### Integration Patterns
-
-1. Memory Bank Integration
+### 3. Web3 Interaction
 ```python
-class MemoryBankMonitor:
-    def __init__(self, memory_bank):
-        self.memory_bank = memory_bank
-        self.subscribers = set()
-
-    async def start_monitoring(self):
-        while True:
-            state = await self.memory_bank.get_state()
-            await self.notify_subscribers(state)
-            await asyncio.sleep(5)
+class Web3Manager:
+    async def load_contract(self, address: str, abi: str) -> Contract:
+        if not Web3.is_checksum_address(address):
+            raise ValueError("Invalid address")
+        return self.web3.eth.contract(address=address, abi=abi)
 ```
+- Address validation
+- Contract caching
+- Provider management
+- Transaction building
 
-2. Storage Integration
+### 4. Storage Layer
 ```python
-class StorageMonitor:
-    def __init__(self, storage_hub):
-        self.storage_hub = storage_hub
-        self.metrics = {}
-
-    async def update_metrics(self):
-        self.metrics = {
-            'size': await self.storage_hub.get_size(),
-            'usage': await self.storage_hub.get_usage(),
-            'performance': await self.storage_hub.get_performance()
-        }
+class DatabasePool:
+    async def acquire(self):
+        async with self._lock:
+            conn = await self._pool.acquire()
+            return ManagedConnection(conn, self._pool)
 ```
+- Connection pooling
+- Resource cleanup
+- Transaction isolation
+- Error handling
 
-### Testing Patterns
+## Design Patterns
 
-1. WebSocket Testing
+### 1. Singleton Management
 ```python
-async def test_websocket():
-    async with aiohttp.ClientSession() as session:
-        async with session.ws_connect('/ws') as ws:
-            await ws.send_json({'type': 'test'})
-            response = await ws.receive_json()
-            assert response['status'] == 'ok'
+_instance = None
+
+def get_instance() -> Manager:
+    global _instance
+    if _instance is None:
+        _instance = Manager()
+    return _instance
 ```
+- Single source of truth
+- Lazy initialization
+- Thread safety
+- Resource sharing
 
-2. Template Testing
+### 2. Factory Methods
 ```python
-async def test_template_rendering():
-    async with client.get('/') as response:
-        assert response.status == 200
-        text = await response.text()
-        assert 'Dashboard' in text
+async def create_dex(name: str, version: int) -> BaseDEX:
+    if version == 3:
+        if name == "swapbased":
+            return SwapBasedV3()
+    raise ValueError("Unsupported DEX")
 ```
+- Object creation
+- Configuration
+- Dependency injection
+- Flexibility
 
-### Monitoring Patterns
-
-1. Performance Monitoring
+### 3. Observer Pattern
 ```python
-class PerformanceMonitor:
+class PriceMonitor:
+    async def notify_observers(self, price: Decimal) -> None:
+        for observer in self._observers:
+            await observer.on_price_change(price)
+```
+- Event notification
+- State changes
+- Decoupling
+- Async updates
+
+### 4. Strategy Pattern
+```python
+class ArbitrageStrategy:
+    async def execute(self, path: List[Pool]) -> Decimal:
+        return await self._strategy.calculate_profit(path)
+```
+- Interchangeable algorithms
+- Runtime selection
+- Clean separation
+- Easy extension
+
+## Best Practices
+
+### 1. Validation
+```python
+def validate_address(address: str) -> bool:
+    if not Web3.is_address(address):
+        raise ValueError("Invalid address format")
+    return Web3.to_checksum_address(address)
+```
+- Input validation
+- Type checking
+- Error messages
+- Early returns
+
+### 2. Logging
+```python
+logger = logging.getLogger(__name__)
+logger.info("Operation started")
+try:
+    result = await operation()
+except Exception as e:
+    logger.error(f"Operation failed: {e}", exc_info=True)
+```
+- Consistent format
+- Error tracking
+- Performance monitoring
+- Debugging support
+
+### 3. Configuration
+```python
+class Config:
     def __init__(self):
-        self.metrics = {}
-
-    async def record_metric(self, name, value):
-        timestamp = time.time()
-        if name not in self.metrics:
-            self.metrics[name] = []
-        self.metrics[name].append((timestamp, value))
+        self.load_env()
+        self.validate()
 ```
+- Environment variables
+- Validation
+- Defaults
+- Documentation
 
-2. Health Monitoring
+### 4. Testing
 ```python
-class HealthMonitor:
-    async def check_health(self):
-        return {
-            'websocket': await self.check_websocket(),
-            'memory': await self.check_memory(),
-            'storage': await self.check_storage(),
-            'web3': await self.check_web3()
-        }
+@pytest.mark.asyncio
+async def test_operation():
+    async with MockResource() as resource:
+        result = await operation(resource)
+        assert result.status == "success"
+```
+- Async testing
+- Mocking
+- Fixtures
+- Coverage
+
+Remember:
+- Always use async/await
+- Maintain thread safety
+- Handle errors properly
+- Clean up resources
+- Validate inputs
+- Log operations

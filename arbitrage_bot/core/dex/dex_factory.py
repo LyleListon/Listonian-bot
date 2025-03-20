@@ -13,6 +13,7 @@ from .swapbased import SwapBasedDEX
 from .uniswap_v3 import UniswapV3DEX
 from .rocketswap import RocketSwapDEX
 from .aerodrome import AerodromeDEX
+from .sushiswap import SushiswapDEX
 from ..web3.web3_manager import Web3Manager
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class DEXType(Enum):
     UNISWAP_V3 = "uniswap_v3"
     ROCKETSWAP = "rocketswap"
     AERODROME = "aerodrome"
+    SUSHISWAP = "sushiswap"
 
 class DEXFactory:
     """Factory for creating and managing DEX instances."""
@@ -41,7 +43,8 @@ class DEXFactory:
         DEXType.SWAPBASED: DEXProtocol.V2,
         DEXType.UNISWAP_V3: DEXProtocol.V3,
         DEXType.ROCKETSWAP: DEXProtocol.V2,
-        DEXType.AERODROME: DEXProtocol.V2
+        DEXType.AERODROME: DEXProtocol.V2,
+        DEXType.SUSHISWAP: DEXProtocol.V2
     }
 
     # Implementation mapping
@@ -52,6 +55,8 @@ class DEXFactory:
         DEXType.UNISWAP_V3: UniswapV3DEX,
         DEXType.ROCKETSWAP: RocketSwapDEX,
         DEXType.AERODROME: AerodromeDEX
+,
+        DEXType.SUSHISWAP: SushiswapDEX
     }
 
     # Required config keys for each protocol

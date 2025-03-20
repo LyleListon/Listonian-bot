@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Bot Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%232196f3' stroke='white' stroke-width='2'/><path d='M10 16l4-4 4 4 4-4M10 20l4-4 4 4 4-4' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2196f3;
+        }
+        .metric-subtitle {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online {
+            background-color: #4caf50;
+        }
+        .status-offline {
+            background-color: #f44336;
+        }
+        .error-message {
+            color: #f44336;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .trend-indicator {
+            font-size: 14px;
+            margin-left: 8px;
+        }
+        .trend-up {
+            color: #4caf50;
+        }
+        .trend-down {
+            color: #f44336;
+        }
+        .block-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .block-speed {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background-color: #4caf50;
+            color: white;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Arbitrage Bot Dashboard</h1>
+                <div id="connection-status">
+                    <span class="status-indicator status-offline"></span>
+                    Connecting...
+                </div>
+            </div>
+            <div id="uptime" style="text-align: right; color: #666;">
+                Uptime: -
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-title">
+                    Blockchain Status
+                    <span id="blocks-per-minute" class="trend-indicator"></span>
+                </div>
+                <div id="blockchain-status">
+                    <div class="metric-value">-</div>
+                    <div class="error-message"></div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Current Block</div>
+                <div class="block-info">
+                    <div id="current-block" class="metric-value tooltip">
+                        -
+                        <span class="tooltip-text">
+                            Direct RPC connection provides real-time block updates faster than block explorers
+                        </span>
+                    </div>
+                    <div class="block-speed">Real-time</div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Gas Price</div>
+                <div id="gas-price" class="metric-value">-</div>
+                <div id="gas-trend" class="metric-subtitle">-</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        const reconnectDelay = 2000;
+
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.querySelector('#connection-status').innerHTML = `
+                    <span class="status-indicator status-online"></span>
+                    Connected
+                `;
+                reconnectAttempts = 0;
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                document.querySelector('#connection-status').innerHTML = `
+                    <span class="status-indicator status-offline"></span>
+                    Disconnected
+                `;
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    setTimeout(connectWebSocket, reconnectDelay);
+                    reconnectAttempts++;
+                }
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data === 'pong') return;
+                updateDashboard(data);
+            };
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                if (data.blockchain_connected) {
+                    document.querySelector('#blockchain-status').innerHTML = `
+                        <div class="metric-value">Online</div>
+                    `;
+                    document.querySelector('#current-block').textContent = 
+                        data.block_number;
+                    
+                    // Format gas price from wei to gwei
+                    const gasGwei = (data.gas_price / 1e9).toFixed(2);
+                    document.querySelector('#gas-price').textContent = 
+                        `${gasGwei} Gwei`;
+                } else {
+                    document.querySelector('#blockchain-status').innerHTML = `
+                        <div class="metric-value">Offline</div>
+                        <div class="error-message">${data.blockchain_error || 'Connection failed'}</div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        // Initialize
+        connectWebSocket();
+        fetchStatus();
+        setInterval(fetchStatus, 2000); // Refresh every 2 seconds
+
+        // Keep connection alive
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('ping');
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

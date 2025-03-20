@@ -1,81 +1,238 @@
-# Technical Context
+# Technical Context - March 18, 2025
 
-## Web3 Client Implementation (Updated 2025-03-13)
+## Technology Stack
 
-The Web3 client has been updated to use pure async/await patterns with direct RPC calls:
+### Core Technologies
+- Python 3.12+
+- Web3.py
+- asyncio
+- aiohttp
+- SQLAlchemy (async)
 
-- Uses AsyncWeb3 with AsyncHTTPProvider for better async support
-- Implements proper resource management with initialization locks
-- Handles PoA chains through direct RPC calls instead of middleware
-- Includes robust error handling and retry mechanisms
-- Features detailed logging for debugging and monitoring
+### Infrastructure
+- Base Mainnet
+- Private RPC endpoints
+- Flashbots RPC (pending)
+- Multicall contract
 
-Key improvements:
-- Async initialization with timeout and retries
-- Thread-safe operations with locks
-- Resource cleanup on shutdown
-- Direct RPC calls for better performance
-- Standardized error handling
+### Development Tools
+- VSCode
+- pytest
+- mypy
+- black
+- isort
 
-## Dashboard Implementation (Added 2025-03-13)
+## Implementation Details
 
-A new FastAPI-based dashboard has been implemented for monitoring blockchain status:
+### Web3 Layer (`arbitrage_bot/core/web3.py`)
+```python
+class Web3Manager:
+    """Manages Web3 interactions and contract operations."""
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self._contract_cache = {}
+        self._provider = None
+```
+- Thread-safe contract management
+- Connection pooling
+- Error handling
+- Transaction building
 
-### Architecture
-- Proper Python package structure
-- FastAPI for async API endpoints
-- Uvicorn for ASGI server
-- Organized module hierarchy
+### Storage Layer (`arbitrage_bot/core/storage.py`)
+```python
+class DatabasePool:
+    """Manages database connections and transactions."""
+    async def acquire(self):
+        async with self._lock:
+            return await self._pool.acquire()
+```
+- Connection pooling
+- Transaction isolation
+- Resource cleanup
+- Error context
 
-### Features
-- Root endpoint with API documentation
-- Status endpoint showing:
-  - Connection status
-  - Latest block number
-  - Current gas price
-  - Chain information
-- Proper error handling and status codes
-- Resource management for Web3 client
+### Cache System (`arbitrage_bot/core/cache.py`)
+```python
+class Cache:
+    """Thread-safe TTL cache implementation."""
+    async def get(self, key: str) -> Optional[Any]:
+        async with self._lock:
+            return await self._get_with_ttl(key)
+```
+- TTL-based invalidation
+- Memory management
+- Thread safety
+- Background cleanup
 
-### Endpoints
-- `/` - API documentation and endpoint listing
-- `/status` - Blockchain connection status
+### DEX Interface (`arbitrage_bot/core/dex.py`)
+```python
+class BaseDEX:
+    """Base class for DEX implementations."""
+    async def get_price(self, token_pair: Tuple[str, str]) -> Decimal:
+        async with self._lock:
+            return await self._fetch_price(token_pair)
+```
+- Version abstraction
+- Price calculation
+- Liquidity validation
+- Error handling
 
-### Error Handling
-- Initialization errors with retries
-- Timeout handling for RPC calls
-- Proper HTTP status codes
-- Detailed error messages
+## Key Components
 
-## Current Technical Stack
+### Contract Interaction
+1. Loading
+   ```python
+   contract = await load_contract(address, abi_name)
+   ```
 
-- Python 3.12+ for async support
-- FastAPI for web framework
-- Web3.py with async support
-- Uvicorn for ASGI server
-- AsyncHTTPProvider for RPC calls
+2. Execution
+   ```python
+   async with timeout(5):
+       result = await contract.functions.method().call()
+   ```
 
-## Integration Points
+3. Transaction Building
+   ```python
+   tx = await build_transaction(params)
+   signed = await sign_transaction(tx)
+   ```
 
-The Web3 client and dashboard are integrated with:
-- Base mainnet RPC endpoint
-- Production configuration system
-- Logging infrastructure
-- Error handling framework
+### Data Management
+1. Storage
+   ```python
+   async with pool.acquire() as conn:
+       await conn.execute(query, params)
+   ```
+
+2. Caching
+   ```python
+   value = await cache.get(key)
+   if value is None:
+       value = await fetch_data()
+       await cache.set(key, value, ttl=300)
+   ```
+
+3. State Management
+   ```python
+   async with state_lock:
+       current = await get_state()
+       updated = await update_state(current)
+   ```
+
+## Critical Paths
+
+### Price Discovery
+1. Pool Data
+   ```python
+   data = await pool.get_current_state()
+   price = calculate_price(data)
+   ```
+
+2. Validation
+   ```python
+   if not validate_liquidity(data, min_amount):
+       raise InsufficientLiquidity()
+   ```
+
+### Transaction Flow
+1. Preparation
+   ```python
+   bundle = await prepare_bundle(transactions)
+   simulation = await simulate_bundle(bundle)
+   ```
+
+2. Execution
+   ```python
+   if simulation.profit > min_profit:
+       result = await execute_bundle(bundle)
+   ```
+
+## Error Handling
+
+### Pattern
+```python
+try:
+    async with timeout(TIMEOUT):
+        result = await operation()
+except TimeoutError:
+    logger.error("Operation timed out")
+    raise OperationTimeout()
+except Exception as e:
+    logger.error(f"Operation failed: {e}")
+    raise
+```
+
+### Recovery
+```python
+async def with_retry(operation, max_attempts=3):
+    for attempt in range(max_attempts):
+        try:
+            return await operation()
+        except RetryableError:
+            await asyncio.sleep(1 << attempt)
+```
+
+## Performance Considerations
+
+### Concurrency
+- Use asyncio for I/O operations
+- Implement proper locking
+- Batch operations where possible
+- Monitor resource usage
+
+### Caching
+- TTL-based invalidation
+- Memory limits
+- Thread safety
+- Background cleanup
+
+### Resource Management
+- Connection pooling
+- Context managers
+- Cleanup handlers
+- Memory monitoring
+
+## Security Measures
+
+### Input Validation
+```python
+def validate_address(address: str) -> str:
+    if not Web3.is_address(address):
+        raise ValueError("Invalid address")
+    return Web3.to_checksum_address(address)
+```
+
+### Transaction Safety
+```python
+async def validate_transaction(tx: Dict[str, Any]) -> bool:
+    simulation = await simulate_transaction(tx)
+    return (
+        simulation.success and
+        simulation.gas_used < MAX_GAS and
+        simulation.price_impact < MAX_IMPACT
+    )
+```
 
 ## Next Steps
+1. Flashbots Integration
+   - Bundle submission
+   - MEV protection
+   - Transaction privacy
 
-1. Add metrics collection for:
-   - Block processing time
-   - Gas price trends
-   - RPC call latency
+2. Multi-path Arbitrage
+   - Path optimization
+   - Price impact analysis
+   - Risk assessment
 
-2. Implement monitoring for:
-   - Connection health
-   - Error rates
-   - Resource usage
+3. Performance Optimization
+   - Batch operations
+   - Cache tuning
+   - Resource monitoring
 
-3. Consider adding:
-   - WebSocket support for real-time updates
-   - Historical data tracking
-   - Performance analytics
+Remember:
+- Always use async/await
+- Implement proper locking
+- Handle errors appropriately
+- Clean up resources
+- Validate inputs
+- Monitor performance

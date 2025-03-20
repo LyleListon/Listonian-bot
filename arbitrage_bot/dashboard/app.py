@@ -1,236 +1,228 @@
-"""Flask application for arbitrage bot dashboard."""
+"""
+FastAPI dashboard application.
 
-import asyncio
-from ..utils.async_manager import manager, async_init
+This module provides:
+1. WebSocket endpoint for real-time updates
+2. REST endpoints for static data
+3. Error handling middleware
+4. CORS configuration
+"""
 
 import os
-import json
+import asyncio
 import logging
-import time
+from typing import Any, Dict
 from datetime import datetime
-from typing import Any, Optional, Tuple
-from aiohttp import web
-import aiohttp_cors
-from aiohttp_sse import sse_response
-import aiohttp_jinja2
-import jinja2
-from ..core.memory import get_memory_bank
-from ..core.storage.factory import create_storage_hub
-from ..core.distribution.manager import DistributionManager
-from ..core.distribution.config import DistributionConfig
-from ..core.execution.manager import ExecutionManager
-from ..core.execution.config import ExecutionConfig
-from ..core.web3.web3_manager import create_web3_manager
-from ..core.metrics.portfolio_tracker import create_portfolio_tracker
-from ..core.gas.gas_optimizer import create_gas_optimizer
-from ..core.analysis import create_memory_market_analyzer
-from ..utils.config_loader import load_config, resolve_secure_values
-from decimal import Decimal
-from .websocket_server import WebSocketServer
+from pathlib import Path
+from dotenv import load_dotenv
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+from ..core import (
+    get_cache,
+    get_ws_manager,
+    get_metrics_collector,
+    get_web3_manager,
+    Web3Error
+)
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
-INIT_WAIT = 2  # Wait 2 seconds between component initializations
+# Create FastAPI app
+app = FastAPI(
+    title="Arbitrage Bot Dashboard",
+    description="Real-time monitoring dashboard for arbitrage bot",
+    version="1.0.0"
+)
 
-async def create_app(memory_bank=None, storage_hub=None) -> Tuple[web.Application, WebSocketServer]:
-    """Create aiohttp application."""
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+# Mount static files
+static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+# Initialize core components
+logger.info(f"Initializing with RPC URL: {os.getenv('RPC_URL')}")
+cache = get_cache()
+ws_manager = get_ws_manager()
+metrics_collector = get_metrics_collector()
+web3 = get_web3_manager()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize components on startup."""
     try:
-        # Initialize async manager
-        try:
-            await async_init()
-            logger.info("Successfully initialized async event loop")
-        except Exception as e:
-            logger.error("Failed to initialize async manager: %s", str(e))
-            raise
+        # Initialize Web3 first
+        await web3.initialize()
         
-        # Initialize aiohttp app with absolute paths
-        dashboard_dir = os.path.dirname(os.path.abspath(__file__))
-        app = web.Application()
+        # Then start other components
+        await ws_manager.start()
+        await metrics_collector.start()
+        await cache.start_cleanup_task()
         
-        # Set up jinja2 templates
-        aiohttp_jinja2.setup(
-            app,
-            loader=jinja2.FileSystemLoader(os.path.join(dashboard_dir, 'templates'))
-        )
-        
-        # Set up static files
-        app.router.add_static('/static', os.path.join(dashboard_dir, 'static'))
-        
-        # Configure CORS
-        cors = aiohttp_cors.setup(app, defaults={
-            "*": aiohttp_cors.ResourceOptions(
-                allow_credentials=True,
-                expose_headers="*",
-                allow_headers="*"
-            )
-        })
-
-        # Load production config
-        config = load_config()
-
-        # Resolve secure values in config
-        config = resolve_secure_values(config)
-        logger.info("Resolved secure values in config")
-
-        # Initialize components with delays between each
-        web3_manager = await create_web3_manager(config)
-        await asyncio.sleep(INIT_WAIT)
-
-        # Use provided memory_bank or create new one
-        if memory_bank is None:
-            memory_bank = await get_memory_bank()
-        await asyncio.sleep(INIT_WAIT)
-
-        # Use provided storage_hub or create new one
-        if storage_hub is None:
-            storage_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'storage')
-            os.makedirs(storage_path, exist_ok=True)
-            storage_hub = await create_storage_hub(base_path=storage_path, memory_bank=memory_bank)
-        await asyncio.sleep(INIT_WAIT)
-
-        market_analyzer = await create_memory_market_analyzer(web3_manager, config)
-        await asyncio.sleep(INIT_WAIT)
-
-        portfolio_tracker = await create_portfolio_tracker(
-            web3_manager=web3_manager,
-            wallet_address=web3_manager.wallet_address,
-            config=config
-        )
-        await asyncio.sleep(INIT_WAIT)
-
-        # Initialize distribution manager
-        distribution_config = DistributionConfig(
-            max_exposure_per_dex=Decimal('1.0'),
-            max_exposure_per_pair=Decimal('0.5'),
-            min_liquidity_threshold=Decimal('10000'),
-            rebalance_threshold=Decimal('0.2'),
-            gas_price_weight=0.3,
-            liquidity_weight=0.3,
-            volume_weight=0.2,
-            success_rate_weight=0.2
-        )
-        distribution_manager = DistributionManager(
-            config=distribution_config,
-            memory_bank=memory_bank,
-            storage_hub=storage_hub
-        )
-        await distribution_manager.initialize()
-        await asyncio.sleep(INIT_WAIT)
-        
-        # Initialize execution manager
-        execution_config = ExecutionConfig(
-            max_slippage=Decimal("0.005"),
-            gas_limit=300000,
-            max_gas_price=Decimal("100"),
-            retry_attempts=3,
-            retry_delay=5,
-            confirmation_blocks=2,
-            timeout=60
-        )
-        execution_manager = ExecutionManager(
-            config=execution_config,
-            web3=web3_manager.w3,
-            distribution_manager=distribution_manager,
-            memory_bank=memory_bank
-        )
-        await execution_manager.initialize()
-        await asyncio.sleep(INIT_WAIT)
-        
-        # Initialize gas optimizer
-        gas_optimizer = await create_gas_optimizer(
-            dex_manager=None,  # Not needed for dashboard
-            web3_manager=web3_manager
-        )
-        logger.info("Initializing gas optimizer...")
-        await gas_optimizer.initialize()
-        await asyncio.sleep(INIT_WAIT)
-
-        # Routes
-        @aiohttp_jinja2.template('index.html')
-        async def index(request):
-            """Render dashboard index page."""
-            return {}
-
-        @aiohttp_jinja2.template('metrics.html')
-        async def metrics(request):
-            """Render metrics dashboard page."""
-            return {}
-
-        @aiohttp_jinja2.template('opportunities.html')
-        async def opportunities(request):
-            """Render opportunities page."""
-            return {}
-
-        @aiohttp_jinja2.template('history.html')
-        async def history(request):
-            """Render history page."""
-            return {}
-
-        @aiohttp_jinja2.template('analytics.html')
-        async def analytics(request):
-            """Render analytics page."""
-            return {}
-
-        @aiohttp_jinja2.template('memory.html')
-        async def memory(request):
-            """Render memory page."""
-            return {}
-
-        @aiohttp_jinja2.template('storage.html')
-        async def storage(request):
-            """Render storage page."""
-            return {}
-
-        @aiohttp_jinja2.template('distribution.html')
-        async def distribution(request):
-            """Render distribution page."""
-            return {}
-
-        @aiohttp_jinja2.template('execution.html')
-        async def execution(request):
-            """Render execution page."""
-            return {}
-
-        @aiohttp_jinja2.template('settings.html')
-        async def settings(request):
-            """Render settings page."""
-            return {}
-
-        # Add routes
-        app.router.add_get('/', index)
-        app.router.add_get('/metrics', metrics)
-        app.router.add_get('/opportunities', opportunities)
-        app.router.add_get('/history', history)
-        app.router.add_get('/analytics', analytics)
-        app.router.add_get('/memory', memory)
-        app.router.add_get('/storage', storage)
-        app.router.add_get('/distribution', distribution)
-        app.router.add_get('/execution', execution)
-        app.router.add_get('/settings', settings)
-
-        # Initialize WebSocket server
-        ws_server = WebSocketServer(
-            app=app,
-            market_analyzer=market_analyzer,
-            portfolio_tracker=portfolio_tracker,
-            memory_bank=memory_bank,
-            storage_hub=storage_hub,
-            distribution_manager=distribution_manager,
-            execution_manager=execution_manager,
-            gas_optimizer=gas_optimizer
-        )
-        await ws_server.initialize()
-        await asyncio.sleep(INIT_WAIT)
-
-        # Start WebSocket server
-        await ws_server.start()
-        logger.info("WebSocket server started")
-
-        return app, ws_server
-
+        logger.info("Dashboard components initialized")
     except Exception as e:
-        logger.error("Failed to create application: %s", str(e))
+        logger.error(f"Error during startup: {e}")
         raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    try:
+        await ws_manager.stop()
+        await metrics_collector.stop()
+        await cache.stop_cleanup_task()
+        logger.info("Dashboard components stopped")
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+        raise
+
+@app.get("/")
+async def root():
+    """Serve the dashboard frontend."""
+    return FileResponse(str(static_dir / "index.html"))
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time updates."""
+    try:
+        await websocket.accept()
+        await ws_manager.add_connection(websocket)
+        
+        try:
+            while True:
+                # Keep connection alive and handle incoming messages
+                data = await websocket.receive_text()
+                if data == "ping":
+                    await ws_manager.handle_ping(websocket)
+                    await websocket.send_text("pong")
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected")
+        finally:
+            await ws_manager.remove_connection(websocket)
+            
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        if not websocket.client_state.is_disconnected:
+            await websocket.close(code=1011)  # Internal error
+
+@app.get("/api/status")
+async def get_status() -> Dict[str, Any]:
+    """Get current system status."""
+    try:
+        status = {
+            "status": "running",
+            "uptime": str(datetime.utcnow() - metrics_collector._start_time),
+            "connections": ws_manager.connection_count,
+            "connection_details": ws_manager.get_connection_info(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # Try to get blockchain data
+        try:
+            status["block_number"] = await web3.get_block_number()
+            status["blockchain_connected"] = True
+        except Web3Error as e:
+            logger.warning(f"Blockchain data unavailable: {e}")
+            status["blockchain_connected"] = False
+            status["blockchain_error"] = str(e)
+            
+        return status
+        
+    except Exception as e:
+        logger.error(f"Error getting status: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.get("/api/metrics")
+async def get_metrics() -> Dict[str, Any]:
+    """Get current system metrics."""
+    try:
+        metrics = {
+            "system": await metrics_collector.get_system_metrics(),
+            "performance": await metrics_collector.get_performance_metrics(),
+            "errors": await metrics_collector.get_error_metrics(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # Try to get blockchain metrics
+        try:
+            metrics["blockchain"] = await metrics_collector.get_blockchain_metrics()
+        except Web3Error as e:
+            logger.warning(f"Blockchain metrics unavailable: {e}")
+            metrics["blockchain"] = {
+                "error": str(e),
+                "current_block": None,
+                "blocks_per_minute": None
+            }
+            
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Error getting metrics: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.get("/api/errors")
+async def get_errors() -> Dict[str, Any]:
+    """Get error metrics."""
+    try:
+        return await metrics_collector.get_error_metrics()
+    except Exception as e:
+        logger.error(f"Error getting error metrics: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.get("/api/performance")
+async def get_performance() -> Dict[str, Any]:
+    """Get performance metrics."""
+    try:
+        return await metrics_collector.get_performance_metrics()
+    except Exception as e:
+        logger.error(f"Error getting performance metrics: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.get("/api/connections")
+async def get_connections() -> Dict[str, Any]:
+    """Get WebSocket connection details."""
+    try:
+        return ws_manager.get_connection_info()
+    except Exception as e:
+        logger.error(f"Error getting connection info: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.get("/health")
+async def health_check() -> Dict[str, str]:
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat()
+    }

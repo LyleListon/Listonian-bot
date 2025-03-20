@@ -1,8 +1,16 @@
-"""Metrics package for tracking performance and portfolio."""
+"""
+Metrics collection and monitoring.
 
-from .portfolio_tracker import PortfolioTracker, create_portfolio_tracker
+This module provides:
+1. System metrics collection
+2. Performance monitoring
+3. Resource tracking
+4. Error rate calculation
+"""
+
+from .metrics import MetricsCollector, get_metrics_collector
 
 __all__ = [
-    'PortfolioTracker',
-    'create_portfolio_tracker'
+    'MetricsCollector',
+    'get_metrics_collector'
 ]
