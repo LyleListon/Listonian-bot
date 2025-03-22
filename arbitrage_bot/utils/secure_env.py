@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet
 from pathlib import Path
 import logging
 from dotenv import load_dotenv
+import binascii
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,34 @@ class SecureEnvironment:
             self.fernet.encrypt(value.encode())
         ).decode()
     
-    def decrypt_value(self, encrypted_value: str) -> str:
+    def decrypt_value(self, encrypted_value: str, key_name: str = None) -> str:
         """Decrypt a value"""
         try:
-            return self.fernet.decrypt(
+            logger.debug(f"Decrypting value for {key_name}")
+            decrypted = self.fernet.decrypt(
                 base64.urlsafe_b64decode(encrypted_value.encode())
             ).decode()
+            # Clean up the value - strip whitespace and ensure hex format for private keys
+            decrypted = decrypted.strip()
+            
+            # Handle base64 encoded private keys
+            if key_name == 'PRIVATE_KEY':
+                try:
+                    logger.debug(f"Attempting base64 decode for {key_name}")
+                    # First try base64 decode
+                    decoded = base64.b64decode(decrypted).decode()
+                    # Then try to convert to hex
+                    hex_value = binascii.hexlify(decoded.encode()).decode()
+                    if len(hex_value) == 64 and all(c in '0123456789abcdefABCDEF' for c in hex_value):
+                        logger.debug(f"Successfully decoded {key_name} to hex: {hex_value[:6]}...")
+                        return hex_value
+                except:
+                    # If base64 decode fails, check if it's already hex
+                    if len(decrypted) == 64 and all(c in '0123456789abcdefABCDEF' for c in decrypted):
+                        logger.debug(f"Value is already hex format: {decrypted[:6]}...")
+                        return decrypted
+                    logger.debug(f"Base64 decode failed for {key_name}, using raw value")
+            return decrypted
         except Exception as e:
             logger.error(f"Failed to decrypt value: {e}")
             return None
@@ -62,7 +85,7 @@ class SecureEnvironment:
             logger.debug(f"Loading secure value from {file_path}")
             with open(file_path, 'r') as f:
                 encrypted = f.read()
-            value = self.decrypt_value(encrypted)
+            value = self.decrypt_value(encrypted, name)
             if value:
                 logger.debug(f"Successfully loaded secure value for {name}")
             else:

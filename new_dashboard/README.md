@@ -1,124 +1,167 @@
 # Arbitrage Bot Dashboard
 
-A lightweight, modern dashboard for monitoring the arbitrage bot system. This implementation uses FastAPI and minimizes dependencies for improved reliability.
+A real-time monitoring dashboard for the arbitrage bot system, built with FastAPI and WebSocket for live updates.
 
 ## Features
 
-- **Real-time Monitoring**: View system status, wallet balance, network information and more
-- **Gas Price Tracking**: Visual chart of gas prices over time
-- **DEX Integration Status**: Monitor which DEXes are active
-- **Dynamic Allocation Settings**: View current balance allocation settings
-- **Responsive Design**: Works on desktop and mobile devices
-- **Fast & Reliable**: Minimal dependencies for improved stability
-- **Modern UI**: Clean, intuitive interface built with Bootstrap 5
+### 1. Blockchain Monitoring
+- Real-time block number tracking
+- Gas price monitoring
+- Network connection status
+- Chain ID verification
 
-## Setup & Installation
+### 2. Cache System Metrics
+- Cache hit ratio tracking
+- Cache size monitoring
+- TTL eviction statistics
+- Performance optimization insights
 
-### Prerequisites
+### 3. Performance Monitoring
+- Memory usage tracking
+- CPU utilization
+- Active connection count
+- Batch operation statistics
 
-- Python 3.10+ installed
-- Virtual environment (recommended)
-- Access to Ethereum RPC endpoint (for Base network)
+### 4. Security Metrics
+- Slippage violation tracking
+- Transaction validation status
+- Suspicious transaction detection
+- Risk assessment metrics
 
-### Installation
+### 5. DEX Integration Status
+- Active pool monitoring
+- Total liquidity tracking
+- Price update frequency
+- Integration health checks
 
-1. The dashboard dependencies will be automatically installed when you run the start script for the first time, or you can install them manually:
+## Technology Stack
 
+- **Backend**: FastAPI + Python 3.12+
+- **Frontend**: HTML + JavaScript
+- **Real-time Updates**: WebSocket
+- **Blockchain**: Web3.py
+- **Monitoring**: psutil
+
+## Setup
+
+1. Install dependencies:
 ```bash
-pip install -r new_dashboard/dashboard_requirements.txt
+pip install -r requirements.txt
 ```
 
-### Configuration
+2. Configure environment variables in `.env`:
+```env
+# Network Configuration
+RPC_URL=https://mainnet.base.org
+CHAIN_ID=8453
 
-The dashboard requires an RPC endpoint to connect to the blockchain. You can configure this in two ways:
+# Dashboard Configuration
+DASHBOARD_HOST=127.0.0.1
+DASHBOARD_PORT=3000
 
-1. **Environment Variables** (recommended):
-   - `BASE_RPC_URL`: Your RPC endpoint URL
-   - `WALLET_ADDRESS`: Your wallet address to monitor
-
-2. **Config Files**:
-   - The dashboard will check `configs/production.json` and `configs/config.json`
-   - It will use the first available file it finds
-
-### Starting the Dashboard
-
-#### Windows Command Prompt:
-
-```
-new_dashboard\start_dashboard.bat
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_FILE=logs/dashboard.log
 ```
 
-#### PowerShell:
-
-```
-.\new_dashboard\start_dashboard.ps1
-```
-
-#### Manual Start:
-
-```
-cd new_dashboard
-python app.py --host localhost --port 8080
+3. Start the dashboard:
+```bash
+./start_dashboard.ps1  # Windows
+# or
+./start_dashboard.sh   # Linux/Mac
 ```
 
-The dashboard will be available at: http://localhost:8080
+4. Access the dashboard:
+```
+http://127.0.0.1:3000
+```
 
-## Usage
+## API Endpoints
 
-The dashboard displays several key metrics:
+### WebSocket
+- `/ws` - Real-time metric updates
 
-- **Status Cards**: System status, wallet balance, uptime, and total profit
-- **Network Information**: Network name, block number, gas price, and wallet address
-- **Dynamic Allocation**: View current allocation settings
-- **DEX Status**: Active DEXes and their priorities
-- **Gas Price Chart**: Visual representation of gas prices
+### REST API
+- `GET /api/status` - Overall system status
+- `GET /api/metrics` - Detailed system metrics
+- `GET /api/cache` - Cache system metrics
+- `GET /api/performance` - Performance metrics
+- `GET /api/security` - Security metrics
+- `GET /api/dex` - DEX integration metrics
+- `GET /health` - Health check endpoint
 
-Debug information can be toggled by clicking the "Debug" button in the upper right corner.
+## Architecture
 
-## Troubleshooting
+The dashboard follows a modular architecture:
 
-### Common Issues
+1. **Web3 Layer**
+   - Blockchain connection management
+   - Transaction monitoring
+   - Gas price tracking
 
-1. **Dashboard shows "Not Connected"**:
-   - Check your RPC URL is correct
-   - Ensure you have internet connectivity
-   - Verify your RPC provider is operational
+2. **Metrics Collection**
+   - System resource monitoring
+   - Cache performance tracking
+   - Security metric aggregation
 
-2. **Wallet Balance shows "Not Available"**:
-   - Verify your wallet address is correctly configured
-   - Ensure the address is in the proper format (0x...)
+3. **Real-time Updates**
+   - WebSocket communication
+   - Event-driven updates
+   - Connection management
 
-3. **Missing DEXes or Configuration**:
-   - Check that your config.json file is properly formatted
-   - Ensure the DEXes section is configured correctly
+4. **Frontend**
+   - Responsive design
+   - Real-time data visualization
+   - Status indicators
 
-### Logs
+## Security Considerations
 
-Dashboard logs are stored in:
-- `logs/new_dashboard.log`
-
-## Differences from the Old Dashboard
-
-This new dashboard offers several improvements over the previous implementation:
-
-1. **Reliability**: Fewer dependencies and simpler architecture
-2. **Speed**: Faster loading and more responsive UI
-3. **Modern Interface**: Improved design and usability
-4. **Simplified Code**: Easier to maintain and extend
-5. **Better Error Handling**: More robust error reporting and recovery
+- Environment variables for sensitive configuration
+- CORS protection
+- Error handling and logging
+- Rate limiting (TODO)
+- Authentication (TODO)
 
 ## Development
 
-The dashboard code is organized as follows:
+### Adding New Metrics
 
-- `app.py`: Main FastAPI application
-- `templates/`: HTML templates (Jinja2)
-- `static/`: CSS, JavaScript, and other static assets
-- `dashboard_requirements.txt`: Required Python packages
-- `start_dashboard.bat` & `start_dashboard.ps1`: Startup scripts
+1. Add metric to the metrics dictionary in `app.py`:
+```python
+metrics = {
+    'new_category': {
+        'metric_name': initial_value
+    }
+}
+```
 
-To customize the dashboard:
+2. Create corresponding API endpoint:
+```python
+@app.get("/api/new_category")
+async def get_new_category_metrics():
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "metrics": metrics['new_category']
+    }
+```
 
-1. Modify `templates/index.html` for UI changes
-2. Update `static/css/styles.css` for styling
-3. Extend `app.py` to add new data or API endpoints
+3. Update the frontend to display the new metrics in `index.html`
+
+### Testing
+
+Run the development server with auto-reload:
+```bash
+python -m uvicorn app:app --reload --port 3000
+```
+
+## Contributing
+
+1. Follow the project's async/await patterns
+2. Maintain error handling standards
+3. Update documentation for new features
+4. Add appropriate logging
+5. Test thoroughly before submitting changes
+
+## License
+
+MIT License - See LICENSE file for details

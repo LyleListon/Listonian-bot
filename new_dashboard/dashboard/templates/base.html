@@ -9,8 +9,12 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/test.css') }}">
     
     <!-- JavaScript Libraries -->
-    <script src="{{ url_for('static', path='js/chart.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/moment.min.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js" 
+            integrity="sha512-TW5s0IT/IppJtu76UbysrBH9Hy/5X41OTAbQuffZFU6lQ1rdcLHzpU5BzVvr/YFykoiMYZVWlr/PX1mDcfM9Qg==" 
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js" 
+            integrity="sha512-qTXRIMyZIFb8iQcfjXWCO8+M5Tbc38Qi5WzdPOYZHIlZpzBHG3L3by84BBBOiRGiEb7KKtAOAs5qYdUiZiQNNQ==" 
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     
     <!-- Custom Styles -->
     {% block extra_css %}{% endblock %}
@@ -21,7 +25,7 @@
         <div class="container">
             <div class="card-header">
                 <!-- Logo and Brand -->
-                <div class="card-title">Test Dashboard</div>
+                <div class="card-title">Arbitrage Bot Dashboard</div>
                 
                 <!-- System Status Indicator -->
                 <div id="systemStatus">
@@ -61,7 +65,7 @@
 
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/test`;
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
 
             if (socket) {
                 socket.close();
@@ -103,9 +107,39 @@
         }
 
         function handleWebSocketMessage(data) {
+            // Update system status
+            if (data.type === 'system_update') {
+                updateSystemStatus(data.data);
+            }
+            
+            // Update metrics
+            if (data.type === 'metrics_update') {
+                updateMetrics(data.data);
+            }
+            
+            // Update memory state
+            if (data.type === 'memory_update') {
+                updateMemoryState(data.data);
+            }
+
             // Dispatch custom event for page-specific handlers
             const customEvent = new CustomEvent('websocket-message', { detail: data });
             document.dispatchEvent(customEvent);
+        }
+
+        function updateSystemStatus(status) {
+            if (status.uptime) {
+                const uptime = moment.duration(status.uptime, 'seconds').humanize();
+                document.getElementById('uptime').textContent = `Uptime: ${uptime}`;
+            }
+        }
+
+        function updateMetrics(metrics) {
+            // Page-specific metric updates will be handled by the custom event
+        }
+
+        function updateMemoryState(state) {
+            // Page-specific state updates will be handled by the custom event
         }
 
         function updateLastUpdate() {
@@ -115,6 +149,13 @@
 
         // Initialize WebSocket connection
         connectWebSocket();
+
+        // Keep-alive ping
+        setInterval(() => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
     </script>
 
     <!-- Page-specific JavaScript -->

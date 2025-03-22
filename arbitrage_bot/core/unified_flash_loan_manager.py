@@ -1,428 +1,298 @@
 """
-Unified Flash Loan Manager Module
+Enhanced Flash Loan Manager Module
 
-This module provides functionality for:
-- Flash loan execution
-- Flash loan validation
-- Profit calculation
-- Multi-path support
+This module provides advanced flash loan management with:
+- Multi-path routing optimization
+- Gas usage optimization
+- Bundle preparation and validation
+- Slippage protection
 """
 
-import logging
 import asyncio
+import logging
+from typing import Dict, List, Optional, Tuple, NamedTuple
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Set, Tuple
 from eth_typing import ChecksumAddress
 from web3 import Web3
 
-from ..utils.async_manager import with_retry, AsyncLock
-from .web3.interfaces import Web3Client, Transaction, ContractWrapper
-from .dex.dex_manager import DexManager
-from .web3.balance_validator import BalanceValidator
+from ..utils.async_manager import AsyncLock
+from .interfaces import Transaction, TokenPair, LiquidityData
 from .web3.flashbots.flashbots_provider import FlashbotsProvider
-from .web3.errors import Web3Error
-from .path_finder import ArbitragePath
+from .memory.memory_bank import MemoryBank
 
 logger = logging.getLogger(__name__)
 
-class UnifiedFlashLoanManager:
-    """Manages flash loan operations with multi-path support."""
+class RouteSegment(NamedTuple):
+    """Represents a segment in a multi-path route."""
+    dex_name: str
+    token_in: ChecksumAddress
+    token_out: ChecksumAddress
+    amount_in: int
+    min_amount_out: int
+    pool_fee: int
+
+class FlashLoanRoute(NamedTuple):
+    """Complete flash loan route with multiple segments."""
+    segments: List[RouteSegment]
+    total_profit: int
+    total_gas: int
+    success_probability: float
+
+class EnhancedFlashLoanManager:
+    """Enhanced flash loan management with advanced routing and optimization."""
 
     def __init__(
         self,
-        web3_manager: Web3Client,
-        dex_manager: DexManager,
-        balance_validator: BalanceValidator,
+        web3: Web3,
         flashbots_provider: FlashbotsProvider,
-        aave_pool: ChecksumAddress,
-        min_profit: int = 0,
-        max_parallel_pools: int = 10,
-        min_liquidity_ratio: float = 1.5,  # Require 150% of flash loan amount in liquidity
-        gas_buffer: float = 1.2  # 20% gas buffer for safety
+        memory_bank: MemoryBank,
+        min_profit_threshold: int = Web3.to_wei(0.01, 'ether'),  # 0.01 ETH
+        max_slippage: Decimal = Decimal('0.005'),  # 0.5%
+        max_paths: int = 3  # Maximum number of parallel paths
     ):
-        """
-        Initialize flash loan manager.
-
-        Args:
-            web3_manager: Web3 client instance
-            dex_manager: DEX manager instance
-            balance_validator: Balance validator instance
-            flashbots_provider: Flashbots provider instance
-            aave_pool: Aave pool address
-            min_profit: Minimum profit required (in wei)
-            max_parallel_pools: Maximum number of pools to scan in parallel
-            min_liquidity_ratio: Minimum ratio of pool liquidity to flash loan amount
-            gas_buffer: Gas buffer multiplier for safety
-        """
-        self.web3_manager = web3_manager
-        self.dex_manager = dex_manager
-        self.balance_validator = balance_validator
+        """Initialize the enhanced flash loan manager."""
+        self.web3 = web3
         self.flashbots_provider = flashbots_provider
-        self.aave_pool = aave_pool
-        self.min_profit = min_profit
-        self.max_parallel_pools = max_parallel_pools
-        self.min_liquidity_ratio = min_liquidity_ratio
-        self.gas_buffer = gas_buffer
+        self.memory_bank = memory_bank
+        
+        # Configuration
+        self.min_profit_threshold = min_profit_threshold
+        self.max_slippage = max_slippage
+        self.max_paths = max_paths
+        
+        # Thread safety
+        self._route_lock = AsyncLock()
+        self._bundle_lock = AsyncLock()
+        
+        # Cache settings
+        self._route_cache: Dict[str, Tuple[FlashLoanRoute, int]] = {}  # (route, timestamp)
+        self._cache_ttl = 30  # 30 seconds TTL
 
-        # Initialize locks
-        self._validation_lock = AsyncLock()
-        self._execution_lock = AsyncLock()
-
-        # Initialize cache
-        self._liquidity_cache: Dict[str, Tuple[int, int]] = {}  # (amount, timestamp)
-        self._cache_ttl = 30  # 30 seconds
-
-        # Initialize Aave pool contract
-        self.aave_pool_contract = self.web3_manager.contract(
-            address=aave_pool,
-            abi=[{
-                "inputs": [
-                    {"name": "assets", "type": "address[]"},
-                    {"name": "amounts", "type": "uint256[]"},
-                    {"name": "premiums", "type": "uint256[]"},
-                    {"name": "initiator", "type": "address"},
-                    {"name": "params", "type": "bytes"}
-                ],
-                "name": "flashLoan",
-                "outputs": [{"name": "", "type": "bool"}],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            }]
-        )
-
-        logger.info(
-            f"Flash loan manager initialized with min profit: {min_profit}"
-        )
-
-    async def _batch_get_pool_info(
+    async def prepare_flash_loan_bundle(
         self,
-        pool_addresses: Set[ChecksumAddress]
-    ) -> Dict[ChecksumAddress, Dict[str, Any]]:
-        """Get pool info in batches using request batching."""
-        try:
-            # Create contract wrappers for each pool
-            contracts = {
-                addr: self.web3_manager.contract(
-                    address=addr,
-                    abi=[{
-                        "name": "getReserves",
-                        "type": "function",
-                        "inputs": [],
-                        "outputs": [
-                            {"type": "uint112", "name": "reserve0"},
-                            {"type": "uint112", "name": "reserve1"},
-                            {"type": "uint32", "name": "blockTimestampLast"}
-                        ]
-                    }]
-                ) for addr in pool_addresses
-            }
-
-            # Get reserves for each pool
-            results = {}
-            for addr, contract in contracts.items():
-                try:
-                    reserves = await contract.functions.getReserves().call()
-                    results[addr] = {
-                        'reserve0': reserves[0],
-                        'reserve1': reserves[1],
-                        'blockTimestampLast': reserves[2]
-                    }
-                except Exception as e:
-                    logger.error(f"Failed to get reserves for pool {addr}: {e}")
-                    continue
-
-            return results
-
-        except Exception as e:
-            logger.error(f"Failed to batch get pool info: {e}")
-            raise Web3Error(str(e), "pool_info_error", {"pools": list(pool_addresses)})
-
-    async def _get_pool_liquidity(
-        self,
-        pool_addresses: Set[ChecksumAddress]
-    ) -> Dict[ChecksumAddress, int]:
-        """Get liquidity for multiple pools in parallel."""
-        async def check_single_pool(pool: ChecksumAddress) -> Tuple[ChecksumAddress, int]:
+        token_pair: TokenPair,
+        amount: int,
+        prices: Dict[str, Decimal]
+    ) -> List[Transaction]:
+        """
+        Prepare an optimized flash loan bundle.
+        
+        Args:
+            token_pair: Token pair for the arbitrage
+            amount: Amount of flash loan
+            prices: Current prices from different DEXs
+            
+        Returns:
+            List of transactions for the bundle
+        """
+        async with self._bundle_lock:
             try:
-                # Check cache first
-                cache_entry = self._liquidity_cache.get(pool)
-                if cache_entry:
-                    amount, timestamp = cache_entry
-                    block = await self.web3_manager.get_block('latest')
-                    if block and timestamp + self._cache_ttl > int(block['timestamp']):
-                        return pool, amount
-
-                pool_info = await self._batch_get_pool_info({pool})
-                liquidity = pool_info[pool].get('reserve0', 0)
-
-                # Update cache
-                block = await self.web3_manager.get_block('latest')
-                if block:
-                    self._liquidity_cache[pool] = (
-                        liquidity,
-                        int(block['timestamp'])
-                    )
-
-                return pool, liquidity
-            except Web3Error as e:
-                logger.error(f"Web3 error getting liquidity for pool {pool}: {e}")
-                raise
+                # Find optimal routes
+                routes = await self._find_optimal_routes(token_pair, amount, prices)
+                
+                # Calculate gas costs and validate profitability
+                gas_estimate = await self._estimate_total_gas(routes)
+                if not await self._validate_profitability(routes, gas_estimate):
+                    raise ValueError("Route not profitable after gas costs")
+                
+                # Prepare transactions
+                transactions = []
+                
+                # Add flash loan initialization
+                flash_loan_tx = await self._create_flash_loan_tx(amount)
+                transactions.append(flash_loan_tx)
+                
+                # Add route transactions
+                for route in routes:
+                    route_txs = await self._create_route_transactions(route)
+                    transactions.extend(route_txs)
+                
+                # Add flash loan repayment
+                repayment_tx = await self._create_repayment_tx(amount, routes)
+                transactions.append(repayment_tx)
+                
+                # Validate bundle
+                if not await self._validate_bundle(transactions):
+                    raise ValueError("Bundle validation failed")
+                
+                return transactions
+                
             except Exception as e:
-                logger.error(f"Failed to get liquidity for pool {pool}: {e}")
-                raise Web3Error(
-                    str(e), "liquidity_error",
-                    {"pool": pool}
-                )
+                logger.error(f"Failed to prepare flash loan bundle: {e}")
+                raise
 
-        # Process pools in batches
-        results = {}
-        for i in range(0, len(pool_addresses), self.max_parallel_pools):
-            batch = list(pool_addresses)[i:i + self.max_parallel_pools]
-            batch_results = await asyncio.gather(*[
-                check_single_pool(pool)
-                for pool in batch
-            ])
-            results.update(dict(batch_results))
-
-        return results
-
-    @with_retry(retries=3, delay=1.0)
-    async def validate_flash_loan(
+    async def _find_optimal_routes(
         self,
-        token_address: ChecksumAddress,
+        token_pair: TokenPair,
         amount: int,
-        expected_profit: int,
-        path: Optional[ArbitragePath] = None
+        prices: Dict[str, Decimal]
+    ) -> List[FlashLoanRoute]:
+        """Find optimal arbitrage routes using parallel paths."""
+        async with self._route_lock:
+            # Get active DEXs
+            dexes = await self.memory_bank.get_active_dexes()
+            
+            # Calculate potential routes
+            all_routes = []
+            for dex in dexes:
+                # Get pool data
+                pool_data = await dex.get_pool_data(token_pair)
+                
+                # Calculate optimal split if using this DEX
+                split_amount = await self._calculate_optimal_split(
+                    amount,
+                    pool_data,
+                    prices[dex.name]
+                )
+                
+                if split_amount > 0:
+                    # Calculate minimum output with slippage protection
+                    min_out = int(split_amount * (1 - self.max_slippage))
+                    
+                    # Create route segment
+                    segment = RouteSegment(
+                        dex_name=dex.name,
+                        token_in=token_pair.token0,
+                        token_out=token_pair.token1,
+                        amount_in=split_amount,
+                        min_amount_out=min_out,
+                        pool_fee=pool_data.fee
+                    )
+                    
+                    # Calculate route metrics
+                    gas_estimate = await dex.estimate_swap_gas(token_pair, split_amount)
+                    profit_estimate = await dex.calculate_profit(token_pair, split_amount)
+                    
+                    route = FlashLoanRoute(
+                        segments=[segment],
+                        total_profit=profit_estimate,
+                        total_gas=gas_estimate,
+                        success_probability=0.95  # Base probability
+                    )
+                    
+                    all_routes.append(route)
+            
+            # Sort routes by profitability
+            all_routes.sort(key=lambda x: x.total_profit, reverse=True)
+            
+            # Select top routes within max_paths limit
+            return all_routes[:self.max_paths]
+
+    async def _calculate_optimal_split(
+        self,
+        total_amount: int,
+        pool_data: LiquidityData,
+        current_price: Decimal
+    ) -> int:
+        """Calculate optimal amount split for a pool."""
+        # Consider pool liquidity
+        max_amount = min(total_amount, int(pool_data.liquidity * Decimal('0.3')))  # Use max 30% of liquidity
+        
+        # Calculate price impact
+        price_impact = await self._calculate_price_impact(max_amount, pool_data)
+        
+        # Adjust amount based on price impact
+        if price_impact > self.max_slippage:
+            # Reduce amount to meet slippage requirement
+            while price_impact > self.max_slippage and max_amount > 0:
+                max_amount = int(max_amount * Decimal('0.9'))  # Reduce by 10%
+                price_impact = await self._calculate_price_impact(max_amount, pool_data)
+        
+        return max_amount
+
+    async def _calculate_price_impact(
+        self,
+        amount: int,
+        pool_data: LiquidityData
+    ) -> Decimal:
+        """Calculate price impact for a given amount."""
+        return Decimal(str(amount)) / Decimal(str(pool_data.liquidity))
+
+    async def _estimate_total_gas(self, routes: List[FlashLoanRoute]) -> int:
+        """Estimate total gas cost for all routes."""
+        base_cost = 21000  # Base transaction cost
+        flash_loan_cost = 90000  # Approximate flash loan overhead
+        
+        total_gas = base_cost + flash_loan_cost
+        
+        for route in routes:
+            total_gas += route.total_gas
+            
+        return total_gas
+
+    async def _validate_profitability(
+        self,
+        routes: List[FlashLoanRoute],
+        gas_estimate: int
     ) -> bool:
-        """
-        Validate flash loan parameters.
+        """Validate if routes are profitable after gas costs."""
+        # Get current gas price
+        gas_price = await self.flashbots_provider._estimate_gas_price()
+        
+        # Calculate total gas cost
+        gas_cost = gas_estimate * gas_price.price
+        
+        # Calculate total profit
+        total_profit = sum(route.total_profit for route in routes)
+        
+        # Add safety margin
+        min_profit = int(self.min_profit_threshold * Decimal('1.1'))  # 10% safety margin
+        
+        return (total_profit - gas_cost) >= min_profit
 
-        Args:
-            token_address: Token address
-            amount: Flash loan amount
-            expected_profit: Expected profit
-            path: Optional arbitrage path for validation
+    async def _create_flash_loan_tx(self, amount: int) -> Transaction:
+        """Create flash loan initialization transaction."""
+        # Implementation depends on specific flash loan provider
+        raise NotImplementedError
 
-        Returns:
-            True if valid, False otherwise
-        """
-        try:
-            async with self._validation_lock:
-                # Check token balance
-                balance = await self.balance_validator.get_token_balance(
-                    token_address=token_address
-                )
-
-                if balance < amount:
-                    logger.warning(
-                        f"Insufficient balance: {balance} < {amount}"
-                    )
-                    return False
-
-                # Check minimum profit
-                if expected_profit < self.min_profit:
-                    logger.warning(
-                        f"Profit too low: {expected_profit} < {self.min_profit}"
-                    )
-                    return False
-
-                # Get pool addresses from path if provided
-                pool_addresses = set()
-                if path:
-                    pool_addresses = {step.pool_address for step in path.steps if step.pool_address}
-
-                # Check liquidity in all pools
-                pool_liquidity = await self._get_pool_liquidity(pool_addresses)
-
-                required_liquidity = amount * self.min_liquidity_ratio
-                for pool, liquidity in pool_liquidity.items():
-                    if liquidity < required_liquidity:
-                        logger.warning(
-                            f"Insufficient liquidity in pool {pool}: "
-                            f"{liquidity} < {required_liquidity}"
-                        )
-                        return False
-
-                # Validate price impact if path provided
-                if path:
-                    total_price_impact = 0
-                    for step in path.steps:
-                        impact = await self.dex_manager.calculate_price_impact(
-                            step.dex,
-                            step.pool_address,
-                            step.amount_in
-                        )
-                        total_price_impact += impact
-
-                    if total_price_impact > 0.05:  # 5% max price impact
-                        logger.warning(
-                            f"Price impact too high: {total_price_impact * 100}%"
-                        )
-                        return False
-
-                return True
-
-        except Web3Error as e:
-            logger.error(f"Web3 error validating flash loan: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Error validating flash loan: {e}")
-            raise Web3Error(
-                str(e), "validation_error",
-                {"token": token_address, "amount": amount}
-            )
-
-    @with_retry(retries=3, delay=1.0)
-    async def execute_flash_loan(
+    async def _create_route_transactions(
         self,
-        token_address: ChecksumAddress,
+        route: FlashLoanRoute
+    ) -> List[Transaction]:
+        """Create transactions for a route."""
+        transactions = []
+        
+        for segment in route.segments:
+            # Get DEX interface
+            dex = await self.memory_bank.get_dex(segment.dex_name)
+            
+            # Create swap transaction
+            tx = await dex.create_swap_transaction(
+                token_in=segment.token_in,
+                token_out=segment.token_out,
+                amount_in=segment.amount_in,
+                min_amount_out=segment.min_amount_out
+            )
+            
+            transactions.append(tx)
+        
+        return transactions
+
+    async def _create_repayment_tx(
+        self,
         amount: int,
-        target_contract: ChecksumAddress,
-        callback_data: bytes,
-        path: Optional[ArbitragePath] = None
-    ) -> Dict[str, Any]:
-        """
-        Execute flash loan with optional path-specific optimization.
+        routes: List[FlashLoanRoute]
+    ) -> Transaction:
+        """Create flash loan repayment transaction."""
+        # Implementation depends on specific flash loan provider
+        raise NotImplementedError
 
-        Args:
-            token_address: Token address
-            amount: Flash loan amount
-            target_contract: Target contract address
-            callback_data: Callback data
-            path: Optional arbitrage path for optimization
-
-        Returns:
-            Result dictionary with success status and transaction hash
-        """
+    async def _validate_bundle(self, transactions: List[Transaction]) -> bool:
+        """Validate the complete transaction bundle."""
         try:
-            async with self._execution_lock:
-                # Validate parameters
-                if not await self.validate_flash_loan(
-                    token_address=token_address,
-                    amount=amount,
-                    expected_profit=self.min_profit,
-                    path=path
-                ):
-                    return {
-                        'success': False,
-                        'error': 'Flash loan validation failed'
-                    }
-
-                # Create flash loan transaction
-                gas_price = await self.web3_manager.get_gas_price()
-                gas_limit = int(300000 * self.gas_buffer)  # Base gas * buffer
-
-                # Get current nonce
-                nonce = await self.web3_manager.get_nonce(
-                    self.web3_manager.wallet_address
-                )
-
-                # Prepare flash loan parameters
-                flash_loan_tx = await self.aave_pool_contract.functions.flashLoan(
-                    [token_address],  # assets
-                    [amount],  # amounts
-                    [0],  # modes (0 = no debt, 1 = stable, 2 = variable)
-                    target_contract,  # onBehalfOf
-                    callback_data  # params
-                ).build_transaction({
-                    'from': self.web3_manager.wallet_address,
-                    'gas': gas_limit,
-                    'gasPrice': gas_price,
-                    'nonce': nonce
-                })
-
-                # Create transaction bundle
-                transactions = [Transaction(flash_loan_tx)]
-
-                # Add path-specific transactions if provided
-                if path:
-                    for idx, step in enumerate(path.steps):
-                        swap_tx = await self.dex_manager.build_swap_transaction(
-                            step.dex,
-                            step.token_in,
-                            step.token_out,
-                            step.amount_in,
-                            step.amount_out * 0.995,  # 0.5% slippage tolerance
-                            gas_price=gas_price,
-                            gas_limit=int(150000 * self.gas_buffer),
-                            nonce=nonce + idx + 1
-                        )
-                        transactions.append(Transaction(swap_tx))
-
-                # Simulate bundle
-                simulation = await self.flashbots_provider.simulate_bundle(
-                    transactions=transactions
-                )
-
-                if not simulation['success']:
-                    return {
-                        'success': False,
-                        'error': simulation.get('error', 'Simulation failed')
-                    }
-
-                # Send bundle through Flashbots
-                bundle_hash = await self.flashbots_provider.send_bundle(
-                    transactions=transactions
-                )
-
-                return {
-                    'success': True,
-                    'bundle_hash': bundle_hash,
-                    'gas_used': simulation['gasUsed'],
-                    'profit': simulation['profitability']
-                }
-
-        except Web3Error as e:
-            logger.error(f"Web3 error executing flash loan: {e}")
-            raise
+            # Simulate bundle
+            simulation = await self.flashbots_provider.simulate_bundle(transactions)
+            
+            if not simulation['success']:
+                logger.error(f"Bundle simulation failed: {simulation['error']}")
+                return False
+            
+            # Validate profitability
+            return await self.flashbots_provider._validate_bundle_profit(
+                transactions,
+                simulation
+            )
+            
         except Exception as e:
-            logger.error(f"Error executing flash loan: {e}")
-            raise Web3Error(
-                str(e),
-                "execution_error",
-                {
-                    "token": token_address,
-                    "amount": amount,
-                    'success': False,
-                    'error': str(e)
-                })
-
-    async def close(self):
-        """Clean up resources."""
-        self._liquidity_cache.clear()
-
-async def create_unified_flash_loan_manager(
-    web3_manager: Web3Client,
-    dex_manager: DexManager,
-    balance_validator: BalanceValidator,
-    flashbots_provider: FlashbotsProvider,
-    config: Dict[str, Any]
-) -> UnifiedFlashLoanManager:
-    """
-    Create a new flash loan manager.
-
-    Args:
-        web3_manager: Web3 client instance
-        dex_manager: DEX manager instance
-        balance_validator: Balance validator instance
-        flashbots_provider: Flashbots provider instance
-        config: Configuration dictionary
-
-    Returns:
-        UnifiedFlashLoanManager instance
-    """
-    # Convert min_profit from ETH to wei
-    min_profit_eth = Decimal(config['flash_loan']['min_profit'])
-    min_profit_wei = web3_manager.to_wei(min_profit_eth, 'ether')
-
-    return UnifiedFlashLoanManager(
-        web3_manager=web3_manager,
-        dex_manager=dex_manager,
-        balance_validator=balance_validator,
-        flashbots_provider=flashbots_provider,
-        aave_pool=config['flash_loan']['aave_pool'],
-        min_profit=min_profit_wei,
-        max_parallel_pools=config['flash_loan'].get('max_parallel_pools', 10),
-        min_liquidity_ratio=config['flash_loan'].get('min_liquidity_ratio', 1.5),
-        gas_buffer=config['flash_loan'].get('gas_buffer', 1.2)
-    )
+            logger.error(f"Bundle validation failed: {e}")
+            return False

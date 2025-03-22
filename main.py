@@ -1,403 +1,274 @@
-"""
-Main Entry Point for Arbitrage Bot
-Coordinates all components and provides clean startup/shutdown
+w""
+Enhanced Arbitrage Bot Main Module
+
+This module orchestrates the enhanced arbitrage system with:
+- Parallel price monitoring
+- Multi-path arbitrage execution
+- Advanced risk management
+- Performance monitoring
 """
 
-import os
-import sys
+import asyncio
 import logging
 import signal
-import asyncio
-import subprocess
-from pathlib import Path
-from typing import Optional
-from dotenv import load_dotenv
+from typing import Dict, List, Optional
+from decimal import Decimal
+from web3 import Web3
 
-# Import logging configuration
-from arbitrage_bot.utils.logger_config import (
-    setup_logging,
-    log_metric,
-    log_opportunity,
-    log_execution,
-    log_system_metrics
-)
+from arbitrage_bot.core.market.enhanced_market_analyzer import EnhancedMarketAnalyzer
+from arbitrage_bot.core.market.price_validator import PriceValidator
+from arbitrage_bot.core.unified_flash_loan_manager import EnhancedFlashLoanManager
+from arbitrage_bot.core.execution.arbitrage_executor import EnhancedArbitrageExecutor
+from arbitrage_bot.core.web3.web3_manager import Web3Manager
+from arbitrage_bot.core.web3.flashbots.flashbots_provider import FlashbotsProvider, create_flashbots_provider
+from arbitrage_bot.core.memory.memory_bank import MemoryBank
+from arbitrage_bot.core.ml.model_interface import MLSystem
+from arbitrage_bot.utils.config_loader import load_config
+from arbitrage_bot.utils.secure_env import SecureEnvironment
 
-# Configure logging
-from arbitrage_bot.utils.config_loader import (
-    create_config_loader,
-    ConfigurationError,
-    InitializationError,
-    resolve_secure_values
-)
-from arbitrage_bot.utils.secure_env import init_secure_environment
-
-logger = logging.getLogger('ArbitrageBot')
-
-class GasOptimizerError(InitializationError):
-    """Error raised when gas optimizer initialization fails."""
-    pass
+logger = logging.getLogger(__name__)
 
 class ArbitrageBot:
-    """Main arbitrage bot class coordinating all components"""
-    
-    class DashboardError(Exception):
-        """Error raised when dashboard operations fail."""
-        pass
-        
-    class ArbitrageExecutionError(Exception):
-        """Error raised when arbitrage execution fails."""
-        pass
-    
+    """Enhanced arbitrage bot with advanced monitoring and execution."""
+
     def __init__(self):
-        """Initialize basic components"""
-        # Set up logging first
-        setup_logging(logging.INFO)
+        """Initialize the arbitrage bot."""
+        self.running = False
+        self._shutdown_event = asyncio.Event()
+        self._components_initialized = False
         
-        # Load environment variables
-        load_dotenv('.env.production')
-        self._validate_environment()
-
-        # Initialize secure environment
-        init_secure_environment()
-        
-        # Initialize config
-        self.config_loader = create_config_loader()
-        
-        # Initialize state
-        self.is_running = False
-        self.dashboard_process = None
+        # Component instances will be set in initialize()
         self.web3_manager = None
+        self.flashbots_provider = None
+        self.memory_bank = None
+        self.ml_system = None
+        self.market_analyzer = None
+        self.price_validator = None
+        self.flash_loan_manager = None
         self.arbitrage_executor = None
-        self.performance_tracker = None
-        
-        # Initialize asyncio event for shutdown
-        self.shutdown_event = asyncio.Event()
-    
-    def _validate_environment(self):
-        """Validate required environment variables"""
-        required_vars = ['PRIVATE_KEY', 'BASE_RPC_URL', 'WALLET_ADDRESS']
-        missing_vars = []
-        for var in required_vars:
-            if not os.getenv(var):
-                missing_vars.append(var)
-        
-        if missing_vars:
-            error_msg = "Missing required environment variables: " + ", ".join(missing_vars)
-            raise ValueError(error_msg)
-    
+
     async def initialize(self):
-        """Initialize all components"""
+        """Initialize all system components."""
         try:
-            # Import required components
-            from arbitrage_bot.core.web3.web3_manager import create_web3_manager
-            from arbitrage_bot.core.market_analyzer import create_market_analyzer
-            from arbitrage_bot.core.ml.ml_system import create_ml_system
-            from arbitrage_bot.core.analytics.analytics_system import create_analytics_system
-            from arbitrage_bot.core.monitoring.transaction_monitor import create_transaction_monitor
-            from arbitrage_bot.core.execution.arbitrage_executor import create_arbitrage_executor
-            from arbitrage_bot.core.metrics.portfolio_tracker import create_portfolio_tracker
-            from arbitrage_bot.core.dex.dex_manager import create_dex_manager
-            from arbitrage_bot.core.gas.gas_optimizer import create_gas_optimizer
-            from arbitrage_bot.core.memory import get_memory_bank
-            from arbitrage_bot.core.unified_balance_manager import UnifiedBalanceManager
-            from arbitrage_bot.core.unified_flash_loan_manager import create_unified_flash_loan_manager
-            from arbitrage_bot.core.alerts.alert_system import create_alert_system
+            logger.info("Initializing arbitrage bot components...")
             
-            # Get config
-            config = self.config_loader.get_config()
-
-            # Resolve secure values in config
-            config = resolve_secure_values(config)
-            logger.info("Resolved secure values in config")
+            # Load configuration
+            config = load_config()
+            secure_env = SecureEnvironment()
             
-            # Initialize Web3 manager first
-            logger.info("Initializing Web3 manager...")
-            self.web3_manager = await create_web3_manager(
-                provider_url=os.getenv('BASE_RPC_URL'),
-                chain_id=config['network']['chainId'],
-                private_key=os.getenv('PRIVATE_KEY')
+            # Initialize Web3
+            self.web3_manager = Web3Manager(
+                rpc_url=config['web3']['rpc_url'],
+                chain_id=config['web3']['chain_id']
             )
-            logger.info("Web3 manager created")
+            await self.web3_manager.initialize()
             
-            # Initialize DEX manager
-            logger.info("Initializing DEX manager...")
-            self.dex_manager = await create_dex_manager(self.web3_manager, config)
-            logger.info("DEX manager initialized")
-            
-            # Initialize market analyzer with DEX manager
-            self.market_analyzer = create_market_analyzer(dex_manager=self.dex_manager)
-            logger.info("Market analyzer initialized with DEX manager")
-            
-            # Initialize ML system
-            self.ml_system = await create_ml_system(None, self.market_analyzer, config)
-            
-            # Initialize portfolio tracker (serves as performance tracker)
-            self.portfolio_tracker = await create_portfolio_tracker(
+            # Initialize Flashbots
+            self.flashbots_provider = await create_flashbots_provider(
                 web3_manager=self.web3_manager,
-                wallet_address=self.web3_manager.wallet_address,
-                config=config
-            )
-            self.performance_tracker = self.portfolio_tracker
-            
-            # Initialize gas optimizer
-            logger.info("Initializing gas optimizer...")
-            self.gas_optimizer = await create_gas_optimizer(
-                dex_manager=self.dex_manager,
-                web3_manager=self.web3_manager
-            )
-            if not await self.gas_optimizer.initialize():
-                raise GasOptimizerError("Gas optimizer initialization failed")
-            logger.info("Gas optimizer initialized")
-            
-            # Initialize analytics system
-            self.analytics_system = await create_analytics_system(config)
-            self.analytics_system.web3_manager = self.web3_manager
-            self.analytics_system.wallet_address = self.web3_manager.wallet_address
-            
-            # Set dex_manager in analytics system
-            self.analytics_system.set_dex_manager(self.dex_manager)
-            
-            # Set analytics in ML system
-            self.ml_system.analytics = self.analytics_system
-            
-            # Initialize memory bank
-            self.memory_bank = get_memory_bank()
-            
-            # Initialize transaction monitor
-            logger.info("Initializing transaction monitor...")
-            self.tx_monitor = await create_transaction_monitor(
-                self.web3_manager, self.analytics_system, self.ml_system, self.dex_manager)
-            logger.info("Transaction monitor initialized")
-            
-            # Initialize balance manager
-            logger.info("Initializing balance manager...")
-            self.balance_manager = await UnifiedBalanceManager.get_instance(
-                web3_manager=self.web3_manager,
-                dex_manager=self.dex_manager,
-                config=config
-            )
-            logger.info("Balance manager initialized")
-            
-            # Initialize alert system
-            self.alert_system = await create_alert_system(
-                web3_manager=self.web3_manager,
-                dex_manager=self.dex_manager,
-                analytics_system=self.analytics_system,
-                config=config
-            )
-
-            # Initialize flash loan manager
-            self.flash_loan_manager = await create_unified_flash_loan_manager(
-                web3_manager=self.web3_manager,
-                config=config
+                relay_url=config['flashbots']['relay_url'],
+                auth_key=config['flashbots']['auth_key']
             )
             
-            # Finally, initialize arbitrage executor with all components
-            logger.info("Initializing arbitrage executor...")
-            self.arbitrage_executor = await create_arbitrage_executor(
-                web3_manager=self.web3_manager,
-                dex_manager=self.dex_manager,
-                gas_optimizer=self.gas_optimizer,
-                tx_monitor=self.tx_monitor,
-                market_analyzer=self.market_analyzer,
-                analytics_system=self.analytics_system,
+            # Initialize Memory Bank
+            self.memory_bank = MemoryBank()
+            await self.memory_bank.initialize()
+            
+            # Initialize ML System
+            self.ml_system = MLSystem()
+            await self.ml_system.initialize()
+            
+            # Initialize Price Validator
+            self.price_validator = PriceValidator(
+                web3=self.web3_manager.w3,
+                memory_bank=self.memory_bank
+            )
+            
+            # Initialize Market Analyzer
+            self.market_analyzer = EnhancedMarketAnalyzer(
+                web3=self.web3_manager.w3,
                 ml_system=self.ml_system,
                 memory_bank=self.memory_bank,
-                flash_loan_manager=self.flash_loan_manager,
-                balance_manager=self.balance_manager,
-                config=config
+                price_validator=self.price_validator
             )
             
-            logger.info("ArbitrageBot initialized successfully")
-            return True
-        
-        except (ConfigurationError, GasOptimizerError, InitializationError) as e:
-            logger.error("Initialization error: %s", str(e))
+            # Initialize Flash Loan Manager
+            self.flash_loan_manager = EnhancedFlashLoanManager(
+                web3=self.web3_manager.w3,
+                flashbots_provider=self.flashbots_provider,
+                memory_bank=self.memory_bank
+            )
+            
+            # Initialize Arbitrage Executor
+            self.arbitrage_executor = EnhancedArbitrageExecutor(
+                web3=self.web3_manager.w3,
+                market_analyzer=self.market_analyzer,
+                flash_loan_manager=self.flash_loan_manager,
+                flashbots_provider=self.flashbots_provider,
+                memory_bank=self.memory_bank
+            )
+            
+            self._components_initialized = True
+            logger.info("All components initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize components: {e}")
             raise
 
     async def start(self):
-        """Start the arbitrage bot"""
+        """Start the arbitrage bot."""
+        if not self._components_initialized:
+            await self.initialize()
+        
+        self.running = True
+        logger.info("Starting arbitrage bot...")
+        
+        # Register signal handlers
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, self._signal_handler)
+        
         try:
-            logger.info("Starting arbitrage bot...")
+            # Start monitoring and execution tasks
+            monitoring_task = asyncio.create_task(self._monitor_opportunities())
+            execution_task = asyncio.create_task(self._execute_opportunities())
+            metrics_task = asyncio.create_task(self._update_metrics())
             
-            # Initialize components
-            if not await self.initialize():
-                raise InitializationError("Failed to initialize components")
+            # Wait for shutdown signal
+            await self._shutdown_event.wait()
             
-            self.is_running = True
+            # Cancel running tasks
+            monitoring_task.cancel()
+            execution_task.cancel()
+            metrics_task.cancel()
             
-            # Register signal handlers
-            self._register_signal_handlers()
-            
-            # Start dashboard if enabled
-            if self.config_loader.get_config().get('dashboard', {}).get('enabled', True):
-                # Set dashboard WebSocket port
-                websocket_port = 8771
-                os.environ['DASHBOARD_WEBSOCKET_PORT'] = str(websocket_port)
-                
-                # Set analytics system reference
-                os.environ['ANALYTICS_SYSTEM_ID'] = str(id(self.analytics_system))
-                await self._start_dashboard()
-            
-            # Main arbitrage loop
-            await self._run_arbitrage_loop()
-        
-        except (ConfigurationError, GasOptimizerError, InitializationError, self.DashboardError) as e:
-            logger.error("Failed to start arbitrage bot: %s", str(e))
-            await self.stop()
-    
-    async def stop(self):
-        """Stop the arbitrage bot gracefully"""
-        try:
-            logger.info("Stopping arbitrage bot...")
-            self.is_running = False
-            self.shutdown_event.set()
-            
-            # Stop dashboard if running
-            if self.dashboard_process:
-                self.dashboard_process.terminate()
-                self.dashboard_process = None
-            
-            # Perform cleanup
-            await self._cleanup()
-            
-            logger.info("Arbitrage bot stopped successfully")
-        
-        except (self.DashboardError, IOError) as e:
-            logger.error("Error during bot shutdown: %s", str(e))
-            raise
-    
-    async def _run_arbitrage_loop(self):
-        """Main arbitrage execution loop"""
-        logger.info("Starting arbitrage loop...")
-        
-        while self.is_running and not self.shutdown_event.is_set():
             try:
-                # Get opportunities from market analyzer
-                opportunities = await self.market_analyzer.get_opportunities()
-                if opportunities:
-                    sorted_opportunities = sorted(opportunities, key=lambda x: x.profit_margin, reverse=True)
-                    for opportunity in sorted_opportunities:
-                        # Log opportunity before execution
-                        log_opportunity({
-                            'token_id': opportunity.token_id,
-                            'token_address': opportunity.token_address,
-                            'buy_dex': opportunity.buy_dex,
-                            'sell_dex': opportunity.sell_dex,
-                            'buy_price': float(opportunity.buy_price),
-                            'sell_price': float(opportunity.sell_price),
-                            'profit_margin': float(opportunity.profit_margin),
-                            'timestamp': opportunity.timestamp
-                        })
-                        
-                        # Execute opportunity
-                        success = await self.arbitrage_executor.execute_opportunity(opportunity)
-                        
-                        # Log execution result
-                        if success and hasattr(opportunity, 'tx_hash'):
-                            log_execution(
-                                tx_hash=opportunity.tx_hash,
-                                status='success',
-                                profit=float(opportunity.profit_margin),
-                                gas_cost=getattr(opportunity, 'gas_cost', 0)
-                            )
-                
-                # Add delay between iterations and log metrics every 60 seconds
-                current_time = asyncio.get_event_loop().time()
-                if not hasattr(self, '_last_metrics_time') or current_time - self._last_metrics_time >= 60:
-                    import psutil
-                    process = psutil.Process()
-                    log_system_metrics(
-                        memory_usage=process.memory_info().rss / 1024 / 1024,  # Convert to MB
-                        cpu_usage=process.cpu_percent(),
-                        thread_count=process.num_threads(),
-                        active_approvals=len(self.arbitrage_executor._pending_approvals)
-                    )
-                    self._last_metrics_time = current_time
-
-                await asyncio.sleep(
-                    self.config_loader.get_config()
-                    .get('execution', {})
-                    .get('loop_interval', 0.1)  # Reduced to 0.1s for faster response
+                await asyncio.gather(
+                    monitoring_task,
+                    execution_task,
+                    metrics_task,
+                    return_exceptions=True
                 )
+            except asyncio.CancelledError:
+                pass
             
-            except (self.ArbitrageExecutionError, IOError, TimeoutError) as e:
-                logger.error("Arbitrage execution failed: %s", str(e))
-                await asyncio.sleep(5)  # Brief delay before retry
-    
-    async def _start_dashboard(self):
-        """Start the dashboard process"""
-        try:
-            # Get dashboard port from config
-            port = self.config_loader.get_config().get('dashboard', {}).get('port', 5000)
-            os.environ['DASHBOARD_PORT'] = str(port)
-            
-            # Start dashboard as a separate Python process
-            dashboard_script = str(Path(__file__).parent / 'arbitrage_bot' / 'dashboard' / 'run.py')
-            
-            # Start dashboard process
-            self.dashboard_process = subprocess.Popen([sys.executable, dashboard_script])
-            
-            logger.info("Dashboard started successfully")
-        
-        except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
-            raise self.DashboardError("Failed to start dashboard: %s" % str(e)) from e
-    
-    async def _cleanup(self):
-        """Perform cleanup operations"""
-        try:
-            # Save final performance metrics
-            if self.performance_tracker:
-                summary = await self.performance_tracker.get_performance_summary()
-                logger.info("Final performance summary: %s", str(summary))
-                
-                # Log final metrics
-                for metric, value in summary.items():
-                    log_metric("final_" + metric, value)
-            
-            # Close database connections
-            # Any other cleanup needed
-            
-            logger.info("Cleanup completed successfully")
-        
-        except IOError as e:
-            logger.error("Cleanup operation failed: %s", str(e))
-            raise
-    
-    def _register_signal_handlers(self):
-        """Register signal handlers for graceful shutdown"""
-        loop = asyncio.get_running_loop()
-        
-        def signal_handler(signum, frame):
-            logger.info("Received signal %s", str(signum))
-            loop.create_task(self.stop())
-        
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        finally:
+            self.running = False
+            await self._cleanup()
 
-async def async_main():
-    """Async main entry point"""
-    try:
-        # Create and start bot
-        bot = ArbitrageBot()
-        await bot.start()
-    
-    except ConfigurationError as e:
-        logger.error("Configuration error: %s", str(e))
-        sys.exit(1)
-    except (ArbitrageBot.ArbitrageExecutionError, ArbitrageBot.DashboardError, IOError) as e:
-        logger.error("Critical error: %s", str(e))
-        sys.exit(1)
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals."""
+        logger.info(f"Received signal {signum}, initiating shutdown...")
+        self._shutdown_event.set()
+
+    async def _monitor_opportunities(self):
+        """Monitor for arbitrage opportunities."""
+        while self.running:
+            try:
+                # Get active token pairs
+                token_pairs = await self.memory_bank.get_active_token_pairs()
+                
+                # Find best opportunity
+                best_pair, prices, score = await self.market_analyzer.find_best_opportunity(
+                    token_pairs
+                )
+                
+                if score.profit_potential > 0:
+                    # Store opportunity in memory bank
+                    await self.memory_bank.store_opportunity(
+                        token_pair=best_pair,
+                        profit_potential=score.profit_potential,
+                        confidence=score.confidence
+                    )
+                
+                await asyncio.sleep(1)  # Adjust based on network conditions
+                
+            except Exception as e:
+                logger.error(f"Error in opportunity monitoring: {e}")
+                await asyncio.sleep(5)  # Longer sleep on error
+
+    async def _execute_opportunities(self):
+        """Execute identified opportunities."""
+        while self.running:
+            try:
+                # Get pending opportunity
+                opportunity = await self.memory_bank.get_next_opportunity()
+                if not opportunity:
+                    await asyncio.sleep(1)
+                    continue
+                
+                # Execute opportunity
+                result = await self.arbitrage_executor.execute_opportunity(
+                    token_pair=opportunity.token_pair,
+                    opportunity=opportunity.score
+                )
+                
+                # Update execution metrics
+                await self.memory_bank.update_execution_metrics(result)
+                
+                if not result.success:
+                    logger.warning(f"Execution failed: {result.error}")
+                
+            except Exception as e:
+                logger.error(f"Error in opportunity execution: {e}")
+                await asyncio.sleep(5)
+
+    async def _update_metrics(self):
+        """Update system metrics periodically."""
+        while self.running:
+            try:
+                # Get execution stats
+                stats = await self.arbitrage_executor.get_execution_stats()
+                
+                # Get current state
+                state = await self.arbitrage_executor.get_current_state()
+                
+                # Update memory bank
+                await self.memory_bank.update_system_metrics(stats, state)
+                
+                await asyncio.sleep(60)  # Update every minute
+                
+            except Exception as e:
+                logger.error(f"Error updating metrics: {e}")
+                await asyncio.sleep(5)
+
+    async def _cleanup(self):
+        """Cleanup resources on shutdown."""
+        logger.info("Cleaning up resources...")
+        
+        try:
+            # Close Flashbots provider
+            if self.flashbots_provider:
+                await self.flashbots_provider.close()
+            
+            # Close Web3 connection
+            if self.web3_manager:
+                await self.web3_manager.close()
+            
+            # Save final metrics
+            if self.memory_bank:
+                await self.memory_bank.save_final_state()
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
 
 def main():
-    """Synchronous entry point that runs the async main"""
+    """Main entry point."""
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    # Create and start bot
+    bot = ArbitrageBot()
+    
     try:
-        asyncio.run(async_main())
+        asyncio.run(bot.start())
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
+        logger.info("Received keyboard interrupt, shutting down...")
     except Exception as e:
-        logger.error("Critical error: %s", str(e), exc_info=True)
-        sys.exit(1)
+        logger.error(f"Fatal error: {e}")
+        raise
 
 if __name__ == "__main__":
     main()

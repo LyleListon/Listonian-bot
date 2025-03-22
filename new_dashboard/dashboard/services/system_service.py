@@ -8,7 +8,8 @@ import platform
 import logging
 from pathlib import Path
 
-from dashboard.core.logging import get_logger
+from ..core.logging import get_logger
+from arbitrage_bot.core.memory.memory_bank import MemoryBank
 
 logger = get_logger("system_service")
 

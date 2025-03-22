@@ -1,13 +1,14 @@
 """FastAPI application for the dashboard."""
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-import traceback
 
-from dashboard.core.logging import setup_logging, get_logger
-from dashboard.routes.test import router as test_router
+from .core.logging import setup_logging, get_logger
+from .routes import api_router, websocket_router
+from .services.service_manager import service_manager
 
 # Set up logging
 setup_logging(level="DEBUG")
@@ -18,6 +19,16 @@ app = FastAPI(
     title="Dashboard",
     description="Real-time monitoring dashboard for arbitrage bot",
     version="2.0.0"
+)
+
+# Set up CORS middleware with WebSocket support
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Set up paths
@@ -36,39 +47,55 @@ if not static_path.exists():
     static_path.mkdir(parents=True)
 app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
-# Include routers
-app.include_router(test_router)
+# Set up templates
+templates = Jinja2Templates(directory=str(templates_path))
+
+# Include API routes
+app.include_router(api_router, prefix="/api")
+
+# Include WebSocket routes at root level
+app.include_router(websocket_router)
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    try:
+        await service_manager.initialize()
+        logger.info("Services initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize services: {e}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown services on application shutdown."""
+    try:
+        await service_manager.shutdown()
+        logger.info("Services shut down successfully")
+    except Exception as e:
+        logger.error(f"Error shutting down services: {e}")
 
 @app.get("/")
-async def root():
-    """Redirect root to test page."""
-    return RedirectResponse(url="/test")
+async def root(request: Request):
+    """Serve the main dashboard page."""
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
-    """Handle 404 errors."""
-    logger.error(f"404 error for {request.url}: {exc}")
-    return JSONResponse(
-        status_code=404,
-        content={"error": "Not found", "detail": str(exc)}
-    )
+@app.get("/metrics")
+async def metrics_page(request: Request):
+    """Serve the metrics page."""
+    return templates.TemplateResponse("metrics.html", {"request": request})
 
-@app.exception_handler(500)
-async def server_error_handler(request, exc):
-    """Handle 500 errors."""
-    logger.error(f"500 error for {request.url}: {exc}")
-    logger.error(traceback.format_exc())
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error", "detail": str(exc)}
-    )
+@app.get("/system")
+async def system_page(request: Request):
+    """Serve the system page."""
+    return templates.TemplateResponse("system.html", {"request": request})
 
-@app.exception_handler(Exception)
-async def general_exception_handler(request, exc):
-    """Handle all other exceptions."""
-    logger.error(f"Unhandled exception for {request.url}: {exc}")
-    logger.error(traceback.format_exc())
-    return JSONResponse(
-        status_code=500,
-        content={"error": "Internal server error", "detail": str(exc)}
-    )
+@app.get("/history")
+async def history_page(request: Request):
+    """Serve the history page."""
+    return templates.TemplateResponse("history.html", {"request": request})
+
+@app.get("/opportunities")
+async def opportunities_page(request: Request):
+    """Serve the opportunities page."""
+    return templates.TemplateResponse("opportunities.html", {"request": request})

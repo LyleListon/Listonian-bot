@@ -44,8 +44,13 @@ class Web3Manager:
         self._gas_prediction_ttl = 60  # seconds
         
         # Initialize wallet
-        self.wallet_key = config['web3']['wallet_key']
-        self.wallet_address = Web3.to_checksum_address(Web3().eth.account.from_key(self.wallet_key).address)
+        wallet_key = config['web3']['wallet_key']
+        if wallet_key.startswith('$SECURE:'):
+            from arbitrage_bot.utils.secure_env import SecureEnvironment
+            secure_env = SecureEnvironment()
+            wallet_key = secure_env.secure_load('PRIVATE_KEY')
+        self.wallet_key = wallet_key
+        self.wallet_address = Web3.to_checksum_address(Web3().eth.account.from_key(wallet_key).address)
         
         # Store chain ID
         self.chain_id = config['web3']['chain_id']
@@ -92,7 +97,12 @@ class Web3Manager:
                 await self.primary_provider.initialize()
 
             # Test connection
-            chain_id = await self.w3.eth.chain_id
+            actual_chain_id = await self.w3.eth.chain_id
+            if actual_chain_id != self.chain_id:
+                raise ValueError(
+                    f"Chain ID mismatch: Expected {self.chain_id}, got {actual_chain_id}"
+                )
+            chain_id = actual_chain_id
             logger.info(f"Web3 manager initialized successfully with chain ID: {chain_id}")
             return True
 

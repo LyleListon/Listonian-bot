@@ -1,115 +1,81 @@
-# Arbitrage Bot
+# Listonian Arbitrage Bot
 
-A Python-based arbitrage bot with Flashbots integration for MEV protection.
-
-## Features
-
-- Flash loan arbitrage execution
-- Flashbots RPC integration
-- MEV protection
+A high-performance arbitrage bot for Base mainnet that uses:
+- Balancer for flash loans
+- Flashbots for MEV protection
 - Multi-path arbitrage optimization
-- Price impact analysis
-- Gas optimization
-- Thread-safe operations
-- Async/await patterns
+- Real-time monitoring
 
-## Requirements
+## Quick Start
 
-- Python 3.12+
-- Web3.py
-- Aiohttp
-- Ethereum node access
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/listonian/arbitrage-bot.git
-cd arbitrage-bot
-```
-
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate.bat  # Windows
-```
-
-3. Install dependencies:
-```bash
-pip install -e .
-```
+1. Double-click `start_arbitrage_bot.bat` to begin. The script will:
+   - Check Python installation (requires Python 3.12+)
+   - Create .env.production from template if needed
+   - Initialize secure storage for sensitive data
+   - Start the bot with automatic restart on crashes
+   - Open a log viewer window
 
 ## Configuration
 
-1. Create a `configs/config.json` file with your settings:
-```json
-{
-    "provider_url": "YOUR_ETH_NODE_URL",
-    "chain_id": 8453,  # Base mainnet
-    "private_key": "YOUR_PRIVATE_KEY",
-    "tokens": {
-        "WETH": "0x4200000000000000000000000000000006",
-        "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-    }
-}
-```
+### Required Environment Variables
+Copy `.env.production.template` to `.env.production` and fill in:
 
-2. Set up Flashbots authentication:
-```json
-{
-    "flashbots": {
-        "relay_url": "https://relay.flashbots.net",
-        "auth_signer_key": "YOUR_FLASHBOTS_KEY"
-    }
-}
-```
-
-## Usage
-
-Run the example script:
 ```bash
-python complete_arbitrage_example.py
+# Get from https://www.alchemy.com/
+ALCHEMY_API_KEY=your-api-key
+
+# Your wallet's private key (with 0x prefix)
+PRIVATE_KEY=0xyour-private-key
+
+# Your wallet addresses
+WALLET_ADDRESS=0xYour-Wallet-Address
+PROFIT_RECIPIENT=0xProfit-Recipient-Address
+
+# Flashbots Configuration
+# Keep this as $SECURE:PRIVATE_KEY
+FLASHBOTS_AUTH_KEY=$SECURE:PRIVATE_KEY
+
+# This tells the bot to use your wallet's private key for Flashbots
+ authentication
 ```
 
-## Architecture
+### Production Settings
+The bot is configured in `configs/production.json` with:
+- Base mainnet RPC endpoints
+- Flashbots integration
+- Balancer flash loan settings
+- Token addresses (WETH, USDC)
+- Gas and profit thresholds
 
-The bot follows a modular architecture:
+## Features
 
-- `core/`: Core functionality
-  - `web3/`: Web3 interactions
-  - `dex/`: DEX integrations
-  - `flash_loan_manager.py`: Flash loan management
-- `integration/`: External integrations
-  - `flashbots_integration.py`: Flashbots RPC
-  - `mev_protection.py`: MEV protection
-- `utils/`: Utility modules
-  - `config_loader.py`: Configuration
-  - `async_manager.py`: Async operations
+- **Flash Loans**: Uses Balancer as primary provider with Aave as fallback
+- **MEV Protection**: Integrates with Flashbots for private transaction routing
+- **Multi-Path Arbitrage**: Optimizes across multiple DEX paths
+- **Real-time Monitoring**: Automatic log viewer window
+- **Auto-Recovery**: Restarts automatically after crashes
+- **Secure Storage**: Encrypts sensitive data like private keys
 
-## Development
+## Monitoring
 
-1. Install development dependencies:
-```bash
-pip install -e ".[dev]"
-```
+The bot creates two windows:
+1. Main bot window showing startup progress
+2. Log viewer window showing real-time operation
 
-2. Run tests:
-```bash
-pytest
-```
+Monitor `logs/arbitrage.log` for detailed operation information.
 
-3. Format code:
-```bash
-black .
-isort .
-```
+## Troubleshooting
 
-4. Type checking:
-```bash
-mypy .
-```
+If the bot fails to start:
+1. Ensure Python 3.12+ is installed and in PATH
+2. Verify all environment variables are set correctly
+3. Check log files for detailed error messages
+4. Ensure you have sufficient funds for gas
+5. Verify RPC endpoints are accessible
 
-## License
+## Security Notes
 
-MIT License. See LICENSE file for details.
+- Private keys are stored encrypted in the `secure` directory
+- Use a dedicated wallet for the bot
+- Monitor gas usage and profit thresholds
+- Test with small amounts first

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import statistics
 import logging
 
-from dashboard.core.logging import get_logger
+from ..core.logging import get_logger
 
 logger = get_logger("metrics_service")
 

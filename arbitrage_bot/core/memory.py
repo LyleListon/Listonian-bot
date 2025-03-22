@@ -227,6 +227,124 @@ class MemoryBank:
         except Exception as e:
             logger.error(f"Failed to store trade result: {e}")
             raise
+            
+    async def get_token_history(self, token_address: str) -> Dict[str, Any]:
+        """
+        Get historical data for a token.
+
+        Args:
+            token_address: Token address
+
+        Returns:
+            Dictionary containing token history
+        """
+        try:
+            if not self.initialized:
+                raise RuntimeError("Memory bank not initialized")
+
+            # Load token history file
+            token_file = self.memory_dir / 'token_history' / f"{token_address}.json"
+            if not token_file.exists():
+                return {
+                    'total_trades': 0,
+                    'success_rate': 0.5,  # Default 50% success rate
+                    'profit_metrics': {
+                        'total_profit': 0,
+                        'average_profit': 0,
+                        'total_gas': 0,
+                        'average_gas': 0
+                    }
+                }
+
+            async with self._lock:
+                with open(token_file, 'r') as f:
+                    return json.load(f)
+
+        except Exception as e:
+            logger.error(f"Failed to get token history: {e}")
+            return {
+                'total_trades': 0,
+                'success_rate': 0.5,
+                'profit_metrics': {}
+            }
+
+    async def update_token_history(
+        self,
+        token_address: str,
+        success: bool,
+        profit: float,
+        gas_used: float
+    ) -> None:
+        """
+        Update historical data for a token.
+
+        Args:
+            token_address: Token address
+            success: Whether trade was successful
+            profit: Net profit amount
+            gas_used: Gas cost in wei
+        """
+        try:
+            if not self.initialized:
+                raise RuntimeError("Memory bank not initialized")
+
+            # Create token history directory
+            token_dir = self.memory_dir / 'token_history'
+            token_dir.mkdir(exist_ok=True)
+
+            # Load existing history or create new
+            token_file = token_dir / f"{token_address}.json"
+            if token_file.exists():
+                async with self._lock:
+                    with open(token_file, 'r') as f:
+                        history = json.load(f)
+            else:
+                history = {
+                    'total_trades': 0,
+                    'successful_trades': 0,
+                    'success_rate': 0,
+                    'profit_metrics': {
+                        'total_profit': 0,
+                        'average_profit': 0,
+                        'total_gas': 0,
+                        'average_gas': 0,
+                        'best_profit': 0,
+                        'worst_profit': 0
+                    },
+                    'last_update': 0
+                }
+
+            # Update metrics
+            history['total_trades'] += 1
+            if success:
+                history['successful_trades'] += 1
+
+            history['success_rate'] = (
+                history['successful_trades'] / history['total_trades']
+            )
+
+            metrics = history['profit_metrics']
+            metrics['total_profit'] += profit
+            metrics['total_gas'] += gas_used
+            metrics['average_profit'] = (
+                metrics['total_profit'] / history['total_trades']
+            )
+            metrics['average_gas'] = (
+                metrics['total_gas'] / history['total_trades']
+            )
+            metrics['best_profit'] = max(metrics['best_profit'], profit)
+            metrics['worst_profit'] = min(metrics['worst_profit'], profit)
+
+            history['last_update'] = time.time()
+
+            # Save updated history
+            async with self._lock:
+                with open(token_file, 'w') as f:
+                    json.dump(history, f, indent=2)
+
+        except Exception as e:
+            logger.error(f"Failed to update token history: {e}")
+            raise
 
 async def get_memory_bank() -> MemoryBank:
     """

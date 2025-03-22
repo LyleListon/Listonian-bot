@@ -2,12 +2,13 @@
 
 from typing import Dict, Any, List, Optional
 import asyncio
+import json
 from datetime import datetime, timedelta
 import logging
 from pathlib import Path
 
-from dashboard.core.logging import get_logger
-from dashboard.core.mock_memory import create_memory_bank, MockMemoryBank
+from ..core.logging import get_logger
+from arbitrage_bot.core.memory.memory_bank import MemoryBank
 
 logger = get_logger("memory_service")
 
@@ -15,7 +16,7 @@ class MemoryService:
     """Service for managing memory bank interactions."""
 
     def __init__(self):
-        self.memory_bank: Optional[MockMemoryBank] = None
+        self.memory_bank: Optional[MemoryBank] = None
         self._cache: Dict[str, Any] = {}
         self._cache_lock = asyncio.Lock()
         self._update_task: Optional[asyncio.Task] = None
@@ -25,8 +26,9 @@ class MemoryService:
     async def initialize(self) -> None:
         """Initialize the memory service."""
         try:
-            # Initialize memory bank
-            self.memory_bank = await create_memory_bank()
+            # Initialize memory bank with default storage directory
+            self.memory_bank = MemoryBank(storage_dir="data/memory_bank")
+            await self.memory_bank.initialize()
             logger.info("Memory bank initialized")
 
             # Start background update task
@@ -46,6 +48,9 @@ class MemoryService:
             except asyncio.CancelledError:
                 pass
             self._update_task = None
+        
+        if self.memory_bank:
+            await self.memory_bank.save_final_state()
         logger.info("Memory service shut down")
 
     async def subscribe(self) -> asyncio.Queue:
@@ -71,15 +76,15 @@ class MemoryService:
                 raise RuntimeError("Memory bank not initialized")
 
             # Get latest data
-            opportunities = await self.memory_bank.get_recent_opportunities(max_age=300)
-            trade_history = await self.memory_bank.get_trade_history(limit=100)
-            memory_stats = await self.memory_bank.get_memory_stats()
+            metrics = await self.memory_bank._load_metrics()
+            opportunities = await self._load_opportunities()
+            history = await self._load_execution_history()
 
             # Process and format data
             state = {
+                "metrics": metrics,
                 "opportunities": self._process_opportunities(opportunities),
-                "trade_history": self._process_trade_history(trade_history),
-                "memory_stats": self._process_memory_stats(memory_stats),
+                "trade_history": self._process_trade_history(history),
                 "timestamp": datetime.utcnow().isoformat()
             }
 
@@ -119,19 +124,46 @@ class MemoryService:
                 logger.error(f"Error in background update: {e}")
                 await asyncio.sleep(5)  # Wait before retrying
 
+    async def _load_opportunities(self) -> List[Dict[str, Any]]:
+        """Load opportunities from storage."""
+        try:
+            opps_file = self.memory_bank.storage_dir / 'metrics' / 'opportunities.json'
+            
+            if not opps_file.exists():
+                return []
+            
+            with open(opps_file) as f:
+                return json.load(f)
+                
+        except Exception as e:
+            logger.error(f"Failed to load opportunities: {e}")
+            return []
+
+    async def _load_execution_history(self) -> List[Dict[str, Any]]:
+        """Load execution history from storage."""
+        try:
+            history_file = self.memory_bank.storage_dir / 'history' / 'execution_history.json'
+            
+            if not history_file.exists():
+                return []
+            
+            with open(history_file) as f:
+                return json.load(f)
+                
+        except Exception as e:
+            logger.error(f"Failed to load execution history: {e}")
+            return []
+
     def _process_opportunities(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Process and format opportunity data."""
         processed = []
         for opp in opportunities:
             try:
                 processed.append({
-                    "id": opp.get("id", "unknown"),
-                    "profit": float(opp.get("profit", 0)),
-                    "dex_pair": opp.get("dex_pair", "unknown"),
-                    "timestamp": opp.get("timestamp"),
-                    "status": opp.get("status", "unknown"),
-                    "gas_estimate": float(opp.get("gas_estimate", 0)),
-                    "confidence": float(opp.get("confidence", 0))
+                    "token_pair": opp.get("token_pair", "unknown"),
+                    "profit_potential": float(opp.get("profit_potential", 0)),
+                    "confidence": float(opp.get("confidence", 0)),
+                    "timestamp": opp.get("timestamp")
                 })
             except Exception as e:
                 logger.error(f"Error processing opportunity: {e}")
@@ -144,30 +176,12 @@ class MemoryService:
             try:
                 processed.append({
                     "timestamp": trade.get("timestamp"),
+                    "token_pair": trade.get("token_pair"),
                     "success": trade.get("success", False),
-                    "net_profit": float(trade.get("net_profit", 0)),
-                    "gas_cost": float(trade.get("gas_cost", 0)),
-                    "tx_hash": trade.get("tx_hash"),
-                    "error": trade.get("error")
+                    "profit": float(trade.get("profit", 0)),
+                    "gas_used": int(trade.get("gas_used", 0)),
+                    "execution_time": float(trade.get("execution_time", 0))
                 })
             except Exception as e:
                 logger.error(f"Error processing trade: {e}")
         return processed
-
-    def _process_memory_stats(self, stats: Any) -> Dict[str, Any]:
-        """Process and format memory statistics."""
-        try:
-            return {
-                "cache_size": stats.cache_size,
-                "total_size_bytes": stats.total_size_bytes,
-                "total_entries": stats.total_entries,
-                "categories": stats.categories,
-                "cache_hits": stats.cache_hits,
-                "cache_misses": stats.cache_misses
-            }
-        except Exception as e:
-            logger.error(f"Error processing memory stats: {e}")
-            return {
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
-            }

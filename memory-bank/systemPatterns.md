@@ -1,234 +1,176 @@
-# System Patterns and Architecture - March 18, 2025
+# System Patterns and Best Practices
 
-## Core Architectural Patterns
+## Secure Key Management
 
-### 1. Async First
+### Private Key Handling
+1. Storage Pattern:
+   ```python
+   class SecureEnvironment:
+       def secure_store(self, name: str, value: str):
+           encrypted = self.encrypt_value(value)
+           with open(self.secure_path / f'{name}.enc', 'w') as f:
+               f.write(encrypted)
+   ```
+
+2. Decryption Pattern:
+   ```python
+   def decrypt_value(self, encrypted_value: str, key_name: str = None) -> str:
+       try:
+           decrypted = self.fernet.decrypt(base64.urlsafe_b64decode(encrypted_value))
+           if key_name == 'PRIVATE_KEY':
+               # Handle base64 encoded keys
+               decrypted = base64.b64decode(decrypted).hex()
+           return decrypted
+       except Exception as e:
+           logger.error(f"Failed to decrypt value: {e}")
+           return None
+   ```
+
+### Configuration Loading
+1. Secure Value Resolution:
+   ```python
+   def resolve_secure_values(config: Dict[str, Any]) -> Dict[str, Any]:
+       resolved = config.copy()
+       for section in resolved:
+           if isinstance(resolved[section], dict):
+               for key, value in resolved[section].items():
+                   if value.startswith('$SECURE:'):
+                       secure_value = secure_env.secure_load(value[8:])
+                       resolved[section][key] = secure_value
+       return resolved
+   ```
+
+2. Validation Pattern:
+   ```python
+   def validate_private_key(key: str) -> bool:
+       return len(key) == 64 and all(c in '0123456789abcdefABCDEF' for c in key)
+   ```
+
+## Error Handling Patterns
+
+### Secure Operations
+1. Context Preservation:
+   ```python
+   try:
+       value = secure_env.secure_load(name)
+       if not value:
+           raise ValueError(f"Failed to load secure value for {name}")
+   except Exception as e:
+       logger.error(f"Security operation failed: {e}")
+       raise
+   ```
+
+2. Validation Chain:
+   ```python
+   def validate_config(config: Dict[str, Any]) -> None:
+       # Resolve secure values first
+       config = resolve_secure_values(config)
+       # Then validate format
+       validate_private_key(config['web3']['wallet_key'])
+       # Finally configure dependent components
+       config['flashbots']['auth_key'] = config['web3']['wallet_key']
+   ```
+
+## Logging Patterns
+
+### Debug Information
+1. Secure Operation Logging:
+   ```python
+   logger.debug(f"Loading secure value from {file_path}")
+   logger.debug(f"Successfully loaded secure value for {name}")
+   logger.error(f"Failed to decrypt value for {name}")
+   ```
+
+2. Validation Logging:
+   ```python
+   logger.debug(f"Attempting base64 decode for {key_name}")
+   logger.debug(f"Successfully decoded {key_name} to hex: {value[:6]}...")
+   ```
+
+## Resource Management
+
+### Initialization Pattern
 ```python
-async def get_pool_data(contract: Contract) -> Dict[str, Any]:
-    async with self._lock:
-        return await contract.functions.currentState().call()
+def init_secure_environment():
+    load_dotenv('.env.production')
+    secure_env = SecureEnvironment()
+    env_vars = {var: os.getenv(var) for var in sensitive_vars}
+    secure_env.secure_env(env_vars)
+    secure_env.load_secure_env()
+    return secure_env
 ```
-- All operations are async/await
-- Proper error handling
-- Resource management
-- Event loop consideration
 
-### 2. Thread Safety
+### Cleanup Pattern
 ```python
-class Cache:
-    def __init__(self):
-        self._lock = asyncio.Lock()
-        self._data = {}
+def cleanup_secure_resources():
+    for var in sensitive_vars:
+        if var in os.environ:
+            del os.environ[var]
+```
+
+## Configuration Management
+
+### Loading Sequence
+1. Load environment variables
+2. Initialize secure environment
+3. Load configuration file
+4. Resolve secure values
+5. Validate formats
+6. Configure dependent components
+
+### Validation Sequence
+1. Check required sections
+2. Validate field presence
+3. Verify value formats
+4. Configure cross-dependencies
+
+## Testing Patterns
+
+### Secure Operation Tests
+```python
+def test_secure_key_handling():
+    # Given
+    secure_env = SecureEnvironment()
+    test_key = "0123456789abcdef" * 4
     
-    async def get(self, key: str) -> Optional[Any]:
-        async with self._lock:
-            return self._data.get(key)
+    # When
+    secure_env.secure_store("TEST_KEY", test_key)
+    loaded_key = secure_env.secure_load("TEST_KEY")
+    
+    # Then
+    assert loaded_key == test_key
 ```
-- Lock management
-- Atomic operations
-- Resource protection
-- State consistency
 
-### 3. Resource Management
+### Configuration Tests
 ```python
-@asynccontextmanager
-async def managed_resource():
-    try:
-        yield resource
-    finally:
-        await cleanup()
+def test_config_validation():
+    # Given
+    config = load_test_config()
+    
+    # When
+    validated_config = validate_config(config)
+    
+    # Then
+    assert validate_private_key(validated_config['web3']['wallet_key'])
+    assert validated_config['flashbots']['auth_key'] == validated_config['web3']['wallet_key']
 ```
-- Context managers
-- Cleanup handlers
-- Error boundaries
-- Resource tracking
 
-### 4. Error Handling
-```python
-try:
-    async with timeout(5):
-        result = await operation()
-except TimeoutError:
-    logger.error("Operation timed out")
-    raise OperationError("Timeout")
-except Exception as e:
-    logger.error(f"Operation failed: {e}")
-    raise
-```
-- Context preservation
-- Logging
-- Recovery strategies
-- Error propagation
+## Documentation Requirements
 
-## Implementation Patterns
+### Code Documentation
+- Include purpose and usage
+- Document parameters and return values
+- Explain security considerations
+- Note format requirements
 
-### 1. DEX Integration
-```python
-class BaseDEX:
-    async def get_price(self) -> Decimal:
-        pass
+### Error Documentation
+- List possible error conditions
+- Document error handling
+- Provide recovery steps
+- Include logging details
 
-class SwapBasedV3(BaseDEX):
-    async def get_price(self) -> Decimal:
-        data = await self.get_pool_data()
-        return self.calculate_price(data)
-```
-- Inheritance hierarchy
-- Interface contracts
-- Version specifics
-- Common functionality
-
-### 2. Cache Management
-```python
-class Cache:
-    async def set(self, key: str, value: Any, ttl: int) -> None:
-        async with self._lock:
-            self._data[key] = {
-                'value': value,
-                'expires': time.time() + ttl
-            }
-```
-- TTL-based invalidation
-- Thread safety
-- Memory efficiency
-- Background cleanup
-
-### 3. Web3 Interaction
-```python
-class Web3Manager:
-    async def load_contract(self, address: str, abi: str) -> Contract:
-        if not Web3.is_checksum_address(address):
-            raise ValueError("Invalid address")
-        return self.web3.eth.contract(address=address, abi=abi)
-```
-- Address validation
-- Contract caching
-- Provider management
-- Transaction building
-
-### 4. Storage Layer
-```python
-class DatabasePool:
-    async def acquire(self):
-        async with self._lock:
-            conn = await self._pool.acquire()
-            return ManagedConnection(conn, self._pool)
-```
-- Connection pooling
-- Resource cleanup
-- Transaction isolation
-- Error handling
-
-## Design Patterns
-
-### 1. Singleton Management
-```python
-_instance = None
-
-def get_instance() -> Manager:
-    global _instance
-    if _instance is None:
-        _instance = Manager()
-    return _instance
-```
-- Single source of truth
-- Lazy initialization
-- Thread safety
-- Resource sharing
-
-### 2. Factory Methods
-```python
-async def create_dex(name: str, version: int) -> BaseDEX:
-    if version == 3:
-        if name == "swapbased":
-            return SwapBasedV3()
-    raise ValueError("Unsupported DEX")
-```
-- Object creation
-- Configuration
-- Dependency injection
-- Flexibility
-
-### 3. Observer Pattern
-```python
-class PriceMonitor:
-    async def notify_observers(self, price: Decimal) -> None:
-        for observer in self._observers:
-            await observer.on_price_change(price)
-```
-- Event notification
-- State changes
-- Decoupling
-- Async updates
-
-### 4. Strategy Pattern
-```python
-class ArbitrageStrategy:
-    async def execute(self, path: List[Pool]) -> Decimal:
-        return await self._strategy.calculate_profit(path)
-```
-- Interchangeable algorithms
-- Runtime selection
-- Clean separation
-- Easy extension
-
-## Best Practices
-
-### 1. Validation
-```python
-def validate_address(address: str) -> bool:
-    if not Web3.is_address(address):
-        raise ValueError("Invalid address format")
-    return Web3.to_checksum_address(address)
-```
-- Input validation
-- Type checking
-- Error messages
-- Early returns
-
-### 2. Logging
-```python
-logger = logging.getLogger(__name__)
-logger.info("Operation started")
-try:
-    result = await operation()
-except Exception as e:
-    logger.error(f"Operation failed: {e}", exc_info=True)
-```
-- Consistent format
-- Error tracking
-- Performance monitoring
-- Debugging support
-
-### 3. Configuration
-```python
-class Config:
-    def __init__(self):
-        self.load_env()
-        self.validate()
-```
-- Environment variables
-- Validation
-- Defaults
-- Documentation
-
-### 4. Testing
-```python
-@pytest.mark.asyncio
-async def test_operation():
-    async with MockResource() as resource:
-        result = await operation(resource)
-        assert result.status == "success"
-```
-- Async testing
-- Mocking
-- Fixtures
-- Coverage
-
-Remember:
-- Always use async/await
-- Maintain thread safety
-- Handle errors properly
-- Clean up resources
-- Validate inputs
-- Log operations
+### Configuration Documentation
+- Specify required fields
+- Document format requirements
+- Explain validation rules
+- List dependencies

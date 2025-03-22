@@ -54,6 +54,7 @@ def init_secure_storage():
         print("\nSecuring sensitive data...")
         secure_env.secure_store('WALLET_ADDRESS', wallet_address)
         secure_env.secure_store('PRIVATE_KEY', private_key)
+        secure_env.secure_store('FLASHBOTS_AUTH_KEY', private_key)  # Use same private key for Flashbots
         secure_env.secure_store('PROFIT_RECIPIENT', profit_recipient)
 
         # Verify stored values

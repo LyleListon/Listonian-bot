@@ -1,7 +1,12 @@
-"""Dashboard package for monitoring arbitrage bot."""
+"""Dashboard application for arbitrage bot monitoring."""
 
-from . import core
-from . import services
-from . import routes
+from .app import app
+from .services import service_manager
+from .core import setup_logging, get_logger
 
-__version__ = "0.1.0"
+__all__ = [
+    'app',
+    'service_manager',
+    'setup_logging',
+    'get_logger'
+]

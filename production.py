@@ -81,7 +81,7 @@ async def run_production_system():
         logger.info("Initializing Flashbots Provider...")
         flashbots_provider = await create_flashbots_provider(
             web3_manager=web3_manager,
-            relay_url=config['flashbots']['relay_url'],
+            relay_url=config['flashbots']['relay_url'].rstrip('/'),
             auth_key=config['flashbots']['auth_key']
         )
         

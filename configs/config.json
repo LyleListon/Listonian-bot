@@ -1,76 +1,76 @@
 {
-  "provider_url": "https://mainnet.base.org",
-  "chain_id": 8453,
-  "private_key": "",
-  "tokens": {
-    "WETH": "0x4200000000000000000000000000000000000006",
-    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    "USDT": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-    "DAI": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
-  },
-  "dexes": {
-    "aerodrome": {
-      "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
-      "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-      "enabled": true,
-      "version": "aerodrome"
+    "provider_url": "https://mainnet.base.org",
+    "chain_id": 8453,
+    "private_key": "",
+    "tokens": {
+        "WETH": "0x4200000000000000000000000000000000000006",
+        "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "USDT": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+        "DAI": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
     },
-    "baseswap": {
-      "factory": "0xFDa619b6d20975be80a10332cD39b9a4b0FAa8BB",
-      "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
-      "enabled": true,
-      "version": "v2"
+    "dexes": {
+        "aerodrome": {
+            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "enabled": true,
+            "version": "aerodrome"
+        },
+        "baseswap": {
+            "factory": "0xFDa619b6d20975be80a10332cD39b9a4b0FAa8BB",
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+            "enabled": true,
+            "version": "v2"
+        },
+        "swapbased": {
+            "factory": "0xb5620F90e803C7F957A9EF351B8DB3C746021BEa",
+            "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
+            "enabled": true,
+            "version": "v3",
+            "pools": {
+                "WETH-USDC": "0x8D4B74fe1dfa2789CAa367F670eB4AC202107635",
+                "USDC-USDbC": "0xF6062550e8711dd6A38Ca87299b14dCD6D45d783",
+                "wstETH-ETH": "0x31AfD670cF750F33b5145612130198594E5dd6BE",
+                "cbETH-ETH": "0xC5866F9D5e051c0D1a377c9494bEA1a90E4fDF7d"
+            }
+        }
     },
-    "swapbased": {
-      "factory": "0xb5620F90e803C7F957A9EF351B8DB3C746021BEa",
-      "router": "0x756C6BbDd915202adac7beBB1c6C89aC0886503f",
-      "enabled": true,
-      "version": "v3",
-      "pools": {
-        "WETH-USDC": "0x8D4B74fe1dfa2789CAa367F670eB4AC202107635",
-        "USDC-USDbC": "0xF6062550e8711dd6A38Ca87299b14dCD6D45d783",
-        "wstETH-ETH": "0x31AfD670cF750F33b5145612130198594E5dd6BE",
-        "cbETH-ETH": "0xC5866F9D5e051c0D1a377c9494bEA1a90E4fDF7d"
-      }
+    "flashbots": {
+        "relay_url": "https://relay.flashbots.net",
+        "auth_signer_key": ""
+    },
+    "flash_loan": {
+        "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+        "min_profit": "0.01",
+        "max_paths": 3,
+        "max_hops": 3
+    },
+    "gas": {
+        "max_priority_fee": "3.0",
+        "max_fee": "100.0",
+        "buffer_percent": 20
+    },
+    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "file": "logs/arbitrage.log",
+        "max_size": 10485760,
+        "backup_count": 5
+    },
+    "monitoring": {
+        "enabled": true,
+        "interval": 60,
+        "metrics_port": 9090
+    },
+    "security": {
+        "slippage_tolerance": 0.5,
+        "min_liquidity": "10000",
+        "price_impact_limit": 1.0,
+        "sandwich_protection": true,
+        "frontrun_protection": true
+    },
+    "performance": {
+        "cache_ttl": 300,
+        "max_concurrent_paths": 10,
+        "batch_size": 100
     }
-  },
-  "flashbots": {
-    "relay_url": "https://relay.flashbots.net",
-    "auth_signer_key": ""
-  },
-  "flash_loan": {
-    "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
-    "min_profit": "0.01",
-    "max_paths": 3,
-    "max_hops": 3
-  },
-  "gas": {
-    "max_priority_fee": "3.0",
-    "max_fee": "100.0",
-    "buffer_percent": 20
-  },
-  "logging": {
-    "level": "INFO",
-    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    "file": "logs/arbitrage.log",
-    "max_size": 10485760,
-    "backup_count": 5
-  },
-  "monitoring": {
-    "enabled": true,
-    "interval": 60,
-    "metrics_port": 9090
-  },
-  "security": {
-    "slippage_tolerance": 0.5,
-    "min_liquidity": "10000",
-    "price_impact_limit": 1.0,
-    "sandwich_protection": true,
-    "frontrun_protection": true
-  },
-  "performance": {
-    "cache_ttl": 300,
-    "max_concurrent_paths": 10,
-    "batch_size": 100
-  }
 }

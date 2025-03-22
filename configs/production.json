@@ -1,172 +1,90 @@
 {
-  "network": {
-    "rpc_endpoints": [
-      "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
-      "https://base-mainnet.infura.io/v3/863c326dab1a444dba3f41ae7a07ccce"
-    ],
-    "chain": "base_mainnet",
-    "flashbots_rpc": "https://relay-builder-base.flashbots.net"
-  },
-  "web3": {
-    "chain_id": 8453,
-    "rpc_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
-    "wallet_key": "5127c66bfc607750f5bd309d45ab922255c514d3607b7ff8507f44e73f64dc0d",
-    "providers": {
-      "alchemy": {
-        "http": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
-        "ws": "wss://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
-        "api_key": "kRXhWVt8YU_8LnGS20145F5uBDFbL_k0"
-      },
-      "backup": [
-        "https://base-mainnet.infura.io/v3/863c326dab1a444dba3f41ae7a07ccce"
-      ]
+    "web3": {
+        "rpc_url": "https://mainnet.base.org",
+        "chain_id": 8453,
+        "wallet_key": "$SECURE:PRIVATE_KEY",
+        "providers": {
+            "primary": "https://mainnet.base.org",
+            "backup": [
+                "https://base.blockpi.network/v1/rpc/public",
+                "https://base.meowrpc.com"
+            ]
+        }
     },
-    "alchemy": {
-      "price_cache_ttl": 30,
-      "gas_prediction_ttl": 60,
-      "websocket_enabled": true
+    "flashbots": {
+        "relay_url": "https://relay.flashbots.net",
+        "auth_key": "$SECURE:PRIVATE_KEY",
+        "profit_recipient": "$SECURE:WALLET_ADDRESS",
+        "min_profit": "0.01",
+        "max_gas_price": 500
+    },
+    "trading": {
+        "max_slippage": 0.5,
+        "max_liquidity_usage": 30,
+        "min_profit_threshold": 0.01,
+        "max_gas_price": 500
+    },
+    "flash_loan": {
+        "enabled": true,
+        "use_flashbots": true,
+        "balancer": {
+            "vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+            "min_profit": "0.01",
+            "max_slippage": 50
+        },
+        "min_profit": "0.01",
+        "aave_pool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD"
+    },
+    "path_finder": {
+        "max_paths_to_check": 5,
+        "max_path_length": 3,
+        "max_parallel_requests": 10
+    },
+    "scan": {
+        "interval": 1,
+        "amount_wei": "1000000000000000000",
+        "max_paths": 3
+    },
+    "monitoring": {
+        "stats_interval": 60,
+        "log_level": "INFO"
+    },
+    "tokens": {
+        "WETH": {
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18
+        },
+        "USDC": {
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6
+        }
+    },
+    "mev_protection": {
+        "enabled": true,
+        "use_flashbots": true,
+        "max_bundle_size": 3,
+        "max_blocks_ahead": 2,
+        "min_priority_fee": "0.1",
+        "max_priority_fee": "2.0",
+        "sandwich_detection": true,
+        "frontrun_detection": true,
+        "backrun_detection": true,
+        "time_bandit_detection": true,
+        "profit_threshold": "0.01",
+        "gas_threshold": "500000",
+        "confidence_threshold": "0.95",
+        "adaptive_gas": true
+    },
+    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "file": "logs/arbitrage.log",
+        "max_size": 10485760,
+        "backup_count": 5
+    },
+    "performance": {
+        "cache_ttl": 300,
+        "max_concurrent_paths": 10,
+        "batch_size": 100
     }
-  },
-
-  "wallet": {
-    "min_eth_balance": "0.01",
-    "max_eth_balance": "0.25",
-    "target_token_ratios": {
-      "USDC": 0.3,
-      "USDT": 0.3,
-      "DAI": 0.3,
-      "WETH": 0.1
-    },
-    "rebalance_threshold": 0.1,
-    "profit_withdrawal": {
-      "enabled": true,
-      "threshold": "0.25",
-      "address": "0x257a30645bF0C91BC155bd9C01BD722322050F7b",
-      "auto_withdraw": true
-    },
-    "balance_check_interval": 300
-  },
-
-  "tokens": {
-    "WETH": {
-      "address": "0x4200000000000000000000000000000000000006",
-      "decimals": 18
-    },
-    "USDC": {
-      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      "decimals": 6
-    },
-    "USDT": {
-      "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-      "decimals": 6
-    },
-    "DAI": {
-      "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-      "decimals": 18
-    }
-  },
-
-  "dexes": {
-    "aerodrome": {
-      "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
-      "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-      "version": "v2",
-      "fee": 30
-    },
-    "baseswap": {
-      "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
-      "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
-      "version": "v2",
-      "fee": 30
-    },
-    "swapbased": {
-      "factory": "0x36218B2F8dC32D43fb5EcF45F2E6113cd52Cc5B9",
-      "router": "0x36218B2F8dC32D43fb5EcF45F2E6113cd52Cc5B9",
-      "version": "v2",
-      "fee": 30
-    },
-    "pancakeswap": {
-      "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-      "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
-      "quoter": "0x3d146FcE6c1006857750cBe8aF44f76a28041CCc",
-      "pool_deployer": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-      "version": "v3",
-      "fee": 30,
-      "enabled": true
-    },
-    "uniswap": {
-      "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
-      "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
-      "quoter": "0x3d146FcE6c1006857750cBe8aF44f76a28041CCc",
-      "version": "v3",
-      "fee": 30,
-      "enabled": true
-    }
-  },
-
-  "path_finder": {
-    "max_path_length": 4,
-    "min_profit_threshold": "0.00017",
-    "max_paths_to_check": 100,
-    "min_liquidity_ratio": 1.5,
-    "max_price_impact": 0.05,
-    "max_parallel_requests": 10,
-    "parallel_search": true,
-    "cache_ttl": 30
-  },
-
-  "flash_loan": {
-    "enabled": true,
-    "use_flashbots": true,
-    "min_profit": "0.00017",
-    "max_trade_size": "1000000000000000000",
-    "slippage_tolerance": 50,
-    "transaction_timeout": 180,
-    "aave_pool": "0x0716E86C56C4Cf4B9e10E6E2176B58FE6eBe33Bd",
-    "max_parallel_pools": 10,
-    "min_liquidity_ratio": 1.5,
-    "gas_buffer": 1.2
-  },
-
-  "flashbots": {
-    "relay_url": "https://relay-builder-base.flashbots.net",
-    "auth_key": "0x5127c66bfc607750f5bd309d45ab922255c514d3607b7ff8507f44e73f64dc0d",
-    "min_profit": "170000000000000",
-    "max_gas_price": "500000000000"
-  },
-
-  "mev_protection": {
-    "enabled": true,
-    "use_flashbots": true,
-    "max_bundle_size": 5,
-    "max_blocks_ahead": 3,
-    "min_priority_fee": "1.5",
-    "max_priority_fee": "3.0",
-    "sandwich_detection": true,
-    "frontrun_detection": true,
-    "backrun_detection": true,
-    "time_bandit_detection": true,
-    "profit_threshold": "0.1",
-    "gas_threshold": "1.5",
-    "confidence_threshold": "0.7",
-    "adaptive_gas": true
-  },
-
-  "scan": {
-    "interval": 1.0,
-    "amount_wei": "100000000000000000",
-    "max_paths": 5
-  },
-
-  "monitoring": {
-    "stats_interval": 300,
-    "log_level": "INFO"
-  },
-
-  "rate_limits": {
-    "requests_per_second": 5,
-    "max_backoff": 60.0,
-    "batch_size": 10,
-    "cache_ttl": 30
-  }
 }
