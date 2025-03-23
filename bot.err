@@ -1,0 +1,39 @@
+2025-03-22 11:52:43,270 - arbitrage_bot.utils.async_manager - INFO - Async retry manager initialized successfully
+2025-03-22 11:52:43,270 - arbitrage_bot.utils.async_manager - INFO - Rate limiter initialized successfully
+2025-03-22 11:52:43,270 - arbitrage_bot.utils.async_manager - INFO - Async components initialized successfully
+2025-03-22 11:52:43,271 - __main__ - INFO - Successfully initialized async event loop
+2025-03-22 11:52:44,236 - __main__ - ERROR - Failed to start ArbitrageBot: No module named 'arbitrage_bot.core.ml.model_interface'
+Traceback (most recent call last):
+  File "F:\Arby 2-22-25\Listonian-bot\run_bot.py", line 39, in init_and_run
+    from main import ArbitrageBot
+  File "F:\Arby 2-22-25\Listonian-bot\main.py", line 18, in <module>
+    from arbitrage_bot.core.market.enhanced_market_analyzer import EnhancedMarketAnalyzer
+  File "F:\Arby 2-22-25\Listonian-bot\arbitrage_bot\core\market\enhanced_market_analyzer.py", line 20, in <module>
+    from ..ml.model_interface import MLSystem
+ModuleNotFoundError: No module named 'arbitrage_bot.core.ml.model_interface'
+2025-03-22 11:52:44,237 - __main__ - ERROR - Failed to start bot: No module named 'arbitrage_bot.core.ml.model_interface'
+Traceback (most recent call last):
+  File "F:\Arby 2-22-25\Listonian-bot\run_bot.py", line 39, in init_and_run
+    from main import ArbitrageBot
+  File "F:\Arby 2-22-25\Listonian-bot\main.py", line 18, in <module>
+    from arbitrage_bot.core.market.enhanced_market_analyzer import EnhancedMarketAnalyzer
+  File "F:\Arby 2-22-25\Listonian-bot\arbitrage_bot\core\market\enhanced_market_analyzer.py", line 20, in <module>
+    from ..ml.model_interface import MLSystem
+ModuleNotFoundError: No module named 'arbitrage_bot.core.ml.model_interface'
+2025-03-22 11:52:44,237 - arbitrage_bot.utils.async_manager - INFO - Async retry manager cleaned up successfully
+2025-03-22 11:52:44,237 - __main__ - INFO - Successfully cleaned up async manager
+2025-03-22 11:52:44,237 - __main__ - ERROR - Critical error: No module named 'arbitrage_bot.core.ml.model_interface'
+Traceback (most recent call last):
+  File "F:\Arby 2-22-25\Listonian-bot\run_bot.py", line 75, in main
+    loop.run_until_complete(init_and_run())
+  File "C:\Users\listonianapp\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 685, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "F:\Arby 2-22-25\Listonian-bot\run_bot.py", line 39, in init_and_run
+    from main import ArbitrageBot
+  File "F:\Arby 2-22-25\Listonian-bot\main.py", line 18, in <module>
+    from arbitrage_bot.core.market.enhanced_market_analyzer import EnhancedMarketAnalyzer
+  File "F:\Arby 2-22-25\Listonian-bot\arbitrage_bot\core\market\enhanced_market_analyzer.py", line 20, in <module>
+    from ..ml.model_interface import MLSystem
+ModuleNotFoundError: No module named 'arbitrage_bot.core.ml.model_interface'
+2025-03-22 11:52:44,238 - __main__ - INFO - Successfully closed event loop

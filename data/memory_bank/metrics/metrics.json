@@ -1,0 +1,24 @@
+{
+    "gas_price": 35.5,
+    "network_status": "connected",
+    "uptime": 300,
+    "performance": {
+        "total_profit": 0.15,
+        "success_rate": 0.85,
+        "average_profit": 0.05,
+        "profit_trend": [
+            {
+                "timestamp": "2025-03-22T10:00:00Z",
+                "profit": 0.05
+            },
+            {
+                "timestamp": "2025-03-22T10:15:00Z",
+                "profit": 0.05
+            },
+            {
+                "timestamp": "2025-03-22T10:30:00Z",
+                "profit": 0.05
+            }
+        ]
+    }
+}

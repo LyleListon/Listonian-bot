@@ -2,13 +2,13 @@
 
 from typing import Dict, Any, List, Optional
 import asyncio
-import json
 from datetime import datetime, timedelta
 import logging
 from pathlib import Path
+import json
+import glob
 
 from ..core.logging import get_logger
-from arbitrage_bot.core.memory.memory_bank import MemoryBank
 
 logger = get_logger("memory_service")
 
@@ -16,21 +16,21 @@ class MemoryService:
     """Service for managing memory bank interactions."""
 
     def __init__(self):
-        self.memory_bank: Optional[MemoryBank] = None
         self._cache: Dict[str, Any] = {}
         self._cache_lock = asyncio.Lock()
         self._update_task: Optional[asyncio.Task] = None
         self._last_update = datetime.min
         self._subscribers: List[asyncio.Queue] = []
+        self.storage_dir = Path("memory-bank")
 
     async def initialize(self) -> None:
         """Initialize the memory service."""
         try:
-            # Initialize memory bank with default storage directory
-            self.memory_bank = MemoryBank(storage_dir="data/memory_bank")
-            await self.memory_bank.initialize()
-            logger.info("Memory bank initialized")
-
+            # Initialize directory structure
+            logger.info(f"Initializing memory service with storage dir: {self.storage_dir}")
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+            (self.storage_dir / 'trades').mkdir(exist_ok=True)
+            
             # Start background update task
             self._update_task = asyncio.create_task(self._background_update())
             logger.info("Started background update task")
@@ -48,9 +48,6 @@ class MemoryService:
             except asyncio.CancelledError:
                 pass
             self._update_task = None
-        
-        if self.memory_bank:
-            await self.memory_bank.save_final_state()
         logger.info("Memory service shut down")
 
     async def subscribe(self) -> asyncio.Queue:
@@ -69,22 +66,72 @@ class MemoryService:
         async with self._cache_lock:
             # Return cached data if it's fresh enough
             if (datetime.now() - self._last_update) < timedelta(seconds=1):
+                logger.debug("Returning cached state")
                 return self._cache.copy()
 
         try:
-            if not self.memory_bank:
-                raise RuntimeError("Memory bank not initialized")
+            # Load trade history
+            trades_dir = self.storage_dir / 'trades'
+            trade_files = sorted(glob.glob(str(trades_dir / 'trade_*.json')))
+            trades = []
+            total_profit = 0
+            successful_trades = 0
+            
+            for file in trade_files:
+                try:
+                    with open(file, 'r') as f:
+                        trade = json.load(f)
+                        trades.append(trade)
+                        if trade['success'] and trade['net_profit'] is not None:
+                            total_profit += float(trade['net_profit'])
+                            successful_trades += 1
+                except Exception as e:
+                    logger.error(f"Error reading trade file {file}: {e}")
+                    continue
 
-            # Get latest data
-            metrics = await self.memory_bank._load_metrics()
-            opportunities = await self._load_opportunities()
-            history = await self._load_execution_history()
+            success_rate = successful_trades / len(trades) if trades else 0
 
-            # Process and format data
+            # Get latest gas price
+            latest_gas = trades[-1]['gas_cost'] if trades else 0
+
+            # Calculate profit trend (last 24 hours)
+            now = datetime.now()
+            profit_trend = []
+            for i in range(24):
+                start_time = now - timedelta(hours=24-i)
+                end_time = now - timedelta(hours=23-i)
+                period_trades = [
+                    t for t in trades 
+                    if t['success'] and 
+                    datetime.fromisoformat(t['timestamp']) >= start_time and
+                    datetime.fromisoformat(t['timestamp']) < end_time and
+                    t['net_profit'] is not None
+                ]
+                period_profit = sum(float(t['net_profit']) for t in period_trades)
+                profit_trend.append({
+                    'timestamp': start_time.isoformat(),
+                    'profit': period_profit
+                })
+
+            # Get active opportunities (trades from last 5 minutes)
+            cutoff_time = now - timedelta(minutes=5)
+            active_opportunities = [
+                t['opportunity'] for t in trades
+                if datetime.fromisoformat(t['timestamp']) >= cutoff_time
+            ]
+
+            # Build state object
             state = {
-                "metrics": metrics,
-                "opportunities": self._process_opportunities(opportunities),
-                "trade_history": self._process_trade_history(history),
+                "metrics": {
+                    "gas_price": latest_gas,
+                    "performance": {
+                        "total_profit": total_profit,
+                        "success_rate": success_rate,
+                        "profit_trend": profit_trend
+                    }
+                },
+                "opportunities": active_opportunities,
+                "trade_history": trades[-10:],  # Last 10 trades
                 "timestamp": datetime.utcnow().isoformat()
             }
 
@@ -123,65 +170,3 @@ class MemoryService:
             except Exception as e:
                 logger.error(f"Error in background update: {e}")
                 await asyncio.sleep(5)  # Wait before retrying
-
-    async def _load_opportunities(self) -> List[Dict[str, Any]]:
-        """Load opportunities from storage."""
-        try:
-            opps_file = self.memory_bank.storage_dir / 'metrics' / 'opportunities.json'
-            
-            if not opps_file.exists():
-                return []
-            
-            with open(opps_file) as f:
-                return json.load(f)
-                
-        except Exception as e:
-            logger.error(f"Failed to load opportunities: {e}")
-            return []
-
-    async def _load_execution_history(self) -> List[Dict[str, Any]]:
-        """Load execution history from storage."""
-        try:
-            history_file = self.memory_bank.storage_dir / 'history' / 'execution_history.json'
-            
-            if not history_file.exists():
-                return []
-            
-            with open(history_file) as f:
-                return json.load(f)
-                
-        except Exception as e:
-            logger.error(f"Failed to load execution history: {e}")
-            return []
-
-    def _process_opportunities(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process and format opportunity data."""
-        processed = []
-        for opp in opportunities:
-            try:
-                processed.append({
-                    "token_pair": opp.get("token_pair", "unknown"),
-                    "profit_potential": float(opp.get("profit_potential", 0)),
-                    "confidence": float(opp.get("confidence", 0)),
-                    "timestamp": opp.get("timestamp")
-                })
-            except Exception as e:
-                logger.error(f"Error processing opportunity: {e}")
-        return processed
-
-    def _process_trade_history(self, trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process and format trade history data."""
-        processed = []
-        for trade in trades:
-            try:
-                processed.append({
-                    "timestamp": trade.get("timestamp"),
-                    "token_pair": trade.get("token_pair"),
-                    "success": trade.get("success", False),
-                    "profit": float(trade.get("profit", 0)),
-                    "gas_used": int(trade.get("gas_used", 0)),
-                    "execution_time": float(trade.get("execution_time", 0))
-                })
-            except Exception as e:
-                logger.error(f"Error processing trade: {e}")
-        return processed

@@ -1,25 +1,82 @@
+# Include all package configuration files
+include *.json
+include *.yaml
+include *.yml
+include *.ini
+include *.toml
+include *.cfg
+include *.conf
+include pyproject.toml
+include setup.cfg
+include setup.py
+include requirements.txt
+include LICENSE
+include README.md
+
+# Include documentation
+include docs/*.md
+include docs/*.rst
+include docs/*.txt
+include DEPLOYMENT_CHECKLIST.md
+include FLASH_LOAN_GUIDE.md
+include FLASHBOTS_INTEGRATION_GUIDE.md
+include INTEGRATION_GUIDE.md
+include PROJECT_ARCHITECTURE.md
+include QUICK_START.md
+
 # Include ABI files
 include abi/*.json
 
-# Include configuration files
-include configs/*.json
+# Include configuration templates
+include .env.production.template
+include .env.development.template
 
-# Include documentation
-include *.md
-include docs/*.md
+# Include scripts
+include scripts/*.py
+include scripts/*.sh
+include scripts/*.ps1
+include *.bat
+include *.ps1
 
-# Include license
-include LICENSE
+# Include static files and templates
+include static/*
+include templates/*
+include new_dashboard/dashboard/templates/*
+include new_dashboard/dashboard/static/*
 
-# Include requirements
-include requirements*.txt
+# Include example files
+include examples/*
+include example_configs/*
 
 # Include test files
-recursive-include tests *.py
+include tests/*
+include test_data/*
 
-# Exclude development files
+# Exclude development and temporary files
+exclude *.pyc
+exclude __pycache__
+exclude *.pyo
+exclude *.pyd
+exclude .git
 exclude .gitignore
-exclude .prettierrc
-exclude *.bat
-exclude *.ps1
-exclude *.sh
+exclude .coverage
+exclude htmlcov
+exclude .pytest_cache
+exclude .mypy_cache
+exclude .vscode
+exclude .idea
+exclude *.egg-info
+exclude dist
+exclude build
+exclude logs/*
+exclude memory-bank/trades/*
+
+# Exclude secure files
+exclude secure/.env
+exclude secure/keys/*
+exclude secure/credentials/*
+
+# Explicitly include empty directories
+include memory-bank/.gitkeep
+include logs/.gitkeep
+include secure/.gitkeep

@@ -7,10 +7,18 @@ import sys
 import os
 from pathlib import Path
 
+# Add project root to Python path
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, project_root)
+
 # Configure logging first
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/arbitrage.log'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -19,6 +27,14 @@ async def init_and_run():
     try:
         # Import async manager first
         from arbitrage_bot.utils.async_manager import manager, run_with_async_context, async_init
+        from arbitrage_bot.utils.config_loader import load_config
+        from arbitrage_bot.core.arbitrage import (
+            BaseArbitrageSystem,
+            DiscoveryManager,
+            EnhancedExecutionManager,
+            AnalyticsManager,
+            MarketDataProvider
+        )
         
         # Initialize async manager with proper error handling
         try:
@@ -30,26 +46,50 @@ async def init_and_run():
             logger.error("Failed to initialize async manager: %s", str(e), exc_info=True)
             raise
 
-        # Import main after async setup
+        # Initialize bot components
         try:
-            import main
-            logger.info("Successfully imported main module")
+            # Load configuration
+            config = load_config()
+            
+            # Initialize components
+            logger.info("Initializing bot components...")
+            
+            # Create market data provider
+            market_data_provider = MarketDataProvider()
+            await market_data_provider.initialize()
+            logger.info("Market data provider initialized")
+            
+            # Create analytics manager
+            analytics_manager = AnalyticsManager()
+            await analytics_manager.initialize()
+            logger.info("Analytics manager initialized")
+            
+            # Create discovery manager
+            discovery_manager = DiscoveryManager()
+            await discovery_manager.initialize()
+            logger.info("Discovery manager initialized")
+            
+            # Create execution manager
+            execution_manager = EnhancedExecutionManager()
+            await execution_manager.initialize()
+            logger.info("Execution manager initialized")
+            
+            # Create bot instance
+            bot = BaseArbitrageSystem(
+                discovery_manager=discovery_manager,
+                execution_manager=execution_manager,
+                analytics_manager=analytics_manager,
+                market_data_provider=market_data_provider,
+                config=config
+            )
+            
+            logger.info("Successfully created ArbitrageBot")
+            
+            # Start the bot
+            await run_with_async_context(bot.start())
+            
         except Exception as e:
-            logger.error("Failed to import main module: %s", str(e), exc_info=True)
-            raise
-        
-        # Run main with proper async context
-        try:
-            if hasattr(main, 'async_main'):
-                logger.info("Running async main")
-                await run_with_async_context(main.async_main())
-            else:
-                # Fallback to running sync main in executor
-                logger.info("Running sync main in executor")
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, main.main)
-        except Exception as e:
-            logger.error("Failed to run main: %s", str(e), exc_info=True)
+            logger.error("Failed to start ArbitrageBot: %s", str(e), exc_info=True)
             raise
 
     except Exception as e:

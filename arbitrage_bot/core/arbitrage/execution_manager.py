@@ -1,68 +1,60 @@
 """
-Execution Manager
+Execution Manager Implementation
 
-This module contains the implementation of the ExecutionManager,
-which coordinates the execution of arbitrage opportunities.
+This module provides the implementation of the ExecutionManager protocol.
 """
 
 import asyncio
 import logging
-import time
-from typing import Dict, List, Any, Optional, Set, Tuple
-import uuid
+from typing import Dict, List, Optional, Any
 
-from .interfaces import (
-    ExecutionManager,
-    ExecutionStrategy,
-    TransactionMonitor
-)
-from .models import (
-    ArbitrageOpportunity,
-    ExecutionResult,
-    ExecutionStatus
-)
+from .interfaces import ExecutionStrategy, TransactionMonitor, ExecutionManager
+from .models import ArbitrageOpportunity, ExecutionResult, ExecutionStatus
 
 logger = logging.getLogger(__name__)
 
-
-class BaseExecutionManager(ExecutionManager):
+class EnhancedExecutionManager(ExecutionManager):
     """
-    Base implementation of the ExecutionManager.
+    Implementation of the ExecutionManager protocol.
     
-    This class coordinates the execution of arbitrage opportunities
-    using registered strategies and monitors.
+    This class coordinates execution strategies and transaction monitors to
+    execute arbitrage opportunities.
     """
     
-    def __init__(
-        self,
-        config: Dict[str, Any] = None
-    ):
-        """
-        Initialize the execution manager.
-        
-        Args:
-            config: Configuration dictionary
-        """
-        self.config = config or {}
-        
-        # Registered components
-        self._strategies: Dict[str, ExecutionStrategy] = {}
-        self._monitors: Dict[str, TransactionMonitor] = {}
-        
-        # Configuration
-        self.default_strategy_id = self.config.get("default_strategy", "standard")
-        self.default_monitor_id = self.config.get("default_monitor", "standard")
-        self.execution_timeout = self.config.get("execution_timeout_seconds", 120)
-        self.transaction_timeout = self.config.get("transaction_timeout_seconds", 180)
-        self.max_retries = self.config.get("max_execution_retries", 1)
-        
-        # Active executions
-        self._active_executions: Dict[str, asyncio.Task] = {}
-        
-        # Locks
-        self._execution_lock = asyncio.Lock()
-        
-        logger.info("BaseExecutionManager initialized")
+    def __init__(self):
+        """Initialize the execution manager."""
+        self._strategies = {}  # strategy_id -> strategy
+        self._monitors = {}  # monitor_id -> monitor
+        self._active_executions = {}  # execution_id -> execution_info
+        self._lock = asyncio.Lock()
+        self._initialized = False
+    
+    async def initialize(self) -> None:
+        """Initialize the execution manager."""
+        async with self._lock:
+            if self._initialized:
+                return
+            
+            logger.info("Initializing execution manager")
+            self._initialized = True
+    
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        async with self._lock:
+            # Cancel any active executions
+            for execution_id, execution_info in self._active_executions.items():
+                try:
+                    await self._cancel_execution(execution_id)
+                except Exception as e:
+                    logger.error(
+                        f"Error cancelling execution {execution_id}: {e}",
+                        exc_info=True
+                    )
+            
+            self._initialized = False
+            self._strategies.clear()
+            self._monitors.clear()
+            self._active_executions.clear()
     
     async def register_strategy(
         self,
@@ -73,14 +65,15 @@ class BaseExecutionManager(ExecutionManager):
         Register an execution strategy.
         
         Args:
-            strategy: Strategy to register
-            strategy_id: Unique identifier for this strategy
+            strategy: The strategy to register
+            strategy_id: Unique identifier for the strategy
         """
-        if strategy_id in self._strategies:
-            logger.warning(f"Strategy {strategy_id} already registered, replacing")
-        
-        self._strategies[strategy_id] = strategy
-        logger.info(f"Registered execution strategy: {strategy_id}")
+        async with self._lock:
+            if strategy_id in self._strategies:
+                raise ValueError(f"Strategy {strategy_id} already registered")
+            
+            self._strategies[strategy_id] = strategy
+            logger.info(f"Registered strategy {strategy_id}")
     
     async def register_monitor(
         self,
@@ -91,175 +84,169 @@ class BaseExecutionManager(ExecutionManager):
         Register a transaction monitor.
         
         Args:
-            monitor: Monitor to register
-            monitor_id: Unique identifier for this monitor
+            monitor: The monitor to register
+            monitor_id: Unique identifier for the monitor
         """
-        if monitor_id in self._monitors:
-            logger.warning(f"Monitor {monitor_id} already registered, replacing")
-        
-        self._monitors[monitor_id] = monitor
-        logger.info(f"Registered transaction monitor: {monitor_id}")
+        async with self._lock:
+            if monitor_id in self._monitors:
+                raise ValueError(f"Monitor {monitor_id} already registered")
+            
+            self._monitors[monitor_id] = monitor
+            logger.info(f"Registered monitor {monitor_id}")
     
     async def execute_opportunity(
         self,
         opportunity: ArbitrageOpportunity,
-        strategy_id: Optional[str] = None,
-        monitor_id: Optional[str] = None,
+        strategy_id: str = "default",
         **kwargs
     ) -> ExecutionResult:
         """
         Execute an arbitrage opportunity.
         
         Args:
-            opportunity: Opportunity to execute
-            strategy_id: Specific strategy to use, or None for default
-            monitor_id: Specific monitor to use, or None for default
-            **kwargs: Additional execution parameters
+            opportunity: The opportunity to execute
+            strategy_id: ID of the strategy to use
+            **kwargs: Additional parameters
             
         Returns:
             Result of the execution
         """
-        async with self._execution_lock:
-            # Generate execution ID
-            execution_id = kwargs.get("execution_id", str(uuid.uuid4()))
-            logger.info(f"Starting execution {execution_id} for opportunity {opportunity.id}")
+        if not self._initialized:
+            raise RuntimeError("Execution manager not initialized")
+        
+        # Get the strategy
+        strategy = self._strategies.get(strategy_id)
+        if not strategy:
+            raise ValueError(f"Strategy {strategy_id} not found")
+        
+        # Execute the opportunity
+        try:
+            # Create execution result
+            execution_id = f"exec_{opportunity.id}_{strategy_id}"
+            result = ExecutionResult(
+                id=execution_id,
+                opportunity=opportunity,
+                status=ExecutionStatus.PENDING,
+                strategy_id=strategy_id
+            )
             
-            # Select strategy
-            strategy_id = strategy_id or self.default_strategy_id
-            if strategy_id not in self._strategies:
-                logger.error(f"Strategy {strategy_id} not found")
-                return ExecutionResult(
-                    opportunity_id=opportunity.id,
-                    success=False,
-                    error_message=f"Strategy {strategy_id} not found"
-                )
+            # Add to active executions
+            self._active_executions[execution_id] = {
+                "result": result,
+                "strategy": strategy,
+                "monitors": []
+            }
             
-            strategy = self._strategies[strategy_id]
-            logger.info(f"Using strategy {strategy_id}")
+            # Execute using strategy
+            result = await strategy.execute_opportunity(
+                opportunity=opportunity,
+                **kwargs
+            )
             
-            # Select monitor
-            monitor_id = monitor_id or self.default_monitor_id
-            if monitor_id not in self._monitors:
-                logger.error(f"Monitor {monitor_id} not found")
-                return ExecutionResult(
-                    opportunity_id=opportunity.id,
-                    success=False,
-                    error_message=f"Monitor {monitor_id} not found"
-                )
-            
-            monitor = self._monitors[monitor_id]
-            logger.info(f"Using monitor {monitor_id}")
-            
-            # Execute with retries
-            result = None
-            retry_count = 0
-            
-            while result is None or (
-                not result.success and 
-                retry_count < self.max_retries and
-                result.status != ExecutionStatus.REJECTED
-            ):
-                if retry_count > 0:
-                    logger.info(f"Retrying execution {execution_id} (attempt {retry_count+1}/{self.max_retries+1})")
-                
-                try:
-                    # Execute the opportunity
-                    execution_task = asyncio.create_task(strategy.execute_opportunity(
-                        opportunity=opportunity,
-                        execution_id=execution_id,
-                        **kwargs
-                    ))
-                    
-                    # Store active execution
-                    self._active_executions[execution_id] = execution_task
-                    
-                    # Wait for execution with timeout
-                    try:
-                        result = await asyncio.wait_for(
-                            execution_task,
-                            timeout=self.execution_timeout
+            # Monitor transaction if available
+            if result.transaction_hash:
+                monitor_tasks = []
+                for monitor in self._monitors.values():
+                    task = asyncio.create_task(
+                        self._monitor_transaction(
+                            monitor=monitor,
+                            execution_id=execution_id,
+                            transaction_hash=result.transaction_hash
                         )
-                        
-                    except asyncio.TimeoutError:
-                        logger.warning(f"Execution {execution_id} timed out")
-                        result = ExecutionResult(
-                            opportunity_id=opportunity.id,
-                            success=False,
-                            status=ExecutionStatus.TIMEOUT,
-                            error_message="Execution timed out"
-                        )
-                        execution_task.cancel()
-                    
-                    # Monitor transaction if needed
-                    if result.success and result.transaction_hash and monitor:
-                        logger.info(f"Monitoring transaction {result.transaction_hash}")
-                        try:
-                            monitoring_result = await asyncio.wait_for(
-                                monitor.monitor_transaction(
-                                    transaction_hash=result.transaction_hash,
-                                    timeout_seconds=self.transaction_timeout,
-                                    opportunity_id=opportunity.id,
-                                    execution_id=execution_id
-                                ),
-                                timeout=self.transaction_timeout + 10  # Add a small buffer
-                            )
-                            
-                            # Update result with monitoring info
-                            result.status = monitoring_result.status
-                            result.gas_used = monitoring_result.gas_used
-                            result.actual_profit = monitoring_result.actual_profit
-                            result.block_number = monitoring_result.block_number
-                            result.receipt = monitoring_result.receipt
-                            
-                            # Check if transaction failed
-                            if result.status != ExecutionStatus.CONFIRMED:
-                                result.success = False
-                                logger.warning(f"Transaction failed with status: {result.status}")
-                            
-                        except asyncio.TimeoutError:
-                            logger.warning(f"Transaction monitoring timed out for {result.transaction_hash}")
-                            result.status = ExecutionStatus.TIMEOUT
-                            result.success = False
-                            result.error_message = "Transaction monitoring timed out"
-                    
-                except Exception as e:
-                    logger.error(f"Error executing opportunity: {e}")
-                    result = ExecutionResult(
-                        opportunity_id=opportunity.id,
-                        success=False,
-                        error_message=str(e)
                     )
-                
-                finally:
-                    # Clean up active execution
-                    if execution_id in self._active_executions:
-                        del self._active_executions[execution_id]
-                
-                # Increment retry counter
-                retry_count += 1
-            
-            # Log final result
-            if result.success:
-                logger.info(f"Execution {execution_id} successful: TX {result.transaction_hash}")
-                if result.actual_profit:
-                    logger.info(f"Actual profit: {result.actual_profit} wei")
-            else:
-                logger.warning(f"Execution {execution_id} failed: {result.error_message}")
+                    monitor_tasks.append(task)
+                    self._active_executions[execution_id]["monitors"].append(task)
             
             return result
-
-
-async def create_execution_manager(
-    config: Dict[str, Any] = None
-) -> BaseExecutionManager:
-    """
-    Create and initialize an execution manager.
+            
+        except Exception as e:
+            logger.error(
+                f"Error executing opportunity {opportunity.id}: {e}",
+                exc_info=True
+            )
+            result = ExecutionResult(
+                id=execution_id,
+                opportunity=opportunity,
+                status=ExecutionStatus.FAILED,
+                strategy_id=strategy_id,
+                error=str(e)
+            )
+            return result
     
-    Args:
-        config: Configuration dictionary
+    async def get_execution_status(
+        self,
+        execution_id: str
+    ) -> ExecutionStatus:
+        """
+        Get the status of an execution.
         
-    Returns:
-        Initialized execution manager
-    """
-    manager = BaseExecutionManager(config=config)
-    return manager
+        Args:
+            execution_id: ID of the execution
+            
+        Returns:
+            Current status of the execution
+        """
+        execution_info = self._active_executions.get(execution_id)
+        if not execution_info:
+            return ExecutionStatus.NOT_FOUND
+        
+        return execution_info["result"].status
+    
+    async def _monitor_transaction(
+        self,
+        monitor: TransactionMonitor,
+        execution_id: str,
+        transaction_hash: str
+    ) -> None:
+        """Monitor a transaction and update execution status."""
+        try:
+            status = await monitor.monitor_transaction(
+                transaction_hash=transaction_hash
+            )
+            
+            # Update execution status
+            execution_info = self._active_executions.get(execution_id)
+            if execution_info:
+                execution_info["result"].status = status
+                
+                # Remove from active executions if final
+                if status.is_final:
+                    await self._cleanup_execution(execution_id)
+                    
+        except Exception as e:
+            logger.error(
+                f"Error monitoring transaction {transaction_hash}: {e}",
+                exc_info=True
+            )
+    
+    async def _cancel_execution(
+        self,
+        execution_id: str
+    ) -> None:
+        """Cancel an active execution."""
+        execution_info = self._active_executions.get(execution_id)
+        if not execution_info:
+            return
+        
+        # Cancel monitor tasks
+        for task in execution_info["monitors"]:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        
+        # Update status
+        execution_info["result"].status = ExecutionStatus.CANCELLED
+        
+        # Remove from active executions
+        await self._cleanup_execution(execution_id)
+    
+    async def _cleanup_execution(
+        self,
+        execution_id: str
+    ) -> None:
+        """Clean up an execution."""
+        async with self._lock:
+            if execution_id in self._active_executions:
+                del self._active_executions[execution_id]

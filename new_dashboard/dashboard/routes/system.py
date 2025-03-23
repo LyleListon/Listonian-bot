@@ -11,7 +11,7 @@ router = APIRouter()
 logger = get_logger("system_routes")
 
 @router.get("/status")
-@log_execution_time(logger)
+@log_execution_time
 async def get_system_status(
     system_service=Depends(get_system_service)
 ) -> Dict[str, Any]:
@@ -19,7 +19,7 @@ async def get_system_status(
     return await system_service.get_system_status()
 
 @router.get("/health")
-@log_execution_time(logger)
+@log_execution_time
 async def health_check(
     system_service=Depends(get_system_service)
 ) -> Dict[str, Any]:
@@ -50,7 +50,7 @@ async def health_check(
     }
 
 @router.get("/resources")
-@log_execution_time(logger)
+@log_execution_time
 async def get_resource_usage(
     system_service=Depends(get_system_service)
 ) -> Dict[str, Any]:
@@ -59,7 +59,7 @@ async def get_resource_usage(
     return status.get("system", {})
 
 @router.get("/uptime")
-@log_execution_time(logger)
+@log_execution_time
 async def get_uptime(
     system_service=Depends(get_system_service)
 ) -> Dict[str, Any]:

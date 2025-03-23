@@ -1,21 +1,16 @@
 """
-Web3 interaction layer.
+Web3 Package
 
-This module provides:
-1. Provider management with fallback
-2. Contract interactions
-3. Transaction handling
-4. Gas estimation
+This package provides Web3 functionality with:
+- Async Web3 initialization
+- Connection management
+- Transaction handling
+- Gas price estimation
 """
 
-from .web3 import (
-    Web3Manager,
-    Web3Error,
-    get_web3_manager
-)
+from .web3_manager import Web3Manager, create_web3_manager
 
 __all__ = [
     'Web3Manager',
-    'Web3Error',
-    'get_web3_manager'
+    'create_web3_manager'
 ]

@@ -120,34 +120,77 @@
         profitChart.update();
     }
 
+    function updateMetrics(data) {
+        // Debug logging
+        console.log('Updating metrics with data:', data);
+        
+        const performance = data.performance || {};
+
+        // Update total profit
+        if (performance.total_profit !== undefined) {
+            document.getElementById('totalProfit').querySelector('.metric-value').textContent = 
+                `${performance.total_profit.toFixed(4)} ETH`;
+        }
+
+        // Update success rate
+        if (performance.success_rate !== undefined) {
+            document.getElementById('successRate').querySelector('.metric-value').textContent = 
+                `${(performance.success_rate * 100).toFixed(1)}%`;
+        }
+
+        // Update profit chart
+        if (performance.profit_trend) {
+            updateProfitChart(performance.profit_trend);
+        }
+    }
+
     // Handle WebSocket messages
     document.addEventListener('websocket-message', function(e) {
         const data = e.detail;
+        console.log('Received WebSocket message:', data);
+
+        if (data.type === 'initial_state') {
+            console.log('Initial state metrics:', data.data.metrics);
+            
+            // Handle initial state
+            if (data.data.metrics) {
+                updateMetrics(data.data.metrics.performance);
+            }
+
+            // Update gas price from metrics data
+            if (data.data.metrics?.gas_price !== undefined) {
+                document.getElementById('gasPrice').querySelector('.metric-value').textContent = 
+                    `${data.data.metrics.gas_price.toFixed(1)}`;
+            }
+
+            // Update opportunities count
+            if (data.data.opportunities) {
+                document.getElementById('activeOpportunities').querySelector('.metric-value').textContent = 
+                    data.data.opportunities.length.toString();
+            }
+        }
 
         if (data.type === 'metrics_update') {
-            // Update metrics
-            const metrics = data.data.performance;
-            document.getElementById('totalProfit').querySelector('.metric-value').textContent = 
-                `${metrics.total_profit.toFixed(4)} ETH`;
-            document.getElementById('successRate').querySelector('.metric-value').textContent = 
-                `${(metrics.success_rate * 100).toFixed(1)}%`;
-            
-            // Update profit chart
-            updateProfitChart(metrics.profit_trend);
+            console.log('Metrics update:', data.data);
+            // Update metrics from the performance data
+            if (data.data) {
+                updateMetrics(data.data);
+            }
         }
 
         if (data.type === 'memory_update') {
-            // Update opportunities
-            const opportunities = data.data.opportunities || [];
-            document.getElementById('activeOpportunities').querySelector('.metric-value').textContent = 
-                opportunities.length.toString();
-        }
+            console.log('Memory update:', data.data);
+            // Update gas price from metrics data
+            if (data.data.metrics?.gas_price !== undefined) {
+                document.getElementById('gasPrice').querySelector('.metric-value').textContent = 
+                    `${data.data.metrics.gas_price.toFixed(1)} GWEI`;
+            }
 
-        if (data.type === 'system_update') {
-            // Update gas price
-            const gasPrice = data.data.network?.gas_price || 0;
-            document.getElementById('gasPrice').querySelector('.metric-value').textContent = 
-                `${gasPrice.toFixed(1)}`;
+            // Update opportunities count
+            if (data.data.opportunities) {
+                document.getElementById('activeOpportunities').querySelector('.metric-value').textContent = 
+                    data.data.opportunities.length;
+            }
         }
     });
 

@@ -1,244 +1,322 @@
 """
-Memory Bank Module
+Memory Bank Implementation
 
-This module provides persistent storage and retrieval of:
-- System metrics
-- Trading history
-- Performance data
-- Configuration state
+This module provides the MemoryBank class for in-memory storage and caching
+of arbitrage bot data.
 """
 
 import asyncio
-import json
 import logging
-from typing import Dict, Any, List, Optional
-from pathlib import Path
-from decimal import Decimal
+from collections import deque
 from datetime import datetime, timedelta
-
-from ..interfaces import TokenPair, ExecutionResult
-from ...utils.async_manager import AsyncLock
+from typing import Dict, List, Optional, Any, Deque
 
 logger = logging.getLogger(__name__)
 
 class MemoryBank:
-    """Manages persistent storage and retrieval of system data."""
-
-    def __init__(self, storage_dir: str = "data/memory_bank"):
+    """
+    In-memory storage for arbitrage bot data.
+    
+    This class provides fast access to recent trades, metrics, and other
+    frequently accessed data.
+    """
+    
+    def __init__(
+        self,
+        max_trades: int = 10000,
+        metrics_ttl: int = 300,  # 5 minutes
+        state_ttl: int = 60  # 1 minute
+    ):
+        """
+        Initialize the memory bank.
+        
+        Args:
+            max_trades: Maximum number of trades to keep in memory
+            metrics_ttl: Time to live for metrics cache in seconds
+            state_ttl: Time to live for state cache in seconds
+        """
+        # Configuration
+        self._max_trades = max_trades
+        self._metrics_ttl = metrics_ttl
+        self._state_ttl = state_ttl
+        
+        # Trade storage
+        self._trades: Deque[Dict[str, Any]] = deque(maxlen=max_trades)
+        self._trade_index: Dict[str, Dict[str, Any]] = {}  # trade_id -> trade
+        
+        # Metrics storage
+        self._metrics: Dict[str, Any] = {}
+        self._metrics_timestamp = None
+        
+        # State storage
+        self._state: Dict[str, Any] = {}
+        self._state_timestamp = None
+        
+        # Analytics storage
+        self._daily_stats: Dict[str, Dict[str, Any]] = {}
+        self._hourly_stats: Dict[str, Dict[str, Any]] = {}
+        
+        # Lock for thread safety
+        self._lock = asyncio.Lock()
+        self._initialized = False
+    
+    async def initialize(self) -> None:
         """Initialize the memory bank."""
-        self.storage_dir = Path(storage_dir)
-        self.storage_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Thread safety
-        self._metrics_lock = AsyncLock()
-        self._history_lock = AsyncLock()
-        
-        # Cache settings
-        self._metrics_cache: Dict[str, Any] = {}
-        self._cache_ttl = 60  # 1 minute
-
-    async def initialize(self):
-        """Initialize memory bank and load initial data."""
-        try:
-            # Create required directories
-            for subdir in ['metrics', 'history', 'state']:
-                (self.storage_dir / subdir).mkdir(exist_ok=True)
+        async with self._lock:
+            if self._initialized:
+                return
             
-            # Load initial metrics
-            await self._load_metrics()
+            logger.info("Initializing memory bank")
+            self._initialized = True
+    
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        async with self._lock:
+            # Clear all storage
+            self._trades.clear()
+            self._trade_index.clear()
+            self._metrics.clear()
+            self._state.clear()
+            self._daily_stats.clear()
+            self._hourly_stats.clear()
             
-            logger.info("Memory bank initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize memory bank: {e}")
-            raise
-
-    async def update_system_metrics(self, metrics: Dict[str, Any]):
-        """Update system metrics."""
-        async with self._metrics_lock:
-            try:
-                # Load current metrics
-                current = await self._load_metrics()
-                
-                # Update with new metrics
-                current.update(metrics)
-                
-                # Add timestamp
-                current['last_update'] = datetime.now().isoformat()
-                
-                # Save metrics
-                metrics_file = self.storage_dir / 'metrics' / 'system_metrics.json'
-                with open(metrics_file, 'w') as f:
-                    json.dump(current, f, indent=2)
-                
-                # Update cache
-                self._metrics_cache = current
-                
-                logger.debug(f"Updated system metrics: {metrics}")
-                
-            except Exception as e:
-                logger.error(f"Failed to update metrics: {e}")
-                raise
-
-    async def store_execution_result(
+            self._initialized = False
+    
+    async def add_trade(
         self,
-        token_pair: TokenPair,
-        success: bool,
-        profit: int,
-        gas_used: int,
-        execution_time: float
-    ):
-        """Store execution result in history."""
-        async with self._history_lock:
-            try:
-                # Create result entry
-                result = {
-                    'timestamp': datetime.now().isoformat(),
-                    'token_pair': str(token_pair),
-                    'success': success,
-                    'profit': profit,
-                    'gas_used': gas_used,
-                    'execution_time': execution_time
-                }
-                
-                # Save to history file
-                history_file = self.storage_dir / 'history' / 'execution_history.json'
-                
-                if history_file.exists():
-                    with open(history_file) as f:
-                        history = json.load(f)
-                else:
-                    history = []
-                
-                history.append(result)
-                
-                # Keep last 1000 entries
-                if len(history) > 1000:
-                    history = history[-1000:]
-                
-                with open(history_file, 'w') as f:
-                    json.dump(history, f, indent=2)
-                
-                logger.debug(f"Stored execution result: {result}")
-                
-            except Exception as e:
-                logger.error(f"Failed to store execution result: {e}")
-                raise
-
-    async def store_opportunity(
+        trade: Dict[str, Any]
+    ) -> None:
+        """
+        Add a trade to storage.
+        
+        Args:
+            trade: Trade data to store
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        async with self._lock:
+            # Add to trades list and index
+            self._trades.append(trade)
+            self._trade_index[trade['id']] = trade
+            
+            # Update statistics
+            await self._update_stats(trade)
+    
+    async def get_trade(
         self,
-        token_pair: TokenPair,
-        profit_potential: Decimal,
-        confidence: float
-    ):
-        """Store potential arbitrage opportunity."""
-        async with self._metrics_lock:
-            try:
-                opportunity = {
-                    'timestamp': datetime.now().isoformat(),
-                    'token_pair': str(token_pair),
-                    'profit_potential': str(profit_potential),
-                    'confidence': confidence
-                }
-                
-                # Save to opportunities file
-                opps_file = self.storage_dir / 'metrics' / 'opportunities.json'
-                
-                if opps_file.exists():
-                    with open(opps_file) as f:
-                        opportunities = json.load(f)
-                else:
-                    opportunities = []
-                
-                opportunities.append(opportunity)
-                
-                # Keep last 100 opportunities
-                if len(opportunities) > 100:
-                    opportunities = opportunities[-100:]
-                
-                with open(opps_file, 'w') as f:
-                    json.dump(opportunities, f, indent=2)
-                
-                logger.debug(f"Stored opportunity: {opportunity}")
-                
-            except Exception as e:
-                logger.error(f"Failed to store opportunity: {e}")
-                raise
-
-    async def get_token_metrics(self, token_pair: TokenPair) -> Dict[str, Any]:
-        """Get historical metrics for a token pair."""
-        try:
-            metrics_file = self.storage_dir / 'metrics' / f'token_{str(token_pair)}.json'
+        trade_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific trade by ID.
+        
+        Args:
+            trade_id: ID of trade to retrieve
             
-            if not metrics_file.exists():
-                return {
-                    'success_rate': 0,
-                    'average_profit': 0,
-                    'average_gas_cost': 0,
-                    'total_executions': 0
-                }
+        Returns:
+            Trade data if found, None otherwise
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        return self._trade_index.get(trade_id)
+    
+    async def get_recent_trades(
+        self,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent trades.
+        
+        Args:
+            limit: Maximum number of trades to return
             
-            with open(metrics_file) as f:
-                return json.load(f)
-                
-        except Exception as e:
-            logger.error(f"Failed to get token metrics: {e}")
+        Returns:
+            List of recent trades
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        trades = list(self._trades)
+        return trades[-limit:]
+    
+    async def update_metrics(
+        self,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Update system metrics.
+        
+        Args:
+            metrics: Metrics to update
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        async with self._lock:
+            self._metrics.update(metrics)
+            self._metrics_timestamp = datetime.now()
+    
+    async def get_metrics(self) -> Dict[str, Any]:
+        """
+        Get current system metrics.
+        
+        Returns:
+            Current metrics if not expired, empty dict otherwise
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        if not self._metrics_timestamp:
             return {}
-
-    async def get_next_opportunity(self) -> Optional[Dict[str, Any]]:
-        """Get next pending opportunity."""
-        try:
-            opps_file = self.storage_dir / 'metrics' / 'opportunities.json'
-            
-            if not opps_file.exists():
-                return None
-            
-            with open(opps_file) as f:
-                opportunities = json.load(f)
-            
-            if not opportunities:
-                return None
-            
-            # Get most recent opportunity
-            opportunity = opportunities[-1]
-            
-            # Remove it from the list
-            opportunities = opportunities[:-1]
-            
-            with open(opps_file, 'w') as f:
-                json.dump(opportunities, f, indent=2)
-            
-            return opportunity
-            
-        except Exception as e:
-            logger.error(f"Failed to get next opportunity: {e}")
-            return None
-
-    async def _load_metrics(self) -> Dict[str, Any]:
-        """Load system metrics from storage."""
-        try:
-            metrics_file = self.storage_dir / 'metrics' / 'system_metrics.json'
-            
-            if not metrics_file.exists():
-                return {}
-            
-            with open(metrics_file) as f:
-                return json.load(f)
-                
-        except Exception as e:
-            logger.error(f"Failed to load metrics: {e}")
+        
+        # Check if metrics have expired
+        if (datetime.now() - self._metrics_timestamp).total_seconds() > self._metrics_ttl:
             return {}
-
-    async def save_final_state(self):
-        """Save final state before shutdown."""
-        try:
-            # Save current metrics
-            await self.update_system_metrics({
-                'shutdown_time': datetime.now().isoformat()
-            })
+        
+        return self._metrics.copy()
+    
+    async def update_state(
+        self,
+        state: Dict[str, Any]
+    ) -> None:
+        """
+        Update system state.
+        
+        Args:
+            state: State to update
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        async with self._lock:
+            self._state.update(state)
+            self._state_timestamp = datetime.now()
+    
+    async def get_state(self) -> Dict[str, Any]:
+        """
+        Get current system state.
+        
+        Returns:
+            Current state if not expired, empty dict otherwise
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        if not self._state_timestamp:
+            return {}
+        
+        # Check if state has expired
+        if (datetime.now() - self._state_timestamp).total_seconds() > self._state_ttl:
+            return {}
+        
+        return self._state.copy()
+    
+    async def get_daily_stats(
+        self,
+        days: int = 7
+    ) -> List[Dict[str, Any]]:
+        """
+        Get daily statistics.
+        
+        Args:
+            days: Number of days of stats to return
             
-            logger.info("Final state saved successfully")
+        Returns:
+            List of daily statistics
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        cutoff = datetime.now() - timedelta(days=days)
+        stats = []
+        
+        for date, data in sorted(self._daily_stats.items()):
+            if datetime.fromisoformat(date) >= cutoff:
+                stats.append(data)
+        
+        return stats
+    
+    async def get_hourly_stats(
+        self,
+        hours: int = 24
+    ) -> List[Dict[str, Any]]:
+        """
+        Get hourly statistics.
+        
+        Args:
+            hours: Number of hours of stats to return
             
-        except Exception as e:
-            logger.error(f"Failed to save final state: {e}")
-            raise
+        Returns:
+            List of hourly statistics
+        """
+        if not self._initialized:
+            raise RuntimeError("Memory bank not initialized")
+        
+        cutoff = datetime.now() - timedelta(hours=hours)
+        stats = []
+        
+        for hour, data in sorted(self._hourly_stats.items()):
+            if datetime.fromisoformat(hour) >= cutoff:
+                stats.append(data)
+        
+        return stats
+    
+    async def _update_stats(
+        self,
+        trade: Dict[str, Any]
+    ) -> None:
+        """
+        Update statistics with new trade data.
+        
+        Args:
+            trade: Trade data to process
+        """
+        timestamp = datetime.fromisoformat(trade['timestamp'])
+        
+        # Update daily stats
+        date = timestamp.date().isoformat()
+        if date not in self._daily_stats:
+            self._daily_stats[date] = {
+                'date': date,
+                'total_trades': 0,
+                'total_profit_wei': 0,
+                'total_gas_wei': 0,
+                'successful_trades': 0,
+                'failed_trades': 0
+            }
+        
+        daily_stats = self._daily_stats[date]
+        daily_stats['total_trades'] += 1
+        
+        if trade.get('status') == 'SUCCESSFUL':
+            daily_stats['successful_trades'] += 1
+            daily_stats['total_profit_wei'] += trade.get('actual_profit_wei', 0)
+            daily_stats['total_gas_wei'] += trade.get('gas_cost_wei', 0)
+        else:
+            daily_stats['failed_trades'] += 1
+        
+        # Update hourly stats
+        hour = timestamp.replace(minute=0, second=0, microsecond=0).isoformat()
+        if hour not in self._hourly_stats:
+            self._hourly_stats[hour] = {
+                'hour': hour,
+                'total_trades': 0,
+                'total_profit_wei': 0,
+                'total_gas_wei': 0,
+                'successful_trades': 0,
+                'failed_trades': 0
+            }
+        
+        hourly_stats = self._hourly_stats[hour]
+        hourly_stats['total_trades'] += 1
+        
+        if trade.get('status') == 'SUCCESSFUL':
+            hourly_stats['successful_trades'] += 1
+            hourly_stats['total_profit_wei'] += trade.get('actual_profit_wei', 0)
+            hourly_stats['total_gas_wei'] += trade.get('gas_cost_wei', 0)
+        else:
+            hourly_stats['failed_trades'] += 1
+        
+        # Clean up old stats
+        self._cleanup_stats()

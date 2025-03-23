@@ -16,7 +16,7 @@ from decimal import Decimal
 from collections import defaultdict
 
 from ....utils.async_manager import AsyncLock, with_retry
-from arbitrage_bot.core import Web3Error
+from ..errors import Web3Error
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class RiskAnalyzer:
         except (ValueError, TypeError):
             return default
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def analyze_mempool_risk(self) -> Dict[str, Any]:
         """
         Analyze current mempool for MEV risks.

@@ -1,0 +1,44 @@
+
+Key Metrics to Track for Arbitrage Bot
+Profitability Metrics
+
+Net profit after all fees by token pair
+ROI percentage per trade type
+Profit per gas unit (efficiency metric)
+Profit distribution by strategy type
+
+DEX Performance
+
+Success rate by DEX pair (Aerodrome/Baseswap, Pancake/Uni, etc.)
+Cross-DEX arbitrage frequency and profitability
+DEX-specific slippage patterns
+Liquidity depth correlation with success
+
+Flash Loan Metrics
+
+Balancer vs Aave success rate on Base
+Provider reliability during peak periods
+Flash loan cost impact on net profitability
+Maximum effective loan size by token
+
+Execution Metrics
+
+Gas usage by strategy type
+MEV protection effectiveness
+Path length vs success rate correlation
+Execution time from discovery to completion
+
+Token Performance
+
+cbETH/ETH opportunities across DEXes
+USDbC/USDC stability pair arbitrage frequency
+Base ecosystem tokens migration patterns
+Token volatility impact on success rate
+
+System Performance
+
+Network congestion vs success rate
+Opportunity discovery rate by time of day
+NetworkX graph patterns for recurring opportunities
+Success rate with multi-path vs simple arbitrage
+

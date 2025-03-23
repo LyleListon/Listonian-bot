@@ -110,44 +110,19 @@ class MetricsService:
     async def _calculate_performance_metrics(self, memory_state: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate performance-related metrics."""
         try:
-            trades = memory_state.get("trade_history", [])
-            if not trades:
-                return {
-                    "success_rate": 0,
-                    "average_profit": 0,
-                    "total_profit": 0,
-                    "profit_trend": []
-                }
-
-            # Calculate basic metrics
-            successful_trades = [t for t in trades if t.get("success", False)]
-            success_rate = len(successful_trades) / len(trades) if trades else 0
+            # Get metrics from memory state
+            metrics = memory_state.get("metrics", {})
+            performance = metrics.get("performance", {})
             
-            profits = [float(t.get("net_profit", 0)) for t in successful_trades]
-            average_profit = statistics.mean(profits) if profits else 0
-            total_profit = sum(profits)
-
-            # Calculate profit trend
-            now = datetime.utcnow()
-            profit_trend = []
-            for i in range(24):
-                start_time = now - timedelta(hours=24-i)
-                end_time = now - timedelta(hours=23-i)
-                period_trades = [
-                    t for t in successful_trades
-                    if start_time <= datetime.fromisoformat(t["timestamp"]) < end_time
-                ]
-                period_profit = sum(float(t.get("net_profit", 0)) for t in period_trades)
-                profit_trend.append({
-                    "timestamp": start_time.isoformat(),
-                    "profit": period_profit
-                })
-
+            # Log metrics for debugging
+            logger.debug(f"Processing metrics from memory state: {metrics}")
+            
+            # Return performance metrics directly
+            # The memory service already calculates these correctly
             return {
-                "success_rate": success_rate,
-                "average_profit": average_profit,
-                "total_profit": total_profit,
-                "profit_trend": profit_trend
+                "success_rate": performance.get("success_rate", 0),
+                "total_profit": performance.get("total_profit", 0),
+                "profit_trend": performance.get("profit_trend", [])
             }
 
         except Exception as e:

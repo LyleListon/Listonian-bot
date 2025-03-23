@@ -1,37 +1,30 @@
-"""
-Core functionality for the arbitrage bot.
+"""Core functionality for the arbitrage bot.
 
-This package provides:
-1. Web3 interaction layer
- (contract interactions, transactions, gas estimation)
-2. Storage management
-3. Cache management
-4. System monitoring
-5. Resource management
-6. WebSocket management
-7. Metrics collection
+This module provides core components including ML capabilities,
+market analysis, and arbitrage system implementations.
 """
 
-from typing import Dict, Any
-from .storage import StorageManager
-from .cache import get_cache, Cache
-from .websocket import get_ws_manager, WebSocketManager
-from .metrics import get_metrics_collector, MetricsCollector
-from .web3 import (
-    Web3Manager,
-    Web3Error,
-    get_web3_manager
+class Web3Error(Exception):
+    """Base exception class for Web3-related errors."""
+    
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+from .ml import MLSystem, PriceValidator
+from .arbitrage import (
+    DiscoveryManager,
+    ExecutionManager,
+    AnalyticsManager,
+    MarketDataProvider
 )
 
 __all__ = [
-    'StorageManager',
-    'get_cache',
-    'Cache',
-    'get_ws_manager',
-    'WebSocketManager',
-    'get_metrics_collector',
-    'MetricsCollector',
-    'Web3Manager',
-    'Web3Error',
-    'get_web3_manager'
+    "Web3Error",
+    "MLSystem",
+    "PriceValidator",
+    "DiscoveryManager",
+    "ExecutionManager",
+    "AnalyticsManager",
+    "MarketDataProvider"
 ]

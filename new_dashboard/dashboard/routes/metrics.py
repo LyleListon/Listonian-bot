@@ -10,7 +10,7 @@ router = APIRouter()
 logger = get_logger("metrics_routes")
 
 @router.get("/current")
-@log_execution_time(logger)
+@log_execution_time
 async def get_current_metrics(
     metrics_service=Depends(get_metrics_service)
 ) -> Dict[str, Any]:
@@ -18,7 +18,7 @@ async def get_current_metrics(
     return await metrics_service.get_current_metrics()
 
 @router.get("/performance")
-@log_execution_time(logger)
+@log_execution_time
 async def get_performance_metrics(
     metrics_service=Depends(get_metrics_service)
 ) -> Dict[str, Any]:

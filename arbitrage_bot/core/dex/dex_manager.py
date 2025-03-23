@@ -314,7 +314,7 @@ class DexManager:
 
         return dex.pools
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def discover_pools(
         self,
         dex_name: str,
@@ -373,7 +373,7 @@ class DexManager:
             logger.warning(f"Failed to discover pools for {dex_name}: {e}")
             return set()
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def get_price(
         self,
         dex_name: str,
@@ -429,7 +429,7 @@ class DexManager:
             logger.debug(f"Failed to get price for {token_in}/{token_out} on {dex_name}: {e}")
             return 0
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def get_pool(
         self,
         dex_name: str,
@@ -477,7 +477,7 @@ class DexManager:
             logger.debug(f"Failed to get pool for {token_in}/{token_out} on {dex_name}: {e}")
             return None
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def get_fee(
         self,
         dex_name: str,
@@ -497,7 +497,7 @@ class DexManager:
             # Default to 30 bps (0.3%) if fee not found
             return 30
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def get_pool_liquidity(
         self,
         token_address: ChecksumAddress
@@ -535,7 +535,7 @@ class DexManager:
 
         return total_liquidity
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def calculate_price_impact(
         self,
         dex_name: str,
@@ -579,7 +579,7 @@ class DexManager:
             logger.debug(f"Failed to calculate price impact for pool {pool_address}: {e}")
             return 1.0  # Assume 100% impact on failure
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def get_supported_tokens(self) -> List[ChecksumAddress]:
         """
         Get list of supported tokens across all DEXs.

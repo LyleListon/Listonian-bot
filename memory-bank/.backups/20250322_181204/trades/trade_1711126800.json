@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-03-22T10:00:00Z",
+  "opportunity": {
+    "token_pair": "ETH/USDC",
+    "dex_1": "Uniswap V3",
+    "dex_2": "PancakeSwap",
+    "potential_profit": 0.05,
+    "confidence": 0.95
+  },
+  "success": true,
+  "net_profit": 0.048,
+  "gas_cost": 35.5,
+  "tx_hash": "0x1234...abcd",
+  "error": null
+}

@@ -1,101 +1,142 @@
-"""FastAPI application for the dashboard."""
+"""Main FastAPI application module."""
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.requests import Request
+import json
+import asyncio
+import logging
+from typing import List, Dict, Any
 from pathlib import Path
 
-from .core.logging import setup_logging, get_logger
-from .routes import api_router, websocket_router
-from .services.service_manager import service_manager
+from .core.logging import configure_logging, get_logger
+from .core.dependencies import get_memory_service
+from .routes import metrics, system
+from .services.memory_service import MemoryService
 
-# Set up logging
-setup_logging(level="DEBUG")
-logger = get_logger("app")
+# Configure logging
+configure_logging()
+logger = get_logger("dashboard")
 
-# Create FastAPI application
-app = FastAPI(
-    title="Dashboard",
-    description="Real-time monitoring dashboard for arbitrage bot",
-    version="2.0.0"
-)
+# Initialize FastAPI app
+app = FastAPI(title="Arbitrage Bot Dashboard")
 
-# Set up CORS middleware with WebSocket support
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
+# Configure static files and templates
+static_dir = Path(__file__).parent / "static"
+templates_dir = Path(__file__).parent / "templates"
 
-# Set up paths
-base_dir = Path(__file__).parent
-static_path = base_dir / "static"
-templates_path = base_dir / "templates"
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+templates = Jinja2Templates(directory=str(templates_dir))
 
-logger.debug(f"Base directory: {base_dir}")
-logger.debug(f"Static path: {static_path}")
-logger.debug(f"Templates path: {templates_path}")
-logger.debug(f"Static path exists: {static_path.exists()}")
-logger.debug(f"Templates path exists: {templates_path.exists()}")
+# Include routers
+app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
+app.include_router(system.router, prefix="/api/system", tags=["system"])
 
-# Set up static files
-if not static_path.exists():
-    static_path.mkdir(parents=True)
-app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+# WebSocket connections
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+        self.memory_service = MemoryService()
+        self.update_task = None
 
-# Set up templates
-templates = Jinja2Templates(directory=str(templates_path))
+    async def initialize(self):
+        """Initialize the connection manager."""
+        await self.memory_service.initialize()
+        self.update_task = asyncio.create_task(self._broadcast_updates())
+        logger.info("Connection manager initialized")
 
-# Include API routes
-app.include_router(api_router, prefix="/api")
+    async def connect(self, websocket: WebSocket):
+        """Handle new WebSocket connection."""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"New WebSocket connection. Total connections: {len(self.active_connections)}")
 
-# Include WebSocket routes at root level
-app.include_router(websocket_router)
+        # Send initial state
+        try:
+            initial_state = await self.memory_service.get_current_state()
+            await websocket.send_json({
+                "type": "initial_state",
+                "data": initial_state
+            })
+        except Exception as e:
+            logger.error(f"Error sending initial state: {e}")
+
+    async def disconnect(self, websocket: WebSocket):
+        """Handle WebSocket disconnection."""
+        self.active_connections.remove(websocket)
+        logger.info(f"WebSocket disconnected. Remaining connections: {len(self.active_connections)}")
+
+    async def broadcast(self, message: Dict[str, Any]):
+        """Broadcast message to all connected clients."""
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error broadcasting to client: {e}")
+                disconnected.append(connection)
+
+        # Clean up disconnected clients
+        for connection in disconnected:
+            if connection in self.active_connections:
+                self.active_connections.remove(connection)
+
+    async def _broadcast_updates(self):
+        """Background task to broadcast memory updates."""
+        try:
+            queue = await self.memory_service.subscribe()
+            while True:
+                try:
+                    state = await queue.get()
+                    await self.broadcast({
+                        "type": "memory_update",
+                        "data": state
+                    })
+                except Exception as e:
+                    logger.error(f"Error in broadcast loop: {e}")
+                    await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            await self.memory_service.unsubscribe(queue)
+            raise
+        except Exception as e:
+            logger.error(f"Fatal error in broadcast task: {e}")
+
+manager = ConnectionManager()
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
-    try:
-        await service_manager.initialize()
-        logger.info("Services initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
-        raise
+    await manager.initialize()
+    logger.info("Dashboard started")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Shutdown services on application shutdown."""
-    try:
-        await service_manager.shutdown()
-        logger.info("Services shut down successfully")
-    except Exception as e:
-        logger.error(f"Error shutting down services: {e}")
-
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Serve the main dashboard page."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    """Serve dashboard frontend."""
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request}
+    )
 
-@app.get("/metrics")
-async def metrics_page(request: Request):
-    """Serve the metrics page."""
-    return templates.TemplateResponse("metrics.html", {"request": request})
-
-@app.get("/system")
-async def system_page(request: Request):
-    """Serve the system page."""
-    return templates.TemplateResponse("system.html", {"request": request})
-
-@app.get("/history")
-async def history_page(request: Request):
-    """Serve the history page."""
-    return templates.TemplateResponse("history.html", {"request": request})
-
-@app.get("/opportunities")
-async def opportunities_page(request: Request):
-    """Serve the opportunities page."""
-    return templates.TemplateResponse("opportunities.html", {"request": request})
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Handle WebSocket connections."""
+    await manager.connect(websocket)
+    try:
+        while True:
+            try:
+                # Handle incoming messages (e.g., time range updates)
+                data = await websocket.receive_json()
+                if data["type"] == "update_time_range":
+                    # Handle time range update
+                    pass
+            except WebSocketDisconnect:
+                await manager.disconnect(websocket)
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                break
+    finally:
+        if websocket in manager.active_connections:
+            await manager.disconnect(websocket)

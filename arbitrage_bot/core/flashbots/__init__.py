@@ -1,15 +1,16 @@
 """
-Flashbots integration module.
+Flashbots Package
 
-This module provides functionality for interacting with Flashbots, including:
-- Private transaction submission
-- Bundle creation and management
+This package provides Flashbots functionality for:
+- Bundle submission
 - MEV protection
-- Bundle simulation and profit calculation
+- Transaction simulation
+- Block monitoring
 """
 
-from .manager import FlashbotsManager
-from .bundle import BundleManager
-from .simulation import SimulationManager
+from .flashbots_provider import FlashbotsProvider, create_flashbots_provider
 
-__all__ = ['FlashbotsManager', 'BundleManager', 'SimulationManager']
+__all__ = [
+    'FlashbotsProvider',
+    'create_flashbots_provider'
+]

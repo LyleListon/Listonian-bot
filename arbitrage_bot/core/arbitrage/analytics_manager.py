@@ -1,128 +1,63 @@
 """
-Analytics Manager
+Analytics Manager Implementation
 
-This module contains the implementation of the AnalyticsManager,
-which tracks and analyzes arbitrage operations.
+This module provides the implementation of the ArbitrageAnalytics protocol.
 """
 
 import asyncio
 import logging
-import time
-import json
-import os
-from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Set, Tuple, DefaultDict
-from collections import defaultdict
+from typing import Dict, List, Any
+from decimal import Decimal
 
-from .interfaces import (
-    AnalyticsManager,
-    ArbitrageAnalytics
-)
-from .models import (
-    ArbitrageOpportunity,
-    ExecutionResult,
-    ExecutionStatus,
-    OpportunityStatus
-)
+from .interfaces import ArbitrageAnalytics
+from .models import ArbitrageOpportunity, ExecutionResult
 
 logger = logging.getLogger(__name__)
 
-
-class BaseAnalyticsManager(AnalyticsManager):
+class AnalyticsManager(ArbitrageAnalytics):
     """
-    Base implementation of the AnalyticsManager.
+    Implementation of the ArbitrageAnalytics protocol.
     
-    This class manages the recording and analysis of arbitrage operations,
-    including opportunities, executions, and performance metrics.
+    This class is responsible for tracking and analyzing arbitrage performance.
     """
     
-    def __init__(
-        self,
-        config: Dict[str, Any] = None
-    ):
-        """
-        Initialize the analytics manager.
+    def __init__(self):
+        """Initialize the analytics manager."""
+        self._opportunities = []  # List of opportunities
+        self._executions = []  # List of execution results
+        self._lock = asyncio.Lock()
+        self._initialized = False
         
-        Args:
-            config: Configuration dictionary
-        """
-        self.config = config or {}
-        
-        # Registered analytics components
-        self._analytics_components: Dict[str, ArbitrageAnalytics] = {}
-        
-        # Configuration
-        self.data_dir = self.config.get("analytics_data_dir", "data/analytics")
-        self.auto_persist = self.config.get("auto_persist", True)
-        self.persist_interval = self.config.get("persist_interval_seconds", 300)  # 5 minutes
-        
-        # Ensure data directory exists
-        os.makedirs(self.data_dir, exist_ok=True)
-        
-        # In-memory metrics
+        # Performance tracking
+        self._total_profit_wei = 0
+        self._total_gas_wei = 0
+        self._successful_executions = 0
+        self._failed_executions = 0
         self._opportunity_count = 0
-        self._execution_count = 0
-        self._success_count = 0
-        self._total_profit = 0
-        self._total_gas_cost = 0
-        self._execution_times: List[float] = []
         
-        # Time-series data
-        self._hourly_metrics: DefaultDict[str, Dict[str, Any]] = defaultdict(lambda: {
-            "opportunities": 0,
-            "executions": 0,
-            "successful_executions": 0,
-            "profit": 0,
-            "gas_cost": 0
-        })
-        
-        # Token-specific metrics
-        self._token_metrics: DefaultDict[str, Dict[str, Any]] = defaultdict(lambda: {
-            "opportunities": 0,
-            "executions": 0,
-            "successful_executions": 0,
-            "profit": 0,
-            "gas_cost": 0
-        })
-        
-        # Recent opportunities and executions
-        self._recent_opportunities: Dict[str, ArbitrageOpportunity] = {}
-        self._recent_executions: Dict[str, ExecutionResult] = {}
-        
-        # Maximum number of recent items to keep
-        self.max_recent_items = self.config.get("max_recent_items", 100)
-        
-        # Background tasks
-        self._persist_task = None
-        self._shutdown_event = asyncio.Event()
-        
-        # Locks
-        self._analytics_lock = asyncio.Lock()
-        
-        logger.info("BaseAnalyticsManager initialized")
-        
-        # Start auto-persist task if enabled
-        if self.auto_persist:
-            self._persist_task = asyncio.create_task(self._auto_persist_loop())
+        # Cache for quick lookups
+        self._opportunity_cache = {}  # id -> opportunity
+        self._execution_cache = {}  # id -> execution
     
-    async def register_analytics(
-        self,
-        analytics: ArbitrageAnalytics,
-        analytics_id: str
-    ) -> None:
-        """
-        Register an analytics component.
-        
-        Args:
-            analytics: Analytics component to register
-            analytics_id: Unique identifier for this component
-        """
-        if analytics_id in self._analytics_components:
-            logger.warning(f"Analytics component {analytics_id} already registered, replacing")
-        
-        self._analytics_components[analytics_id] = analytics
-        logger.info(f"Registered analytics component: {analytics_id}")
+    async def initialize(self) -> None:
+        """Initialize the analytics manager."""
+        async with self._lock:
+            if self._initialized:
+                return
+            
+            logger.info("Initializing analytics manager")
+            self._initialized = True
+    
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        async with self._lock:
+            # Save final metrics if needed
+            self._initialized = False
+            self._opportunities.clear()
+            self._executions.clear()
+            self._opportunity_cache.clear()
+            self._execution_cache.clear()
     
     async def record_opportunity(
         self,
@@ -132,42 +67,20 @@ class BaseAnalyticsManager(AnalyticsManager):
         Record an arbitrage opportunity.
         
         Args:
-            opportunity: Opportunity to record
+            opportunity: The opportunity to record
         """
-        async with self._analytics_lock:
-            logger.debug(f"Recording opportunity {opportunity.id}")
+        async with self._lock:
+            # Add to history
+            self._opportunities.append(opportunity)
+            self._opportunity_cache[opportunity.id] = opportunity
             
             # Update metrics
             self._opportunity_count += 1
             
-            # Update time-series data
-            hour_key = self._get_hour_key(opportunity.timestamp)
-            self._hourly_metrics[hour_key]["opportunities"] += 1
-            
-            # Update token metrics
-            if opportunity.input_token_address:
-                token_key = opportunity.input_token_address.lower()
-                self._token_metrics[token_key]["opportunities"] += 1
-            
-            # Store in recent opportunities
-            self._recent_opportunities[opportunity.id] = opportunity
-            
-            # Trim recent opportunities if needed
-            if len(self._recent_opportunities) > self.max_recent_items:
-                # Remove oldest opportunities
-                sorted_ops = sorted(
-                    self._recent_opportunities.items(),
-                    key=lambda x: x[1].timestamp
-                )
-                for i in range(len(sorted_ops) - self.max_recent_items):
-                    del self._recent_opportunities[sorted_ops[i][0]]
-            
-            # Forward to registered analytics components
-            for analytics_id, analytics in self._analytics_components.items():
-                try:
-                    await analytics.record_opportunity(opportunity)
-                except Exception as e:
-                    logger.error(f"Error recording opportunity in {analytics_id}: {e}")
+            logger.debug(
+                f"Recorded opportunity {opportunity.id} with "
+                f"expected profit {opportunity.expected_profit_wei / 10**18:.6f} ETH"
+            )
     
     async def record_execution(
         self,
@@ -177,316 +90,155 @@ class BaseAnalyticsManager(AnalyticsManager):
         Record an execution result.
         
         Args:
-            execution_result: Execution result to record
+            execution_result: The execution result to record
         """
-        async with self._analytics_lock:
-            logger.debug(f"Recording execution for opportunity {execution_result.opportunity_id}")
+        async with self._lock:
+            # Add to history
+            self._executions.append(execution_result)
+            self._execution_cache[execution_result.id] = execution_result
             
             # Update metrics
-            self._execution_count += 1
+            if execution_result.is_successful:
+                self._successful_executions += 1
+                self._total_profit_wei += execution_result.actual_profit_wei
+                self._total_gas_wei += execution_result.gas_cost_wei
+            else:
+                self._failed_executions += 1
             
-            if execution_result.success:
-                self._success_count += 1
-                if execution_result.actual_profit is not None:
-                    self._total_profit += execution_result.actual_profit
-                if execution_result.gas_used is not None:
-                    self._total_gas_cost += execution_result.gas_used
-            
-            # Track execution time if we have the opportunity
-            opportunity = self._recent_opportunities.get(execution_result.opportunity_id)
-            if opportunity and opportunity.execution_timestamp and opportunity.timestamp:
-                execution_time = opportunity.execution_timestamp - opportunity.timestamp
-                self._execution_times.append(execution_time)
-            
-            # Update time-series data
-            hour_key = self._get_hour_key(execution_result.timestamp)
-            self._hourly_metrics[hour_key]["executions"] += 1
-            if execution_result.success:
-                self._hourly_metrics[hour_key]["successful_executions"] += 1
-                if execution_result.actual_profit is not None:
-                    self._hourly_metrics[hour_key]["profit"] += execution_result.actual_profit
-                if execution_result.gas_used is not None:
-                    self._hourly_metrics[hour_key]["gas_cost"] += execution_result.gas_used
-            
-            # Update token metrics if we have the opportunity
-            if opportunity and opportunity.input_token_address:
-                token_key = opportunity.input_token_address.lower()
-                self._token_metrics[token_key]["executions"] += 1
-                if execution_result.success:
-                    self._token_metrics[token_key]["successful_executions"] += 1
-                    if execution_result.actual_profit is not None:
-                        self._token_metrics[token_key]["profit"] += execution_result.actual_profit
-                    if execution_result.gas_used is not None:
-                        self._token_metrics[token_key]["gas_cost"] += execution_result.gas_used
-            
-            # Store in recent executions
-            self._recent_executions[execution_result.opportunity_id] = execution_result
-            
-            # Trim recent executions if needed
-            if len(self._recent_executions) > self.max_recent_items:
-                # Remove oldest executions
-                sorted_execs = sorted(
-                    self._recent_executions.items(),
-                    key=lambda x: x[1].timestamp
-                )
-                for i in range(len(sorted_execs) - self.max_recent_items):
-                    del self._recent_executions[sorted_execs[i][0]]
-            
-            # Forward to registered analytics components
-            for analytics_id, analytics in self._analytics_components.items():
-                try:
-                    await analytics.record_execution(execution_result)
-                except Exception as e:
-                    logger.error(f"Error recording execution in {analytics_id}: {e}")
+            logger.debug(
+                f"Recorded execution {execution_result.id} with "
+                f"profit {execution_result.actual_profit_wei / 10**18:.6f} ETH"
+            )
     
     async def get_performance_metrics(
         self,
-        time_range_seconds: Optional[int] = None,
-        analytics_id: Optional[str] = None
+        time_period_days: int = 30
     ) -> Dict[str, Any]:
         """
-        Get performance metrics for arbitrage operations.
+        Get performance metrics.
         
         Args:
-            time_range_seconds: How far back to analyze, or None for all time
-            analytics_id: Specific analytics to use, or None for aggregated
+            time_period_days: Time period in days to calculate metrics for
             
         Returns:
             Dictionary of performance metrics
         """
-        async with self._analytics_lock:
-            # If specific analytics component requested
-            if analytics_id and analytics_id in self._analytics_components:
-                try:
-                    return await self._analytics_components[analytics_id].get_performance_metrics(
-                        time_range_seconds=time_range_seconds
-                    )
-                except Exception as e:
-                    logger.error(f"Error getting metrics from {analytics_id}: {e}")
-                    return {}
+        async with self._lock:
+            # Calculate time window
+            end_time = datetime.now()
+            start_time = end_time - timedelta(days=time_period_days)
             
-            # Calculate time-filtered metrics
-            filtered_opportunities = self._recent_opportunities.values()
-            filtered_executions = self._recent_executions.values()
+            # Filter opportunities and executions in time window
+            opportunities = [
+                opp for opp in self._opportunities
+                if start_time <= opp.timestamp <= end_time
+            ]
             
-            if time_range_seconds:
-                cutoff_time = time.time() - time_range_seconds
-                filtered_opportunities = [
-                    opp for opp in filtered_opportunities 
-                    if opp.timestamp >= cutoff_time
-                ]
-                filtered_executions = [
-                    exec_result for exec_result in filtered_executions 
-                    if exec_result.timestamp >= cutoff_time
-                ]
+            executions = [
+                exec for exec in self._executions
+                if start_time <= exec.timestamp <= end_time
+            ]
             
             # Calculate metrics
-            opportunity_count = len(filtered_opportunities)
-            execution_count = len(filtered_executions)
-            success_count = sum(1 for r in filtered_executions if r.success)
-            success_rate = success_count / execution_count if execution_count > 0 else 0
+            total_opportunities = len(opportunities)
+            total_executions = len(executions)
+            successful_executions = sum(1 for e in executions if e.is_successful)
+            failed_executions = total_executions - successful_executions
             
-            total_profit = sum(r.actual_profit or 0 for r in filtered_executions if r.success)
-            total_gas_cost = sum(r.gas_used or 0 for r in filtered_executions if r.success)
+            total_profit_wei = sum(
+                e.actual_profit_wei for e in executions if e.is_successful
+            )
+            total_gas_wei = sum(
+                e.gas_cost_wei for e in executions if e.is_successful
+            )
             
-            avg_execution_time = 0
-            if filtered_opportunities and filtered_executions:
-                execution_times = []
-                for opp in filtered_opportunities:
-                    if opp.execution_timestamp and opp.timestamp:
-                        execution_times.append(opp.execution_timestamp - opp.timestamp)
-                if execution_times:
-                    avg_execution_time = sum(execution_times) / len(execution_times)
+            # Calculate averages
+            avg_profit_per_trade = (
+                total_profit_wei / successful_executions
+                if successful_executions > 0 else 0
+            )
             
-            # Return metrics
+            avg_gas_per_trade = (
+                total_gas_wei / successful_executions
+                if successful_executions > 0 else 0
+            )
+            
+            # Calculate success rate
+            success_rate = (
+                successful_executions / total_executions * 100
+                if total_executions > 0 else 0
+            )
+            
             return {
-                "opportunity_count": opportunity_count,
-                "execution_count": execution_count,
-                "success_count": success_count,
+                "time_period_days": time_period_days,
+                "total_opportunities": total_opportunities,
+                "total_executions": total_executions,
+                "successful_executions": successful_executions,
+                "failed_executions": failed_executions,
                 "success_rate": success_rate,
-                "total_profit": total_profit,
-                "total_gas_cost": total_gas_cost,
-                "avg_execution_time": avg_execution_time,
-                "profit_per_execution": total_profit / success_count if success_count > 0 else 0,
-                "net_profit": total_profit - total_gas_cost,
-                "recent_opportunity_ids": list(self._recent_opportunities.keys())[-10:],
-                "recent_execution_ids": list(self._recent_executions.keys())[-10:],
-                "hourly_metrics": dict(self._hourly_metrics),
-                "top_tokens": self._get_top_tokens(5)
+                "total_profit_wei": str(total_profit_wei),
+                "total_profit_eth": total_profit_wei / 10**18,
+                "total_gas_wei": str(total_gas_wei),
+                "total_gas_eth": total_gas_wei / 10**18,
+                "avg_profit_per_trade_wei": str(avg_profit_per_trade),
+                "avg_profit_per_trade_eth": avg_profit_per_trade / 10**18,
+                "avg_gas_per_trade_wei": str(avg_gas_per_trade),
+                "avg_gas_per_trade_eth": avg_gas_per_trade / 10**18,
+                "net_profit_wei": str(total_profit_wei - total_gas_wei),
+                "net_profit_eth": (total_profit_wei - total_gas_wei) / 10**18
             }
     
-    async def persist_data(self) -> None:
-        """Persist analytics data to disk."""
-        async with self._analytics_lock:
-            try:
-                logger.info("Persisting analytics data")
-                
-                # Create timestamp for filename
-                timestamp = int(time.time())
-                date_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
-                
-                # Ensure date directory exists
-                date_dir = os.path.join(self.data_dir, date_str)
-                os.makedirs(date_dir, exist_ok=True)
-                
-                # Save opportunities
-                opportunities_path = os.path.join(date_dir, f"opportunities_{timestamp}.json")
-                with open(opportunities_path, 'w') as f:
-                    json.dump(
-                        {
-                            "timestamp": timestamp,
-                            "opportunities": [opp.to_dict() for opp in self._recent_opportunities.values()]
-                        },
-                        f,
-                        indent=2
-                    )
-                
-                # Save executions
-                executions_path = os.path.join(date_dir, f"executions_{timestamp}.json")
-                with open(executions_path, 'w') as f:
-                    json.dump(
-                        {
-                            "timestamp": timestamp,
-                            "executions": [exec_result.to_dict() for exec_result in self._recent_executions.values()]
-                        },
-                        f,
-                        indent=2
-                    )
-                
-                # Save metrics
-                metrics_path = os.path.join(date_dir, f"metrics_{timestamp}.json")
-                with open(metrics_path, 'w') as f:
-                    json.dump(
-                        {
-                            "timestamp": timestamp,
-                            "opportunity_count": self._opportunity_count,
-                            "execution_count": self._execution_count,
-                            "success_count": self._success_count,
-                            "total_profit": self._total_profit,
-                            "total_gas_cost": self._total_gas_cost,
-                            "hourly_metrics": dict(self._hourly_metrics),
-                            "token_metrics": dict(self._token_metrics)
-                        },
-                        f,
-                        indent=2
-                    )
-                
-                logger.info(f"Analytics data persisted to {date_dir}")
-                
-                # Clean up old files
-                self._clean_old_data()
-                
-            except Exception as e:
-                logger.error(f"Error persisting analytics data: {e}")
-    
-    async def _auto_persist_loop(self) -> None:
-        """Background task for automatic data persistence."""
-        try:
-            logger.info("Starting auto-persist loop")
-            while not self._shutdown_event.is_set():
-                try:
-                    # Wait for interval or shutdown
-                    try:
-                        await asyncio.wait_for(
-                            self._shutdown_event.wait(),
-                            timeout=self.persist_interval
-                        )
-                    except asyncio.TimeoutError:
-                        # Normal timeout, persist data
-                        pass
-                    
-                    # Exit if shutdown
-                    if self._shutdown_event.is_set():
-                        break
-                    
-                    # Persist data
-                    await self.persist_data()
-                    
-                except Exception as e:
-                    logger.error(f"Error in persist loop: {e}")
-                    await asyncio.sleep(60)  # Wait a minute on error
+    async def get_recent_opportunities(
+        self,
+        max_results: int = 100,
+        min_profit_eth: float = 0.0
+    ) -> List[ArbitrageOpportunity]:
+        """
+        Get recent arbitrage opportunities.
+        
+        Args:
+            max_results: Maximum number of opportunities to return
+            min_profit_eth: Minimum profit threshold in ETH
             
-        except asyncio.CancelledError:
-            logger.info("Auto-persist loop cancelled")
-            raise
-        
-        logger.info("Auto-persist loop stopped")
-    
-    def _get_hour_key(self, timestamp: float) -> str:
-        """Get hour key for time-series data."""
-        dt = datetime.fromtimestamp(timestamp)
-        return dt.strftime("%Y-%m-%d_%H")
-    
-    def _get_top_tokens(self, count: int = 5) -> List[Dict[str, Any]]:
-        """Get top tokens by profit."""
-        # Sort token metrics by profit
-        sorted_tokens = sorted(
-            self._token_metrics.items(),
-            key=lambda x: x[1]["profit"],
-            reverse=True
-        )
-        
-        # Return top N
-        return [
-            {"token": token, **metrics}
-            for token, metrics in sorted_tokens[:count]
-        ]
-    
-    def _clean_old_data(self) -> None:
-        """Clean up old analytics data files."""
-        try:
-            # Keep data for the last 30 days
-            cutoff_date = datetime.now() - timedelta(days=30)
+        Returns:
+            List of recent opportunities
+        """
+        async with self._lock:
+            # Convert ETH to wei
+            min_profit_wei = int(min_profit_eth * 10**18)
             
-            # Iterate through date directories
-            for date_dir in os.listdir(self.data_dir):
-                try:
-                    dir_date = datetime.strptime(date_dir, "%Y-%m-%d")
-                    if dir_date < cutoff_date:
-                        # Remove old directory
-                        dir_path = os.path.join(self.data_dir, date_dir)
-                        for file in os.listdir(dir_path):
-                            os.remove(os.path.join(dir_path, file))
-                        os.rmdir(dir_path)
-                        logger.info(f"Removed old analytics data: {date_dir}")
-                except ValueError:
-                    # Not a date directory
-                    continue
-        
-        except Exception as e:
-            logger.error(f"Error cleaning old data: {e}")
-    
-    async def stop(self) -> None:
-        """Stop the analytics manager and clean up resources."""
-        self._shutdown_event.set()
-        
-        if self._persist_task:
-            try:
-                # Wait for persist task to complete
-                await asyncio.wait_for(self._persist_task, timeout=10)
-            except asyncio.TimeoutError:
-                logger.warning("Timeout waiting for persist task")
-                self._persist_task.cancel()
+            # Filter and sort opportunities
+            filtered_opportunities = [
+                opp for opp in self._opportunities
+                if opp.expected_profit_wei >= min_profit_wei
+            ]
             
-            self._persist_task = None
-        
-        # Final persist
-        await self.persist_data()
-        
-        logger.info("Analytics manager stopped")
-
-
-async def create_analytics_manager(
-    config: Dict[str, Any] = None
-) -> BaseAnalyticsManager:
-    """
-    Create and initialize an analytics manager.
+            filtered_opportunities.sort(
+                key=lambda x: x.timestamp,
+                reverse=True
+            )
+            
+            return filtered_opportunities[:max_results]
     
-    Args:
-        config: Configuration dictionary
+    async def get_recent_executions(
+        self,
+        max_results: int = 100
+    ) -> List[ExecutionResult]:
+        """
+        Get recent execution results.
         
-    Returns:
-        Initialized analytics manager
-    """
-    manager = BaseAnalyticsManager(config=config)
-    return manager
+        Args:
+            max_results: Maximum number of executions to return
+            
+        Returns:
+            List of recent executions
+        """
+        async with self._lock:
+            # Sort executions by timestamp
+            sorted_executions = sorted(
+                self._executions,
+                key=lambda x: x.timestamp,
+                reverse=True
+            )
+            
+            return sorted_executions[:max_results]

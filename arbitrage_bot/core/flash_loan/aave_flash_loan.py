@@ -92,7 +92,7 @@ class AaveFlashLoan:
             f"min profit {self.w3.w3.from_wei(min_profit, 'ether')} ETH"
         )
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def build_flash_loan_tx(
         self,
         tokens: List[str],

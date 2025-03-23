@@ -131,7 +131,7 @@ class FlashbotsProvider:
         combined = ''.join(tx_hashes)
         return self.w3.keccak(text=combined).hex()[:10]
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def _estimate_gas_price(self) -> GasEstimate:
         """Estimate optimal gas price based on recent blocks."""
         base_fee = await self.w3.eth.get_block('latest')
@@ -164,7 +164,7 @@ class FlashbotsProvider:
 
             return estimate
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def simulate_bundle(
         self,
         transactions: List[Transaction],
@@ -385,7 +385,7 @@ class FlashbotsProvider:
         logger.info(f"Bundle validated with expected profit {net_profit} wei")
         return True
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def send_bundle(
         self,
         transactions: List[Transaction],

@@ -1,28 +1,26 @@
 """
 Arbitrage System Interfaces
 
-This module defines the interfaces and protocols that different components
-of the arbitrage system must implement. These interfaces ensure clean separation
-of concerns and enable easy testing and mocking.
+This module defines the interfaces (abstract base classes) that specify
+the contracts between different components of the arbitrage system.
 """
 
-from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional, Any
 
+from .models import ArbitrageOpportunity, ExecutionResult, TransactionStatus
 
-@runtime_checkable
-class OpportunityDetector(Protocol):
-    """
-    Protocol for detecting arbitrage opportunities.
-    Implementations are responsible for finding potential profit opportunities.
-    """
+class OpportunityDetector(ABC):
+    """Interface for components that detect arbitrage opportunities."""
     
+    @abstractmethod
     async def detect_opportunities(
-        self, 
-        market_condition: Dict[str, Any], 
+        self,
+        market_condition: Dict[str, Any],
         **kwargs
-    ) -> List['ArbitrageOpportunity']:
+    ) -> List[ArbitrageOpportunity]:
         """
-        Detect arbitrage opportunities based on current market conditions.
+        Detect arbitrage opportunities.
         
         Args:
             market_condition: Current market state and prices
@@ -31,49 +29,48 @@ class OpportunityDetector(Protocol):
         Returns:
             List of detected opportunities
         """
-        ...
+        pass
 
-
-@runtime_checkable
-class OpportunityValidator(Protocol):
-    """
-    Protocol for validating arbitrage opportunities.
-    Implementations are responsible for validating opportunities before execution.
-    """
+class OpportunityValidator(ABC):
+    """Interface for components that validate arbitrage opportunities."""
     
+    @abstractmethod
     async def validate_opportunity(
-        self, 
-        opportunity: 'ArbitrageOpportunity', 
-        market_condition: Dict[str, Any], 
+        self,
+        opportunity: ArbitrageOpportunity,
+        market_condition: Dict[str, Any],
         **kwargs
-    ) -> Tuple[bool, Optional[str], Optional[float]]:
+    ) -> tuple[bool, Optional[str], Optional[float]]:
         """
         Validate an arbitrage opportunity.
         
         Args:
-            opportunity: The opportunity to validate
-            market_condition: Current market state and prices
+            opportunity: Opportunity to validate
+            market_condition: Current market state
             **kwargs: Additional parameters
             
         Returns:
             Tuple of (is_valid, error_message, confidence_score)
-            is_valid: Whether the opportunity is valid
-            error_message: Error message if not valid, None otherwise
-            confidence_score: Confidence score (0-1) if valid, None otherwise
         """
-        ...
+        pass
 
-
-@runtime_checkable
-class OpportunityDiscoveryManager(Protocol):
-    """
-    Protocol for managing opportunity discovery.
-    Implementations are responsible for coordinating detectors and validators.
-    """
+class OpportunityDiscoveryManager(ABC):
+    """Interface for managing opportunity discovery."""
     
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Initialize the discovery manager."""
+        pass
+    
+    @abstractmethod
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        pass
+    
+    @abstractmethod
     async def register_detector(
-        self, 
-        detector: OpportunityDetector, 
+        self,
+        detector: OpportunityDetector,
         detector_id: str
     ) -> None:
         """
@@ -83,11 +80,12 @@ class OpportunityDiscoveryManager(Protocol):
             detector: The detector to register
             detector_id: Unique identifier for the detector
         """
-        ...
+        pass
     
+    @abstractmethod
     async def register_validator(
-        self, 
-        validator: OpportunityValidator, 
+        self,
+        validator: OpportunityValidator,
         validator_id: str
     ) -> None:
         """
@@ -97,40 +95,39 @@ class OpportunityDiscoveryManager(Protocol):
             validator: The validator to register
             validator_id: Unique identifier for the validator
         """
-        ...
+        pass
     
+    @abstractmethod
     async def discover_opportunities(
-        self, 
-        max_results: int = 10, 
-        min_profit_wei: int = 0, 
+        self,
+        max_results: int = 10,
+        min_profit_wei: int = 0,
+        market_condition: Optional[Dict[str, Any]] = None,
         **kwargs
-    ) -> List['ArbitrageOpportunity']:
+    ) -> List[ArbitrageOpportunity]:
         """
         Discover arbitrage opportunities.
         
         Args:
             max_results: Maximum number of opportunities to return
             min_profit_wei: Minimum profit threshold in wei
+            market_condition: Current market state
             **kwargs: Additional parameters
             
         Returns:
             List of discovered opportunities
         """
-        ...
+        pass
 
-
-@runtime_checkable
-class ExecutionStrategy(Protocol):
-    """
-    Protocol for executing arbitrage opportunities.
-    Implementations are responsible for different execution strategies.
-    """
+class ExecutionStrategy(ABC):
+    """Interface for components that execute arbitrage opportunities."""
     
+    @abstractmethod
     async def execute_opportunity(
-        self, 
-        opportunity: 'ArbitrageOpportunity', 
+        self,
+        opportunity: ArbitrageOpportunity,
         **kwargs
-    ) -> 'ExecutionResult':
+    ) -> ExecutionResult:
         """
         Execute an arbitrage opportunity.
         
@@ -141,44 +138,44 @@ class ExecutionStrategy(Protocol):
         Returns:
             Result of the execution
         """
-        ...
+        pass
 
-
-@runtime_checkable
-class TransactionMonitor(Protocol):
-    """
-    Protocol for monitoring blockchain transactions.
-    Implementations are responsible for tracking transaction status.
-    """
+class TransactionMonitor(ABC):
+    """Interface for components that monitor transaction status."""
     
+    @abstractmethod
     async def monitor_transaction(
-        self, 
-        transaction_hash: str, 
-        **kwargs
-    ) -> 'TransactionStatus':
+        self,
+        transaction_hash: str
+    ) -> TransactionStatus:
         """
-        Monitor a blockchain transaction.
+        Monitor a transaction's status.
         
         Args:
-            transaction_hash: Hash of the transaction to monitor
-            **kwargs: Additional parameters
+            transaction_hash: Hash of transaction to monitor
             
         Returns:
             Current status of the transaction
         """
-        ...
+        pass
 
-
-@runtime_checkable
-class ExecutionManager(Protocol):
-    """
-    Protocol for managing opportunity execution.
-    Implementations are responsible for coordinating execution strategies.
-    """
+class ExecutionManager(ABC):
+    """Interface for managing arbitrage execution."""
     
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Initialize the execution manager."""
+        pass
+    
+    @abstractmethod
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        pass
+    
+    @abstractmethod
     async def register_strategy(
-        self, 
-        strategy: ExecutionStrategy, 
+        self,
+        strategy: ExecutionStrategy,
         strategy_id: str
     ) -> None:
         """
@@ -188,11 +185,12 @@ class ExecutionManager(Protocol):
             strategy: The strategy to register
             strategy_id: Unique identifier for the strategy
         """
-        ...
+        pass
     
+    @abstractmethod
     async def register_monitor(
-        self, 
-        monitor: TransactionMonitor, 
+        self,
+        monitor: TransactionMonitor,
         monitor_id: str
     ) -> None:
         """
@@ -202,14 +200,15 @@ class ExecutionManager(Protocol):
             monitor: The monitor to register
             monitor_id: Unique identifier for the monitor
         """
-        ...
+        pass
     
+    @abstractmethod
     async def execute_opportunity(
-        self, 
-        opportunity: 'ArbitrageOpportunity',
-        strategy_id: str = "default", 
+        self,
+        opportunity: ArbitrageOpportunity,
+        strategy_id: str = "default",
         **kwargs
-    ) -> 'ExecutionResult':
+    ) -> ExecutionResult:
         """
         Execute an arbitrage opportunity.
         
@@ -221,34 +220,25 @@ class ExecutionManager(Protocol):
         Returns:
             Result of the execution
         """
-        ...
-    
-    async def get_execution_status(
-        self, 
-        execution_id: str
-    ) -> 'ExecutionStatus':
-        """
-        Get the status of an execution.
-        
-        Args:
-            execution_id: ID of the execution
-            
-        Returns:
-            Current status of the execution
-        """
-        ...
+        pass
 
-
-@runtime_checkable
-class ArbitrageAnalytics(Protocol):
-    """
-    Protocol for analytics and performance tracking.
-    Implementations are responsible for recording and analyzing performance.
-    """
+class ArbitrageAnalytics(ABC):
+    """Interface for tracking arbitrage analytics."""
     
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Initialize the analytics manager."""
+        pass
+    
+    @abstractmethod
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        pass
+    
+    @abstractmethod
     async def record_opportunity(
-        self, 
-        opportunity: 'ArbitrageOpportunity'
+        self,
+        opportunity: ArbitrageOpportunity
     ) -> None:
         """
         Record an arbitrage opportunity.
@@ -256,11 +246,12 @@ class ArbitrageAnalytics(Protocol):
         Args:
             opportunity: The opportunity to record
         """
-        ...
+        pass
     
+    @abstractmethod
     async def record_execution(
-        self, 
-        execution_result: 'ExecutionResult'
+        self,
+        execution_result: ExecutionResult
     ) -> None:
         """
         Record an execution result.
@@ -268,8 +259,9 @@ class ArbitrageAnalytics(Protocol):
         Args:
             execution_result: The execution result to record
         """
-        ...
+        pass
     
+    @abstractmethod
     async def get_performance_metrics(
         self,
         time_period_days: int = 30
@@ -278,18 +270,19 @@ class ArbitrageAnalytics(Protocol):
         Get performance metrics.
         
         Args:
-            time_period_days: Time period in days to calculate metrics for
+            time_period_days: Time period to calculate metrics for
             
         Returns:
             Dictionary of performance metrics
         """
-        ...
+        pass
     
+    @abstractmethod
     async def get_recent_opportunities(
         self,
         max_results: int = 100,
         min_profit_eth: float = 0.0
-    ) -> List['ArbitrageOpportunity']:
+    ) -> List[ArbitrageOpportunity]:
         """
         Get recent arbitrage opportunities.
         
@@ -300,12 +293,13 @@ class ArbitrageAnalytics(Protocol):
         Returns:
             List of recent opportunities
         """
-        ...
+        pass
     
+    @abstractmethod
     async def get_recent_executions(
         self,
         max_results: int = 100
-    ) -> List['ExecutionResult']:
+    ) -> List[ExecutionResult]:
         """
         Get recent execution results.
         
@@ -315,39 +309,22 @@ class ArbitrageAnalytics(Protocol):
         Returns:
             List of recent executions
         """
-        ...
+        pass
 
-
-@runtime_checkable
-class MarketDataProvider(Protocol):
-    """
-    Protocol for providing market data.
-    Implementations are responsible for fetching and caching market data.
-    """
+class MarketDataProvider(ABC):
+    """Interface for providing market data."""
     
-    async def get_current_market_condition(
-        self
-    ) -> Dict[str, Any]:
-        """
-        Get the current market condition.
-        
-        Returns:
-            Current market state and prices
-        """
-        ...
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Initialize the market data provider."""
+        pass
     
-    async def register_market_update_callback(
-        self,
-        callback: callable
-    ) -> None:
-        """
-        Register a callback for market updates.
-        
-        Args:
-            callback: Function to call when market updates occur
-        """
-        ...
+    @abstractmethod
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        pass
     
+    @abstractmethod
     async def start_monitoring(
         self,
         update_interval_seconds: float = 60.0
@@ -358,62 +335,56 @@ class MarketDataProvider(Protocol):
         Args:
             update_interval_seconds: Time between updates in seconds
         """
-        ...
+        pass
     
-    async def stop_monitoring(
-        self
+    @abstractmethod
+    async def stop_monitoring(self) -> None:
+        """Stop monitoring market conditions."""
+        pass
+    
+    @abstractmethod
+    async def get_current_market_condition(self) -> Dict[str, Any]:
+        """
+        Get the current market condition.
+        
+        Returns:
+            Current market state and prices
+        """
+        pass
+    
+    @abstractmethod
+    async def register_market_update_callback(
+        self,
+        callback: callable
     ) -> None:
         """
-        Stop monitoring market conditions.
-        """
-        ...
-
-
-@runtime_checkable
-class ArbitrageSystem(Protocol):
-    """
-    Protocol for the main arbitrage system.
-    Implementations are responsible for integrating all components.
-    """
-    
-    @property
-    def is_running(self) -> bool:
-        """
-        Check if the system is running.
+        Register a callback for market updates.
         
-        Returns:
-            True if the system is running, False otherwise
+        Args:
+            callback: Function to call when market updates occur
         """
-        ...
+        pass
+
+class ArbitrageSystem(ABC):
+    """Interface for the main arbitrage system."""
     
-    @property
-    def uptime_seconds(self) -> float:
-        """
-        Get the system uptime in seconds.
-        
-        Returns:
-            System uptime in seconds
-        """
-        ...
-    
+    @abstractmethod
     async def start(self) -> None:
-        """
-        Start the arbitrage system.
-        """
-        ...
+        """Start the arbitrage system."""
+        pass
     
+    @abstractmethod
     async def stop(self) -> None:
-        """
-        Stop the arbitrage system.
-        """
-        ...
+        """Stop the arbitrage system."""
+        pass
     
+    @abstractmethod
     async def discover_opportunities(
         self,
         max_results: int = 10,
         min_profit_eth: float = 0.0,
         **kwargs
-    ) -> List['ArbitrageOpportunity']:
+    ) -> List[ArbitrageOpportunity]:
         """
         Discover arbitrage opportunities.
         
@@ -425,14 +396,15 @@ class ArbitrageSystem(Protocol):
         Returns:
             List of discovered opportunities
         """
-        ...
+        pass
     
+    @abstractmethod
     async def execute_opportunity(
         self,
-        opportunity: 'ArbitrageOpportunity',
+        opportunity: ArbitrageOpportunity,
         strategy_id: str = "default",
         **kwargs
-    ) -> 'ExecutionResult':
+    ) -> ExecutionResult:
         """
         Execute an arbitrage opportunity.
         
@@ -444,86 +416,14 @@ class ArbitrageSystem(Protocol):
         Returns:
             Result of the execution
         """
-        ...
+        pass
     
-    async def get_opportunity_by_id(
-        self,
-        opportunity_id: str
-    ) -> Optional['ArbitrageOpportunity']:
+    @abstractmethod
+    async def get_performance_metrics(self) -> Dict[str, Any]:
         """
-        Get an opportunity by ID.
-        
-        Args:
-            opportunity_id: ID of the opportunity
-            
-        Returns:
-            The opportunity if found, None otherwise
-        """
-        ...
-    
-    async def get_execution_by_id(
-        self,
-        execution_id: str
-    ) -> Optional['ExecutionResult']:
-        """
-        Get an execution result by ID.
-        
-        Args:
-            execution_id: ID of the execution
-            
-        Returns:
-            The execution result if found, None otherwise
-        """
-        ...
-    
-    async def get_recent_opportunities(
-        self,
-        max_results: int = 100,
-        min_profit_eth: float = 0.0
-    ) -> List['ArbitrageOpportunity']:
-        """
-        Get recent arbitrage opportunities.
-        
-        Args:
-            max_results: Maximum number of opportunities to return
-            min_profit_eth: Minimum profit threshold in ETH
-            
-        Returns:
-            List of recent opportunities
-        """
-        ...
-    
-    async def get_recent_executions(
-        self,
-        max_results: int = 100
-    ) -> List['ExecutionResult']:
-        """
-        Get recent execution results.
-        
-        Args:
-            max_results: Maximum number of executions to return
-            
-        Returns:
-            List of recent executions
-        """
-        ...
-    
-    async def get_performance_metrics(
-        self
-    ) -> Dict[str, Any]:
-        """
-        Get performance metrics for the arbitrage system.
+        Get performance metrics.
         
         Returns:
             Dictionary of performance metrics
         """
-        ...
-
-
-# Forward references for type hints
-from .models import (
-    ArbitrageOpportunity,
-    ExecutionResult,
-    ExecutionStatus,
-    TransactionStatus
-)
+        pass

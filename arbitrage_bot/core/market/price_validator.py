@@ -1,242 +1,257 @@
 """
-Price Validator Module
+Price Validator Implementation
 
-This module provides comprehensive price validation functionality:
-- Multi-source price validation
-- Manipulation detection
-- Historical price analysis
-- Liquidity shift monitoring
+This module provides functionality for validating prices across multiple sources
+and detecting price manipulation attempts.
 """
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Tuple, NamedTuple
-from decimal import Decimal
-from eth_typing import ChecksumAddress
-from web3 import Web3
-
-from ...utils.async_manager import AsyncLock
-from ..interfaces import PriceData, TokenPair
-from ..memory.memory_bank import MemoryBank
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
-class PriceDeviation(NamedTuple):
-    """Price deviation metrics."""
-    mean_deviation: Decimal
-    max_deviation: Decimal
-    suspicious_pairs: List[Tuple[str, str]]  # Pairs of DEX names with suspicious deviations
-
-class LiquidityShift(NamedTuple):
-    """Liquidity shift detection metrics."""
-    volume_change: Decimal
-    time_window: int
-    is_suspicious: bool
-
 class PriceValidator:
-    """Validates prices and detects manipulation attempts."""
-
-    def __init__(
-        self,
-        web3: Web3,
-        memory_bank: MemoryBank,
-        max_price_deviation: Decimal = Decimal('0.02'),    # 2% maximum deviation
-        min_liquidity_threshold: Decimal = Decimal('1000'),  # Minimum liquidity in base token
-        suspicious_shift_threshold: Decimal = Decimal('0.1')  # 10% sudden liquidity shift
-    ):
-        """Initialize the price validator."""
-        self.web3 = web3
-        self.memory_bank = memory_bank
+    """
+    Validator for token prices.
+    
+    This class provides:
+    - Price consistency checks
+    - Manipulation detection
+    - Price impact validation
+    - Slippage protection
+    """
+    
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize the price validator.
+        
+        Args:
+            config: Validator configuration
+        """
+        self._config = config
         
         # Configuration
-        self.max_price_deviation = max_price_deviation
-        self.min_liquidity_threshold = min_liquidity_threshold
-        self.suspicious_shift_threshold = suspicious_shift_threshold
+        self._max_price_deviation = config.get("max_price_deviation", 0.01)  # 1%
+        self._min_liquidity_usd = config.get("min_liquidity_usd", 10000)
+        self._price_history_minutes = config.get("price_history_minutes", 60)
+        self._suspicious_change_threshold = config.get("suspicious_change_threshold", 0.05)  # 5%
         
-        # Thread safety
-        self._validation_lock = AsyncLock()
-        
-        # Cache settings
-        self._recent_prices: Dict[str, List[Tuple[Decimal, int]]] = {}  # token_pair -> [(price, timestamp)]
-        self._liquidity_history: Dict[str, List[Tuple[Decimal, int]]] = {}  # pool_id -> [(liquidity, timestamp)]
-        self._cache_ttl = 3600  # 1 hour for historical data
-
+        # State
+        self._lock = asyncio.Lock()
+        self._initialized = False
+        self._price_history = {}  # token -> list of (timestamp, price) tuples
+        self._last_cleanup = datetime.now()
+    
+    async def initialize(self) -> None:
+        """Initialize the price validator."""
+        async with self._lock:
+            if self._initialized:
+                return
+            
+            logger.info("Initializing price validator")
+            self._initialized = True
+    
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        async with self._lock:
+            self._initialized = False
+            self._price_history.clear()
+    
     async def validate_prices(
         self,
-        token_pair: TokenPair,
-        prices: Dict[str, PriceData]
-    ) -> bool:
+        token_pair: Tuple[str, str],
+        prices: Dict[str, float],
+        liquidity: Dict[str, float]
+    ) -> tuple[bool, Optional[str], float]:
         """
         Validate prices from multiple sources.
         
         Args:
-            token_pair: Token pair to validate
-            prices: Dictionary of DEX names to price data
+            token_pair: Pair of token addresses
+            prices: Prices from different sources
+            liquidity: Liquidity from different sources
             
         Returns:
-            True if prices are valid, False otherwise
+            Tuple of (is_valid, error_message, confidence)
         """
-        async with self._validation_lock:
+        if not self._initialized:
+            raise RuntimeError("Price validator not initialized")
+        
+        async with self._lock:
             try:
-                # Check minimum sources
-                if len(prices) < 2:
-                    logger.warning(f"Insufficient price sources for {token_pair}")
-                    return False
+                # Check price consistency
+                mean_price = sum(prices.values()) / len(prices)
                 
-                # Calculate price deviation
-                deviation = await self._calculate_deviation(prices)
-                if deviation.max_deviation > self.max_price_deviation:
-                    logger.warning(
-                        f"Excessive price deviation detected for {token_pair}: "
-                        f"{deviation.max_deviation:.2%}"
-                    )
-                    return False
+                for source, price in prices.items():
+                    deviation = abs(price - mean_price) / mean_price
+                    if deviation > self._max_price_deviation:
+                        return False, f"Price deviation too high on {source}: {deviation:.2%}", 0.0
                 
-                # Check for suspicious pairs
-                if deviation.suspicious_pairs:
-                    logger.warning(
-                        f"Suspicious price pairs detected for {token_pair}: "
-                        f"{deviation.suspicious_pairs}"
-                    )
-                    return False
+                # Check liquidity
+                total_liquidity = sum(liquidity.values())
+                if total_liquidity < self._min_liquidity_usd:
+                    return False, f"Insufficient liquidity: ${total_liquidity:,.2f}", 0.0
                 
-                # Validate against historical prices
-                if not await self._validate_historical_prices(token_pair, prices):
-                    logger.warning(f"Historical price validation failed for {token_pair}")
-                    return False
+                # Check for manipulation
+                is_suspicious, reason = await self._check_manipulation(
+                    token_pair[0],
+                    mean_price
+                )
+                if is_suspicious:
+                    return False, f"Suspicious price activity: {reason}", 0.0
                 
-                # Check liquidity shifts
-                for dex_name, price_data in prices.items():
-                    shift = await self._detect_liquidity_shift(token_pair, dex_name)
-                    if shift.is_suspicious:
-                        logger.warning(
-                            f"Suspicious liquidity shift detected for {token_pair} on {dex_name}: "
-                            f"{shift.volume_change:.2%} change in {shift.time_window}s"
-                        )
-                        return False
+                # Calculate confidence score
+                confidence = self._calculate_confidence(
+                    prices=prices,
+                    liquidity=liquidity,
+                    mean_price=mean_price
+                )
                 
                 # Update price history
-                await self._update_price_history(token_pair, prices)
+                await self._update_price_history(
+                    token=token_pair[0],
+                    price=mean_price
+                )
                 
-                return True
+                return True, None, confidence
                 
             except Exception as e:
-                logger.error(f"Price validation error for {token_pair}: {e}")
-                return False
-
-    async def _calculate_deviation(
+                logger.error(f"Error validating prices: {e}", exc_info=True)
+                raise
+    
+    async def validate_price_impact(
         self,
-        prices: Dict[str, PriceData]
-    ) -> PriceDeviation:
-        """Calculate price deviation metrics."""
-        price_values = [p.price for p in prices.values()]
-        mean_price = sum(price_values) / len(price_values)
+        token_pair: Tuple[str, str],
+        amount_in_wei: int,
+        expected_price: float,
+        actual_price: float
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Validate price impact of a trade.
         
-        # Calculate deviations
-        deviations = [abs(p - mean_price) / mean_price for p in price_values]
-        mean_dev = sum(deviations) / len(deviations)
-        max_dev = max(deviations)
+        Args:
+            token_pair: Pair of token addresses
+            amount_in_wei: Trade amount in wei
+            expected_price: Expected execution price
+            actual_price: Actual execution price
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not self._initialized:
+            raise RuntimeError("Price validator not initialized")
         
-        # Identify suspicious pairs
-        suspicious = []
-        dex_names = list(prices.keys())
-        for i in range(len(dex_names)):
-            for j in range(i + 1, len(dex_names)):
-                price1 = prices[dex_names[i]].price
-                price2 = prices[dex_names[j]].price
-                if abs(price1 - price2) / mean_price > self.max_price_deviation:
-                    suspicious.append((dex_names[i], dex_names[j]))
+        price_impact = abs(actual_price - expected_price) / expected_price
         
-        return PriceDeviation(
-            mean_deviation=Decimal(str(mean_dev)),
-            max_deviation=Decimal(str(max_dev)),
-            suspicious_pairs=suspicious
-        )
-
-    async def _validate_historical_prices(
+        if price_impact > self._max_price_deviation:
+            return False, f"Price impact too high: {price_impact:.2%}"
+        
+        return True, None
+    
+    async def _check_manipulation(
         self,
-        token_pair: TokenPair,
-        current_prices: Dict[str, PriceData]
-    ) -> bool:
-        """Validate prices against historical data."""
-        # Get historical prices
-        history = self._recent_prices.get(str(token_pair), [])
+        token: str,
+        current_price: float
+    ) -> tuple[bool, Optional[str]]:
+        """Check for price manipulation."""
+        history = self._price_history.get(token, [])
         if not history:
-            return True  # No history to validate against
+            return False, None
         
-        # Calculate historical metrics
-        recent_prices = [p[0] for p in history[-10:]]  # Last 10 prices
-        mean_historical = sum(recent_prices) / len(recent_prices)
+        # Get recent price changes
+        now = datetime.now()
+        recent_changes = []
         
-        # Check current prices against historical mean
-        current_mean = sum(p.price for p in current_prices.values()) / len(current_prices)
-        deviation = abs(current_mean - mean_historical) / mean_historical
+        for timestamp, price in reversed(history):
+            if now - timestamp > timedelta(minutes=5):
+                break
+            
+            change = abs(current_price - price) / price
+            recent_changes.append(change)
         
-        return deviation <= self.max_price_deviation * Decimal('1.5')  # Allow 50% more deviation for historical
-
-    async def _detect_liquidity_shift(
+        if recent_changes:
+            # Check for sudden price changes
+            max_change = max(recent_changes)
+            if max_change > self._suspicious_change_threshold:
+                return True, f"Sudden price change of {max_change:.2%}"
+            
+            # Check for price oscillation
+            if len(recent_changes) >= 3:
+                oscillations = sum(
+                    1 for i in range(len(recent_changes)-2)
+                    if (recent_changes[i] > recent_changes[i+1] and
+                        recent_changes[i+1] < recent_changes[i+2])
+                    or (recent_changes[i] < recent_changes[i+1] and
+                        recent_changes[i+1] > recent_changes[i+2])
+                )
+                
+                if oscillations >= 2:
+                    return True, "Suspicious price oscillation"
+        
+        return False, None
+    
+    def _calculate_confidence(
         self,
-        token_pair: TokenPair,
-        dex_name: str
-    ) -> LiquidityShift:
-        """Detect suspicious liquidity shifts."""
-        # Get liquidity history
-        pool_id = f"{dex_name}:{token_pair}"
-        history = self._liquidity_history.get(pool_id, [])
-        if len(history) < 2:
-            return LiquidityShift(Decimal('0'), 0, False)
+        prices: Dict[str, float],
+        liquidity: Dict[str, float],
+        mean_price: float
+    ) -> float:
+        """Calculate confidence score for prices."""
+        # Start with base confidence
+        confidence = 1.0
         
-        # Calculate volume change
-        recent_volume = history[-1][0]
-        previous_volume = history[-2][0]
-        time_diff = history[-1][1] - history[-2][1]
-        
-        volume_change = abs(recent_volume - previous_volume) / previous_volume
-        
-        return LiquidityShift(
-            volume_change=volume_change,
-            time_window=time_diff,
-            is_suspicious=volume_change > self.suspicious_shift_threshold
+        # Reduce confidence based on price deviations
+        max_deviation = max(
+            abs(price - mean_price) / mean_price
+            for price in prices.values()
         )
-
+        confidence *= (1.0 - max_deviation)
+        
+        # Reduce confidence for low liquidity
+        total_liquidity = sum(liquidity.values())
+        if total_liquidity < self._min_liquidity_usd * 2:
+            liquidity_factor = total_liquidity / (self._min_liquidity_usd * 2)
+            confidence *= liquidity_factor
+        
+        # Reduce confidence if few price sources
+        if len(prices) < 3:
+            confidence *= len(prices) / 3
+        
+        return confidence
+    
     async def _update_price_history(
         self,
-        token_pair: TokenPair,
-        prices: Dict[str, PriceData]
-    ):
-        """Update price history cache."""
-        current_time = self.web3.eth.get_block('latest')['timestamp']
-        mean_price = sum(p.price for p in prices.values()) / len(prices)
+        token: str,
+        price: float
+    ) -> None:
+        """Update price history for a token."""
+        now = datetime.now()
         
-        pair_key = str(token_pair)
-        if pair_key not in self._recent_prices:
-            self._recent_prices[pair_key] = []
+        # Add new price
+        if token not in self._price_history:
+            self._price_history[token] = []
+        self._price_history[token].append((now, price))
         
-        self._recent_prices[pair_key].append((mean_price, current_time))
+        # Clean up old prices periodically
+        if (now - self._last_cleanup).total_seconds() > 300:  # Every 5 minutes
+            await self._cleanup_price_history()
+    
+    async def _cleanup_price_history(self) -> None:
+        """Clean up old price history."""
+        now = datetime.now()
+        cutoff = now - timedelta(minutes=self._price_history_minutes)
         
-        # Cleanup old entries
-        self._recent_prices[pair_key] = [
-            (p, t) for p, t in self._recent_prices[pair_key]
-            if current_time - t <= self._cache_ttl
-        ]
-
-    async def update_liquidity_history(
-        self,
-        token_pair: TokenPair,
-        dex_name: str,
-        liquidity: Decimal
-    ):
-        """Update liquidity history for a pool."""
-        current_time = self.web3.eth.get_block('latest')['timestamp']
-        pool_id = f"{dex_name}:{token_pair}"
+        for token in list(self._price_history.keys()):
+            history = self._price_history[token]
+            
+            # Remove old prices
+            while history and history[0][0] < cutoff:
+                history.pop(0)
+            
+            # Remove empty histories
+            if not history:
+                del self._price_history[token]
         
-        if pool_id not in self._liquidity_history:
-            self._liquidity_history[pool_id] = []
-        
-        self._liquidity_history[pool_id].append((liquidity, current_time))
-        
-        # Cleanup old entries
-        self._liquidity_history[pool_id] = [
-            (l, t) for l, t in self._liquidity_history[pool_id]
-            if current_time - t <= self._cache_ttl
-        ]
+        self._last_cleanup = now

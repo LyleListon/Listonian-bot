@@ -124,7 +124,7 @@ async def setup_flashbots_rpc(
             'error': str(e)
         }
 
-@with_retry(retries=3, delay=1.0)
+@with_retry(max_attempts=3, base_delay=1.0)
 async def execute_arbitrage_bundle(
     integration: FlashbotsIntegration,
     transactions: List[Transaction],

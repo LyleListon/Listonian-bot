@@ -42,7 +42,7 @@ class BalancerFlashLoan:
         )
         self._lock = AsyncLock()
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def check_liquidity(
         self,
         token_address: ChecksumAddress,
@@ -69,7 +69,7 @@ class BalancerFlashLoan:
             logger.error(f"Failed to check liquidity: {e}")
             return False
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def estimate_fees(
         self,
         tokens: List[ChecksumAddress],
@@ -95,7 +95,7 @@ class BalancerFlashLoan:
             logger.error(f"Failed to estimate fees: {e}")
             return 0
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def simulate_flash_loan(
         self,
         tokens: List[ChecksumAddress],
@@ -136,7 +136,7 @@ class BalancerFlashLoan:
             logger.error(f"Flash loan simulation failed: {e}")
             return False, str(e), {}
 
-    @with_retry(retries=3, delay=1.0)
+    @with_retry(max_attempts=3, base_delay=1.0)
     async def build_flash_loan_tx(
         self,
         tokens: List[ChecksumAddress],

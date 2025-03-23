@@ -133,7 +133,12 @@ class BaseArbitrageSystem(ArbitrageSystem):
             logger.info("Starting arbitrage system")
             
             try:
-                # Start components in order
+                # Initialize all components first
+                await self._discovery_manager.initialize()
+                await self._execution_manager.initialize()
+                await self._analytics_manager.initialize()
+                
+                # Start market data provider
                 await self._market_data_provider.start_monitoring(
                     update_interval_seconds=self._market_update_interval
                 )
@@ -194,8 +199,11 @@ class BaseArbitrageSystem(ArbitrageSystem):
         # Stop components in reverse order
         try:
             await self._market_data_provider.stop_monitoring()
+            await self._discovery_manager.cleanup()
+            await self._execution_manager.cleanup()
+            await self._analytics_manager.cleanup()
         except Exception as e:
-            logger.error(f"Error stopping market data provider: {e}", exc_info=True)
+            logger.error(f"Error during cleanup: {e}", exc_info=True)
     
     async def _discovery_loop(self):
         """Background task for discovering opportunities."""
@@ -276,7 +284,16 @@ class BaseArbitrageSystem(ArbitrageSystem):
             market_condition: Current market state
         """
         logger.debug("Received market update")
-        # We could trigger immediate opportunity discovery here if desired
+        # Trigger immediate opportunity discovery
+        try:
+            opportunities = await self._discovery_manager.discover_opportunities(
+                max_results=self._max_opportunities,
+                min_profit_wei=self._min_profit_wei,
+                market_condition=market_condition,
+            )
+            await self._process_opportunities(opportunities)
+        except Exception as e:
+            logger.error(f"Error processing market update: {e}", exc_info=True)
     
     async def discover_opportunities(
         self,
