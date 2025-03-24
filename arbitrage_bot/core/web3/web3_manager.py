@@ -120,7 +120,7 @@ class Web3Manager:
             self._initialized = False
     
     @property
-    def web3(self) -> AsyncWeb3:
+    def w3(self) -> AsyncWeb3:
         """Get the Web3 instance."""
         if not self._initialized:
             raise RuntimeError("Web3 manager not initialized")

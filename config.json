@@ -1,0 +1,94 @@
+{
+    "web3": {
+        "rpc_url": "https://base-mainnet.g.alchemy.com/v2/kRXhWVt8YU_8LnGS20145F5uBDFbL_k0",
+        "chain_id": 8453,
+        "retry_count": 3,
+        "retry_delay": 1.0,
+        "timeout": 30
+    },
+    "flash_loan": {
+        "aave_pool": "0x1c49B0c0bD345272960eb4F509A3E2398926E7D3",
+        "min_amount": "1000000000000000",
+        "max_amount": "100000000000000000000"
+    },
+    "dexes": {
+        "baseswap_v3": {
+            "factory": "0x38015D05f4fEC8AFe15D7cc0386a126574111a8B",
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
+            "fee_tiers": [100, 500, 3000, 10000]
+        },
+        "aerodrome_v3": {
+            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+            "router": "0x9c12939390052919aF3155f41Bf4160Fd3666A6f",
+            "quoter": "0x14332Eb8e7aC7957f1069284a0dF5B2f04c1Acf7",
+            "fee_tiers": [100, 500, 3000, 10000]
+        }
+    },
+    "tokens": {
+        "WETH": {
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18,
+            "symbol": "WETH"
+        },
+        "USDC": {
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6,
+            "symbol": "USDC"
+        }
+    },
+    "flashbots": {
+        "relay_url": "https://relay.flashbots.net",
+        "bundle_timeout": 30,
+        "max_blocks_to_search": 25,
+        "private_key": "${FLASHBOTS_AUTH_KEY}"
+    },
+    "discovery": {
+        "discovery_interval_seconds": 10,
+        "max_opportunities": 100,
+        "min_profit_wei": 1000000000000000,
+        "max_path_length": 3
+    },
+    "ml": {
+        "model_path": "models/default",
+        "confidence_threshold": 0.85,
+        "update_interval": 3600,
+        "max_cache_size": 1000
+    },
+    "price_validator": {
+        "max_price_deviation": 0.01,
+        "min_liquidity_usd": 10000,
+        "price_history_minutes": 60,
+        "suspicious_change_threshold": 0.05,
+        "confidence_threshold": 0.8
+    },
+    "execution": {
+        "default_execution_strategy": "standard",
+        "auto_execute": false,
+        "max_concurrent_executions": 1,
+        "min_confidence_score": 0.8,
+        "gas_limit_buffer": 1.2,
+        "slippage_tolerance": 0.005
+    },
+    "market_data": {
+        "update_interval_seconds": 60,
+        "price_cache_ttl": 300,
+        "liquidity_cache_ttl": 300
+    },
+    "analytics": {
+        "performance_window_days": 30,
+        "metrics_update_interval": 300,
+        "trade_history_limit": 1000
+    },
+    "memory_bank": {
+        "storage_path": "memory-bank",
+        "max_trade_history": 10000,
+        "backup_interval_hours": 24
+    },
+    "logging": {
+        "level": "INFO",
+        "file_path": "logs/arbitrage.log",
+        "max_file_size_mb": 100,
+        "backup_count": 5
+    }
+}

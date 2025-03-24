@@ -28,7 +28,7 @@ from arbitrage_bot import (
     DiscoveryManager,
     EnhancedExecutionManager,
     AnalyticsManager,
-    MarketDataProvider,
+    EnhancedMarketDataProvider,
     MemoryManager,
     MLSystem,
     Web3Manager,
@@ -39,6 +39,53 @@ from arbitrage_bot import (
 )
 
 from arbitrage_bot.utils.config_loader import load_config
+
+async def create_ml_system(config):
+    """Create and initialize the ML system."""
+    try:
+        ml_system = MLSystem(
+            model_path=config.get("model_path", "models/default"),
+            confidence_threshold=config.get("confidence_threshold", 0.85),
+            update_interval=config.get("update_interval", 3600)
+        )
+        await ml_system.initialize()
+        return ml_system
+    except Exception as e:
+        logger.error("Failed to create ML system: %s", str(e), exc_info=True)
+        raise
+
+async def create_web3_manager(config):
+    """Create and initialize the Web3 manager."""
+    try:
+        # Map provider_url to rpc_url for Web3Manager
+        web3_config = config.copy()
+        web3_config["rpc_url"] = web3_config.pop("provider_url")
+        
+        web3_manager = Web3Manager(
+            web3_config)
+        await web3_manager.initialize()
+        return web3_manager
+    except Exception as e:
+        logger.error("Failed to create Web3 manager: %s", str(e), exc_info=True)
+        raise
+
+async def create_flashbots_provider(web3_manager, config):
+    """Create and initialize the Flashbots provider."""
+    try:
+        # Get Web3 instance and create account
+        web3 = web3_manager.web3
+        account = web3.eth.account.from_key(config.get("private_key"))
+        
+        flashbots_provider = FlashbotsProvider(
+            web3=web3,
+            config=config,
+            account=account
+        )
+        await flashbots_provider.initialize()
+        return flashbots_provider
+    except Exception as e:
+        logger.error("Failed to create Flashbots provider: %s", str(e), exc_info=True)
+        raise
 
 async def init_and_run():
     """Initialize and run the bot with proper async handling."""
@@ -76,7 +123,7 @@ async def init_and_run():
             logger.info("Memory manager initialized")
             
             # Initialize market data provider
-            market_data_provider = MarketDataProvider()
+            market_data_provider = EnhancedMarketDataProvider()
             await market_data_provider.initialize()
             logger.info("Market data provider initialized")
             

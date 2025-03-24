@@ -9,7 +9,9 @@ This module provides functionality for:
 
 import logging
 import json
+import os
 from typing import Any, Dict, List, Optional
+from web3 import Web3
 from decimal import Decimal
 from eth_typing import HexStr
 from eth_utils import is_hex_address, to_checksum_address
@@ -75,12 +77,16 @@ async def setup_flashbots_rpc(
         if not config.get('flashbots', {}).get('relay_url'):
             raise ValueError("Flashbots relay URL not configured")
             
-        if not config.get('flashbots', {}).get('auth_key'):
+        auth_key = os.environ.get('FLASHBOTS_AUTH_KEY')
+        if not auth_key:
             raise ValueError("Flashbots auth key not configured")
-            
+        
+        # Strip 0x prefix if present
+        if auth_key.startswith('0x'):
+            auth_key = auth_key[2:]
+        
         # Validate auth key format
-        auth_key = config['flashbots']['auth_key']
-        if not auth_key.startswith('0x') or len(auth_key) != 66:
+        if len(auth_key) != 64:  # 32 bytes = 64 hex chars
             raise ValueError("Invalid Flashbots auth key format - must be 32 bytes hex")
             
         if not config.get('flash_loan', {}).get('aave_pool'):
@@ -89,11 +95,13 @@ async def setup_flashbots_rpc(
             raise ValueError("Invalid Aave pool address format")
 
         # Create components
+        logger.info(f"Initializing Flashbots provider with RPC URL: {web3_manager._rpc_url}")
+        
         flashbots_provider = FlashbotsProvider(
-            w3=web3_manager.w3,
+            w3=Web3(Web3.HTTPProvider(web3_manager._rpc_url, request_kwargs={"timeout": web3_manager._timeout})),
             relay_url=config['flashbots']['relay_url'],
-            auth_key=config['flashbots']['auth_key'],
-            chain_id=web3_manager.chain_id
+            auth_key=auth_key,
+            chain_id=config["web3"]["chain_id"]
         )
 
         flash_loan_manager = await create_aave_flash_loan(

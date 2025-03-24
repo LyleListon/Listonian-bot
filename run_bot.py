@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 async def init_and_run():
     """Initialize and run the bot with proper async handling."""
+    bot = None
     try:
         # Import async manager first
         from arbitrage_bot.utils.async_manager import manager, run_with_async_context, async_init
@@ -32,9 +33,9 @@ async def init_and_run():
             BaseArbitrageSystem,
             DiscoveryManager,
             EnhancedExecutionManager,
-            AnalyticsManager,
-            MarketDataProvider
+            AnalyticsManager
         )
+        from arbitrage_bot.core.arbitrage.enhanced_market_data_provider import EnhancedMarketDataProvider
         
         # Initialize async manager with proper error handling
         try:
@@ -55,7 +56,7 @@ async def init_and_run():
             logger.info("Initializing bot components...")
             
             # Create market data provider
-            market_data_provider = MarketDataProvider()
+            market_data_provider = EnhancedMarketDataProvider(config)
             await market_data_provider.initialize()
             logger.info("Market data provider initialized")
             
@@ -86,7 +87,25 @@ async def init_and_run():
             logger.info("Successfully created ArbitrageBot")
             
             # Start the bot
-            await run_with_async_context(bot.start())
+            start_task = asyncio.create_task(bot.start())
+            
+            # Wait for shutdown signal
+            try:
+                while True:
+                    await asyncio.sleep(1)
+                    # Check if start_task failed
+                    if start_task.done() and start_task.exception() is not None:
+                        raise start_task.exception()
+            except asyncio.CancelledError:
+                logger.info("Received shutdown signal")
+                # Cancel start_task if it's still running
+                if not start_task.done():
+                    start_task.cancel()
+                    try:
+                        await start_task
+                    except asyncio.CancelledError:
+                        pass
+                raise
             
         except Exception as e:
             logger.error("Failed to start ArbitrageBot: %s", str(e), exc_info=True)
@@ -96,6 +115,15 @@ async def init_and_run():
         logger.error("Failed to start bot: %s", str(e), exc_info=True)
         raise
     finally:
+        # Stop bot first if it was created
+        if bot is not None:
+            try:
+                await bot.stop()
+                logger.info("Successfully stopped ArbitrageBot")
+            except Exception as e:
+                logger.error("Error stopping bot: %s", str(e), exc_info=True)
+        
+        # Then cleanup async manager
         if 'manager' in locals() and manager is not None:
             try:
                 await manager.async_cleanup()
@@ -105,6 +133,7 @@ async def init_and_run():
 
 def main():
     """Entry point that sets up and runs the async loop."""
+    loop = None
     try:
         # Create new event loop
         loop = asyncio.new_event_loop()
@@ -116,23 +145,41 @@ def main():
             # Set a higher threshold for slow callback warnings
             loop.slow_callback_duration = 5.0  # 5 seconds
         
-        # Run the async initialization and main loop
-        loop.run_until_complete(init_and_run())
+        # Create task for init_and_run
+        task = loop.create_task(init_and_run())
         
-    except KeyboardInterrupt:
-        logger.info("Received shutdown signal")
+        try:
+            # Run until complete or interrupted
+            loop.run_until_complete(task)
+        except KeyboardInterrupt:
+            logger.info("Received keyboard interrupt")
+            # Cancel the task
+            task.cancel()
+            # Wait for task to be cancelled
+            try:
+                loop.run_until_complete(task)
+            except asyncio.CancelledError:
+                pass
+        
     except Exception as e:
         logger.error("Critical error: %s", str(e), exc_info=True)
         sys.exit(1)
     finally:
         # Ensure the loop is closed
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.stop()
-            if not loop.is_closed():
-                loop.close()
-            logger.info("Successfully closed event loop")
+            if loop is not None:
+                pending = asyncio.all_tasks(loop)
+                if pending:
+                    logger.info("Cancelling %d pending tasks", len(pending))
+                    for task in pending:
+                        task.cancel()
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                
+                if loop.is_running():
+                    loop.stop()
+                if not loop.is_closed():
+                    loop.close()
+                logger.info("Successfully closed event loop")
         except Exception as e:
             logger.error("Error during cleanup: %s", str(e), exc_info=True)
 

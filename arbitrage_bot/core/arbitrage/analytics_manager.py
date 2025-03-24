@@ -9,9 +9,11 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
 from decimal import Decimal
+from pathlib import Path
 
 from .interfaces import ArbitrageAnalytics
 from .models import ArbitrageOpportunity, ExecutionResult
+from ..memory.memory_bank import MemoryBank
 
 logger = logging.getLogger(__name__)
 
@@ -22,23 +24,15 @@ class AnalyticsManager(ArbitrageAnalytics):
     This class is responsible for tracking and analyzing arbitrage performance.
     """
     
-    def __init__(self):
+    def __init__(self, storage_dir: Path = Path("memory-bank")):
         """Initialize the analytics manager."""
-        self._opportunities = []  # List of opportunities
-        self._executions = []  # List of execution results
         self._lock = asyncio.Lock()
         self._initialized = False
         
-        # Performance tracking
-        self._total_profit_wei = 0
-        self._total_gas_wei = 0
-        self._successful_executions = 0
-        self._failed_executions = 0
-        self._opportunity_count = 0
-        
-        # Cache for quick lookups
-        self._opportunity_cache = {}  # id -> opportunity
-        self._execution_cache = {}  # id -> execution
+        # Initialize memory bank
+        self._memory_bank = MemoryBank(
+            storage_dir=storage_dir
+        )
     
     async def initialize(self) -> None:
         """Initialize the analytics manager."""
@@ -47,17 +41,15 @@ class AnalyticsManager(ArbitrageAnalytics):
                 return
             
             logger.info("Initializing analytics manager")
+            await self._memory_bank.initialize()
             self._initialized = True
     
     async def cleanup(self) -> None:
         """Clean up resources."""
         async with self._lock:
-            # Save final metrics if needed
+            # Cleanup memory bank
+            await self._memory_bank.cleanup()
             self._initialized = False
-            self._opportunities.clear()
-            self._executions.clear()
-            self._opportunity_cache.clear()
-            self._execution_cache.clear()
     
     async def record_opportunity(
         self,
@@ -70,12 +62,19 @@ class AnalyticsManager(ArbitrageAnalytics):
             opportunity: The opportunity to record
         """
         async with self._lock:
-            # Add to history
-            self._opportunities.append(opportunity)
-            self._opportunity_cache[opportunity.id] = opportunity
-            
-            # Update metrics
-            self._opportunity_count += 1
+            # Convert opportunity to dict
+            opportunity_data = {
+                'id': opportunity.id,
+                'timestamp': opportunity.timestamp.isoformat(),
+                'token_pair': opportunity.token_pair,
+                'expected_profit_wei': str(opportunity.expected_profit_wei),
+                'gas_cost_wei': str(opportunity.gas_cost_wei),
+                'confidence_score': opportunity.confidence_score,
+                'status': 'PENDING'
+            }
+
+            # Store in memory bank
+            await self._memory_bank.add_trade(opportunity_data)
             
             logger.debug(
                 f"Recorded opportunity {opportunity.id} with "
@@ -93,17 +92,20 @@ class AnalyticsManager(ArbitrageAnalytics):
             execution_result: The execution result to record
         """
         async with self._lock:
-            # Add to history
-            self._executions.append(execution_result)
-            self._execution_cache[execution_result.id] = execution_result
-            
-            # Update metrics
-            if execution_result.is_successful:
-                self._successful_executions += 1
-                self._total_profit_wei += execution_result.actual_profit_wei
-                self._total_gas_wei += execution_result.gas_cost_wei
-            else:
-                self._failed_executions += 1
+            # Convert execution result to dict
+            execution_data = {
+                'id': execution_result.id,
+                'timestamp': execution_result.timestamp.isoformat(),
+                'opportunity_id': execution_result.opportunity_id,
+                'status': 'SUCCESSFUL' if execution_result.is_successful else 'FAILED',
+                'actual_profit_wei': str(execution_result.actual_profit_wei),
+                'gas_cost_wei': str(execution_result.gas_cost_wei),
+                'tx_hash': execution_result.tx_hash,
+                'error': execution_result.error if not execution_result.is_successful else None
+            }
+
+            # Store in memory bank
+            await self._memory_bank.add_trade(execution_data)
             
             logger.debug(
                 f"Recorded execution {execution_result.id} with "
@@ -124,69 +126,11 @@ class AnalyticsManager(ArbitrageAnalytics):
             Dictionary of performance metrics
         """
         async with self._lock:
-            # Calculate time window
-            end_time = datetime.now()
-            start_time = end_time - timedelta(days=time_period_days)
-            
-            # Filter opportunities and executions in time window
-            opportunities = [
-                opp for opp in self._opportunities
-                if start_time <= opp.timestamp <= end_time
-            ]
-            
-            executions = [
-                exec for exec in self._executions
-                if start_time <= exec.timestamp <= end_time
-            ]
-            
-            # Calculate metrics
-            total_opportunities = len(opportunities)
-            total_executions = len(executions)
-            successful_executions = sum(1 for e in executions if e.is_successful)
-            failed_executions = total_executions - successful_executions
-            
-            total_profit_wei = sum(
-                e.actual_profit_wei for e in executions if e.is_successful
+            # Get daily stats from memory bank
+            daily_stats = await self._memory_bank.get_daily_stats(
+                days=time_period_days
             )
-            total_gas_wei = sum(
-                e.gas_cost_wei for e in executions if e.is_successful
-            )
-            
-            # Calculate averages
-            avg_profit_per_trade = (
-                total_profit_wei / successful_executions
-                if successful_executions > 0 else 0
-            )
-            
-            avg_gas_per_trade = (
-                total_gas_wei / successful_executions
-                if successful_executions > 0 else 0
-            )
-            
-            # Calculate success rate
-            success_rate = (
-                successful_executions / total_executions * 100
-                if total_executions > 0 else 0
-            )
-            
-            return {
-                "time_period_days": time_period_days,
-                "total_opportunities": total_opportunities,
-                "total_executions": total_executions,
-                "successful_executions": successful_executions,
-                "failed_executions": failed_executions,
-                "success_rate": success_rate,
-                "total_profit_wei": str(total_profit_wei),
-                "total_profit_eth": total_profit_wei / 10**18,
-                "total_gas_wei": str(total_gas_wei),
-                "total_gas_eth": total_gas_wei / 10**18,
-                "avg_profit_per_trade_wei": str(avg_profit_per_trade),
-                "avg_profit_per_trade_eth": avg_profit_per_trade / 10**18,
-                "avg_gas_per_trade_wei": str(avg_gas_per_trade),
-                "avg_gas_per_trade_eth": avg_gas_per_trade / 10**18,
-                "net_profit_wei": str(total_profit_wei - total_gas_wei),
-                "net_profit_eth": (total_profit_wei - total_gas_wei) / 10**18
-            }
+            return daily_stats[-1] if daily_stats else {}
     
     async def get_recent_opportunities(
         self,
@@ -204,21 +148,13 @@ class AnalyticsManager(ArbitrageAnalytics):
             List of recent opportunities
         """
         async with self._lock:
-            # Convert ETH to wei
-            min_profit_wei = int(min_profit_eth * 10**18)
-            
-            # Filter and sort opportunities
-            filtered_opportunities = [
-                opp for opp in self._opportunities
-                if opp.expected_profit_wei >= min_profit_wei
-            ]
-            
-            filtered_opportunities.sort(
-                key=lambda x: x.timestamp,
-                reverse=True
+            # Get recent trades from memory bank
+            trades = await self._memory_bank.get_recent_trades(
+                max_results=max_results
             )
-            
-            return filtered_opportunities[:max_results]
+            # Filter pending trades
+            return [t for t in trades if t['status'] == 'PENDING' and 
+                   float(t['expected_profit_wei']) / 10**18 >= min_profit_eth]
     
     async def get_recent_executions(
         self,
@@ -234,11 +170,7 @@ class AnalyticsManager(ArbitrageAnalytics):
             List of recent executions
         """
         async with self._lock:
-            # Sort executions by timestamp
-            sorted_executions = sorted(
-                self._executions,
-                key=lambda x: x.timestamp,
-                reverse=True
-            )
-            
-            return sorted_executions[:max_results]
+            # Get recent trades from memory bank
+            trades = await self._memory_bank.get_recent_trades(
+                max_results=max_results)
+            return [t for t in trades if t['status'] in ('SUCCESSFUL', 'FAILED')]

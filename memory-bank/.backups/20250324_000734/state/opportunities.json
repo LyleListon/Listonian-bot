@@ -1,0 +1,18 @@
+{
+  "opportunities": [],
+  "market_condition": {
+    "timestamp": "2025-03-24T04:03:33.000000+00:00",
+    "analysis": {
+      "is_valid": true,
+      "reason": "Market conditions normal",
+      "validation": [
+        true,
+        "Price feeds operational",
+        0.999985716326239
+      ]
+    },
+    "prices": {},
+    "liquidity": {}
+  },
+  "timestamp": "2025-03-24T04:03:33.000000+00:00"
+}

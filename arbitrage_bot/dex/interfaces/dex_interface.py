@@ -98,7 +98,7 @@ class DexInterface:
                 if router_abi_path.exists() and "router" in config:
                     with open(router_abi_path, "r") as f:
                         router_abi = json.load(f)
-                    contracts["router"] = self.web3_manager.web3.eth.contract(
+                    contracts["router"] = self.web3_manager.w3.eth.contract(
                         address=Web3.to_checksum_address(config["router"]),
                         abi=router_abi,
                     )
@@ -110,7 +110,7 @@ class DexInterface:
                     if quoter_abi_path.exists():
                         with open(quoter_abi_path, "r") as f:
                             quoter_abi = json.load(f)
-                        contracts["quoter"] = self.web3_manager.web3.eth.contract(
+                        contracts["quoter"] = self.web3_manager.w3.eth.contract(
                             address=Web3.to_checksum_address(config["quoter"]),
                             abi=quoter_abi,
                         )
@@ -301,8 +301,8 @@ class DexInterface:
                     ).build_transaction({
                         "from": Web3.to_checksum_address(wallet_address),
                         "gas": 500000,
-                        "nonce": await self.web3_manager.web3.eth.get_transaction_count(wallet_address),
-                        "gasPrice": await self.web3_manager.web3.eth.gas_price,
+                        "nonce": await self.web3_manager.w3.eth.get_transaction_count(wallet_address),
+                        "gasPrice": await self.web3_manager.w3.eth.gas_price,
                     })
                 else:
                     logger.debug("Using V3 trade method for {}".format(dex_name))
@@ -323,8 +323,8 @@ class DexInterface:
                         tx = await router.functions.exactInputSingle(params).build_transaction({
                             "from": Web3.to_checksum_address(wallet_address),
                             "gas": 500000,
-                            "nonce": await self.web3_manager.web3.eth.get_transaction_count(wallet_address),
-                            "gasPrice": await self.web3_manager.web3.eth.gas_price,
+                            "nonce": await self.web3_manager.w3.eth.get_transaction_count(wallet_address),
+                            "gasPrice": await self.web3_manager.w3.eth.gas_price,
                         })
                     else:
                         # Uniswap V3 expects individual parameters
@@ -340,18 +340,18 @@ class DexInterface:
                         ).build_transaction({
                             "from": Web3.to_checksum_address(wallet_address),
                             "gas": 500000,
-                            "nonce": await self.web3_manager.web3.eth.get_transaction_count(wallet_address),
-                            "gasPrice": await self.web3_manager.web3.eth.gas_price,
+                            "nonce": await self.web3_manager.w3.eth.get_transaction_count(wallet_address),
+                            "gasPrice": await self.web3_manager.w3.eth.gas_price,
                         })
 
                 # Sign transaction
-                signed_tx = self.web3_manager.web3.eth.account.sign_transaction(tx, private_key)
+                signed_tx = self.web3_manager.w3.eth.account.sign_transaction(tx, private_key)
 
                 # Send transaction
-                tx_hash = await self.web3_manager.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                tx_hash = await self.web3_manager.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
                 # Wait for confirmation
-                receipt = await self.web3_manager.web3.eth.wait_for_transaction_receipt(tx_hash)
+                receipt = await self.web3_manager.w3.eth.wait_for_transaction_receipt(tx_hash)
 
                 if receipt["status"] == 1:
                     logger.info("Trade executed successfully: {}".format(tx_hash.hex()))

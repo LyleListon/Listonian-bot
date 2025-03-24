@@ -19,11 +19,19 @@ async def get_system_status(
     return await system_service.get_system_status()
 
 @router.get("/health")
+async def health_check() -> Dict[str, Any]:
+    """Basic health check endpoint."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@router.get("/health/detailed")
 @log_execution_time
-async def health_check(
+async def detailed_health_check(
     system_service=Depends(get_system_service)
 ) -> Dict[str, Any]:
-    """Get system health status."""
+    """Get detailed system health status."""
     status = await system_service.get_system_status()
     
     # Check component health

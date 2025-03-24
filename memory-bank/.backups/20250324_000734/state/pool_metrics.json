@@ -1,0 +1,21 @@
+{
+  "pools": {
+    "baseswap_v3_usdc_weth": {
+      "metrics": {
+        "liquidity": 1000000,
+        "volume_24h": 500000,
+        "fees_24h": 1500
+      },
+      "timestamp": "2025-03-24T04:04:00.000000+00:00"
+    },
+    "aerodrome_v3_usdc_weth": {
+      "metrics": {
+        "liquidity": 800000,
+        "volume_24h": 400000,
+        "fees_24h": 1200
+      },
+      "timestamp": "2025-03-24T04:04:00.000000+00:00"
+    }
+  },
+  "timestamp": "2025-03-24T04:04:00.000000+00:00"
+}

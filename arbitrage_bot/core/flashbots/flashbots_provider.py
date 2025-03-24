@@ -62,13 +62,17 @@ class FlashbotsProvider:
             logger.info("Initializing Flashbots provider")
             
             try:
-                # Initialize Flashbots middleware
-                from flashbots import flashbot
-                self._flashbots = flashbot(
-                    self._web3,
-                    self._account,
-                    self._relay_url
+                from web3.providers.rpc import HTTPProvider
+                
+                # Add account to sign transactions
+                self._web3.eth.default_account = self._account.address
+                
+                # Set Flashbots RPC endpoint
+                provider = HTTPProvider(
+                    self._relay_url,
+                    {"headers": {"X-Flashbots-Signature": self._account.address}}
                 )
+                self._web3.provider = provider
                 
                 self._initialized = True
                 logger.info("Flashbots provider initialized")

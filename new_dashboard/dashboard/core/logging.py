@@ -8,7 +8,7 @@ import time
 import functools
 from typing import Optional, Any, Callable
 
-def configure_logging(level: str = "INFO") -> None:
+def configure_logging(level: str = "DEBUG") -> None:
     """Set up logging configuration.
     
     Args:
@@ -26,9 +26,9 @@ def configure_logging(level: str = "INFO") -> None:
     )
     
     # Reduce verbosity of some loggers
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("fastapi").setLevel(logging.WARNING)
-    logging.getLogger("websockets").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
+    logging.getLogger("fastapi").setLevel(logging.DEBUG)
+    logging.getLogger("dashboard").setLevel(logging.DEBUG)
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Get a logger instance.

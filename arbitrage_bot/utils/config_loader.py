@@ -97,6 +97,22 @@ def load_config() -> Dict[str, Any]:
 
 def _deep_update(base: Dict, update: Dict) -> Dict:
     """
+    Recursively update a dictionary and handle environment variables.
+    
+    Args:
+        base: Base dictionary to update
+        update: Dictionary with updates
+        
+    Returns:
+        Updated dictionary
+    """
+    def _resolve_env_var(value: str) -> str:
+        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+            env_var = value[2:-1]
+            return os.environ.get(env_var, value)
+        return value
+
+    """
     Recursively update a dictionary.
     
     Args:
@@ -110,7 +126,7 @@ def _deep_update(base: Dict, update: Dict) -> Dict:
         if isinstance(value, dict) and key in base and isinstance(base[key], dict):
             base[key] = _deep_update(base[key], value)
         else:
-            base[key] = value
+            base[key] = _resolve_env_var(value)
     return base
 
 def _load_from_env(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -199,3 +215,52 @@ def _validate_config(config: Dict[str, Any]) -> None:
     
     log_path = Path(config["logging"]["file_path"])
     log_path.parent.mkdir(parents=True, exist_ok=True)
+
+def load_production_config() -> Dict[str, Any]:
+    """
+    Load production configuration from .env.production and config.json.
+    
+    Returns:
+        Dictionary containing the production configuration
+    """
+    # Load base config
+    config = load_config()
+    
+    # Load .env.production if it exists
+    env_path = Path(".env.production")
+    if not env_path.exists():
+        raise ValueError(".env.production file not found")
+    
+    # Parse .env.production file
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            logger.info(f"Loading env var: {key}={value}")
+            os.environ[key.strip()] = value.strip()
+    
+    # Update config with production values
+    rpc_url = os.environ.get("BASE_RPC_URL")
+    logger.info(f"Using RPC URL: {rpc_url}")
+    
+    config["web3"] = {
+        "rpc_url": rpc_url,
+       "chain_id": 8453,
+        "retry_count": 3,
+        "retry_delay": 1.0,
+        "timeout": 30
+    }
+    config["flashbots"] = {
+        "relay_url": "https://relay.flashbots.net"
+,
+        "bundle_timeout": 30,
+        "max_blocks_to_search": 25
+    }
+    config["execution"]["auto_execute"] = True
+    
+    return config

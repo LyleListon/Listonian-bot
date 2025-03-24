@@ -82,6 +82,10 @@ class PriceValidator:
         async with self._lock:
             try:
                 # Check price consistency
+                if not prices:
+                    return False, "No prices available", 0.0
+                if not liquidity:
+                    return False, "No liquidity data available", 0.0
                 mean_price = sum(prices.values()) / len(prices)
                 
                 for source, price in prices.items():

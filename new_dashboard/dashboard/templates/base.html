@@ -4,32 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Dashboard{% endblock %}</title>
-    
-    <!-- CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', path='css/test.css') }}">
-    
-    <!-- JavaScript Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js" 
-            integrity="sha512-TW5s0IT/IppJtu76UbysrBH9Hy/5X41OTAbQuffZFU6lQ1rdcLHzpU5BzVvr/YFykoiMYZVWlr/PX1mDcfM9Qg==" 
-            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js" 
-            integrity="sha512-qTXRIMyZIFb8iQcfjXWCO8+M5Tbc38Qi5WzdPOYZHIlZpzBHG3L3by84BBBOiRGiEb7KKtAOAs5qYdUiZiQNNQ==" 
-            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    
-    <!-- Custom Styles -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     {% block extra_css %}{% endblock %}
+    <!-- Load core scripts in head -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
 </head>
-<body>
+<body class="bg-gray-100">
     <!-- Navigation -->
-    <nav class="dashboard-card">
-        <div class="container">
-            <div class="card-header">
+    <nav class="bg-white shadow mb-4">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
                 <!-- Logo and Brand -->
-                <div class="card-title">Arbitrage Bot Dashboard</div>
+                <div class="text-xl font-bold text-gray-800">Arbitrage Bot Dashboard</div>
                 
                 <!-- System Status Indicator -->
-                <div id="systemStatus">
-                    <span class="status-dot"></span>
+                <div id="systemStatus" class="flex items-center">
+                    <span class="w-3 h-3 rounded-full bg-gray-400 mr-2"></span>
                     <span>Connecting...</span>
                 </div>
             </div>
@@ -37,14 +28,14 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="container">
+    <main>
         {% block content %}{% endblock %}
     </main>
 
     <!-- Footer -->
-    <footer class="dashboard-card">
-        <div class="container">
-            <div class="card-header">
+    <footer class="bg-white shadow mt-8">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
                 <div>
                     <span id="uptime">Uptime: Calculating...</span>
                 </div>
@@ -55,110 +46,8 @@
         </div>
     </footer>
 
-    <!-- Base JavaScript -->
-    <script>
-        // WebSocket Connection
-        let socket = null;
-        let reconnectAttempts = 0;
-        const maxReconnectAttempts = 5;
-        const reconnectDelay = 5000;
-
-        function connectWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-            if (socket) {
-                socket.close();
-            }
-
-            socket = new WebSocket(wsUrl);
-
-            socket.onopen = function() {
-                console.log('WebSocket connected');
-                document.getElementById('systemStatus').innerHTML = `
-                    <span class="status-dot connected"></span>
-                    <span>Connected</span>
-                `;
-                reconnectAttempts = 0;
-            };
-
-            socket.onclose = function() {
-                console.log('WebSocket disconnected');
-                document.getElementById('systemStatus').innerHTML = `
-                    <span class="status-dot disconnected"></span>
-                    <span>Disconnected</span>
-                `;
-                
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    reconnectAttempts++;
-                    setTimeout(connectWebSocket, reconnectDelay);
-                }
-            };
-
-            socket.onerror = function(error) {
-                console.error('WebSocket error:', error);
-            };
-
-            socket.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                handleWebSocketMessage(data);
-                updateLastUpdate();
-            };
-        }
-
-        function handleWebSocketMessage(data) {
-            // Update system status
-            if (data.type === 'system_update') {
-                updateSystemStatus(data.data);
-            }
-            
-            // Update metrics
-            if (data.type === 'metrics_update') {
-                updateMetrics(data.data);
-            }
-            
-            // Update memory state
-            if (data.type === 'memory_update') {
-                updateMemoryState(data.data);
-            }
-
-            // Dispatch custom event for page-specific handlers
-            const customEvent = new CustomEvent('websocket-message', { detail: data });
-            document.dispatchEvent(customEvent);
-        }
-
-        function updateSystemStatus(status) {
-            if (status.uptime) {
-                const uptime = moment.duration(status.uptime, 'seconds').humanize();
-                document.getElementById('uptime').textContent = `Uptime: ${uptime}`;
-            }
-        }
-
-        function updateMetrics(metrics) {
-            // Page-specific metric updates will be handled by the custom event
-        }
-
-        function updateMemoryState(state) {
-            // Page-specific state updates will be handled by the custom event
-        }
-
-        function updateLastUpdate() {
-            const now = moment().format('HH:mm:ss');
-            document.getElementById('lastUpdate').textContent = `Last Update: ${now}`;
-        }
-
-        // Initialize WebSocket connection
-        connectWebSocket();
-
-        // Keep-alive ping
-        setInterval(() => {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'ping' }));
-            }
-        }, 30000);
-    </script>
-
-    <!-- Page-specific JavaScript -->
+    <!-- Load page-specific scripts at end of body -->
+    <script src="/static/js/dashboard.js"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

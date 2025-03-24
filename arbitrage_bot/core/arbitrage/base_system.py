@@ -67,8 +67,7 @@ class BaseArbitrageSystem(ArbitrageSystem):
         self._lock = asyncio.Lock()
         
         # Background tasks
-        self._discovery_task = None
-        self._market_update_task = None
+        self._tasks = set()
         
         # Tracking state
         self._opportunity_cache = {}  # Opportunity ID -> Opportunity
@@ -148,10 +147,10 @@ class BaseArbitrageSystem(ArbitrageSystem):
                     self._on_market_update
                 )
                 
-                # Start background tasks
-                self._discovery_task = asyncio.create_task(
-                    self._discovery_loop()
-                )
+                # Start discovery loop
+                discovery_task = asyncio.create_task(self._discovery_loop())
+                self._tasks.add(discovery_task)
+                discovery_task.add_done_callback(self._tasks.discard)
                 
                 # Update state
                 self._running = True
@@ -187,14 +186,16 @@ class BaseArbitrageSystem(ArbitrageSystem):
     
     async def _cleanup(self):
         """Clean up resources when stopping the system."""
-        # Cancel background tasks
-        if self._discovery_task:
-            self._discovery_task.cancel()
-            try:
-                await self._discovery_task
-            except asyncio.CancelledError:
-                pass
-            self._discovery_task = None
+        # Cancel and wait for all tasks
+        if self._tasks:
+            for task in self._tasks:
+                if not task.done():
+                    task.cancel()
+            
+            # Wait for all tasks to complete
+            if self._tasks:
+                await asyncio.gather(*self._tasks, return_exceptions=True)
+            self._tasks.clear()
         
         # Stop components in reverse order
         try:
@@ -401,66 +402,60 @@ class BaseArbitrageSystem(ArbitrageSystem):
     
     async def get_recent_opportunities(
         self,
-        max_results: int = 100,
+        limit: int = 100,
         min_profit_eth: float = 0.0
     ) -> List[ArbitrageOpportunity]:
         """
-        Get recent arbitrage opportunities.
+        Get recent opportunities.
         
         Args:
-            max_results: Maximum number of opportunities to return
+            limit: Maximum number of opportunities to return
             min_profit_eth: Minimum profit threshold in ETH
             
         Returns:
             List of recent opportunities
         """
-        # Convert ETH to wei
         min_profit_wei = int(min_profit_eth * 10**18)
         
-        # Get recent opportunities from analytics
-        return await self._analytics_manager.get_recent_opportunities(
-            max_results=max_results,
-            min_profit_eth=min_profit_eth
+        opportunities = sorted(
+            [
+                opp for opp in self._opportunity_cache.values()
+                if opp.expected_profit_after_gas >= min_profit_wei
+            ],
+            key=lambda x: x.timestamp,
+            reverse=True
         )
+        
+        return opportunities[:limit]
     
     async def get_recent_executions(
         self,
-        max_results: int = 100
+        limit: int = 100
     ) -> List[ExecutionResult]:
         """
-        Get recent execution results.
+        Get recent executions.
         
         Args:
-            max_results: Maximum number of executions to return
+            limit: Maximum number of executions to return
             
         Returns:
             List of recent executions
         """
-        return await self._analytics_manager.get_recent_executions(
-            max_results=max_results
+        executions = sorted(
+            self._execution_cache.values(),
+            key=lambda x: x.timestamp,
+            reverse=True
         )
+        
+        return executions[:limit]
     
-    async def get_performance_metrics(
-        self
-    ) -> Dict[str, Any]:
+    async def get_performance_metrics(self) -> Dict[str, Any]:
         """
-        Get performance metrics for the arbitrage system.
+        Get system performance metrics.
         
         Returns:
-            Dictionary of performance metrics
+            Dictionary containing performance metrics
         """
-        metrics = await self._analytics_manager.get_performance_metrics(
-            time_period_days=self._performance_window_days
+        return await self._analytics_manager.get_performance_metrics(
+            window_days=self._performance_window_days
         )
-        
-        # Add system uptime to metrics
-        metrics["system_uptime_seconds"] = self.uptime_seconds
-        metrics["system_start_time"] = self._start_time
-        
-        if self._running:
-            metrics["system_status"] = "running"
-        else:
-            metrics["system_status"] = "stopped"
-            metrics["system_stop_time"] = self._stop_time
-        
-        return metrics

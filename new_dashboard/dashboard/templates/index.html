@@ -1,211 +1,33 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Arbitrage Bot{% endblock %}
+{% block title %}{{ title }}{% endblock %}
 
 {% block content %}
-<div class="grid">
-    <!-- Total Profit Card -->
-    <div class="dashboard-card">
-        <h2>Total Profit</h2>
-        <div id="totalProfit">
-            <div class="metric-value">Loading...</div>
-            <div class="metric-label">24h</div>
+<div class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Performance Metrics -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Performance</h2>
+            <div id="performance-metrics">Loading...</div>
+        </div>
+
+        <!-- Active Opportunities -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Active Opportunities</h2>
+            <div id="active-opportunities">Loading...</div>
+        </div>
+
+        <!-- System Status -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">System Status</h2>
+            <div id="system-status">Loading...</div>
         </div>
     </div>
 
-    <!-- Current Gas Price Card -->
-    <div class="dashboard-card">
-        <h2>Current Gas Price</h2>
-        <div id="gasPrice">
-            <div class="metric-value">Loading...</div>
-            <div class="metric-label">GWEI</div>
-        </div>
-    </div>
-
-    <!-- Active Opportunities Card -->
-    <div class="dashboard-card">
-        <h2>Active Opportunities</h2>
-        <div id="activeOpportunities">
-            <div class="metric-value">Loading...</div>
-            <div class="metric-label">Last 5m</div>
-        </div>
-    </div>
-
-    <!-- Success Rate Card -->
-    <div class="dashboard-card">
-        <h2>Success Rate</h2>
-        <div id="successRate">
-            <div class="metric-value">Loading...</div>
-            <div class="metric-label">24h</div>
-        </div>
+    <!-- Recent Trades -->
+    <div class="mt-8 bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-4">Recent Trades</h2>
+        <div id="recent-trades">Loading...</div>
     </div>
 </div>
-
-<!-- Profit History Chart -->
-<div class="dashboard-card">
-    <h2>Profit History</h2>
-    <div class="chart-container">
-        <canvas id="profitChart"></canvas>
-    </div>
-    <div class="chart-controls">
-        <select id="timeRange">
-            <option value="24">24 Hours</option>
-            <option value="168">7 Days</option>
-            <option value="720">30 Days</option>
-        </select>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    let profitChart = null;
-
-    function initProfitChart() {
-        const ctx = document.getElementById('profitChart');
-        if (!ctx) {
-            console.error('Canvas element not found');
-            return;
-        }
-
-        profitChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Profit (ETH)',
-                    data: [],
-                    borderColor: '#4CAF50',
-                    tension: 0.4,
-                    fill: false
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Profit (ETH)'
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                }
-            }
-        });
-    }
-
-    function updateProfitChart(data) {
-        if (!profitChart) {
-            initProfitChart();
-        }
-
-        if (!profitChart) {
-            console.error('Failed to initialize chart');
-            return;
-        }
-
-        // Update chart data
-        const labels = data.map(d => moment(d.timestamp).format('HH:mm'));
-        const values = data.map(d => d.profit);
-
-        profitChart.data.labels = labels;
-        profitChart.data.datasets[0].data = values;
-        profitChart.update();
-    }
-
-    function updateMetrics(data) {
-        // Debug logging
-        console.log('Updating metrics with data:', data);
-        
-        const performance = data.performance || {};
-
-        // Update total profit
-        if (performance.total_profit !== undefined) {
-            document.getElementById('totalProfit').querySelector('.metric-value').textContent = 
-                `${performance.total_profit.toFixed(4)} ETH`;
-        }
-
-        // Update success rate
-        if (performance.success_rate !== undefined) {
-            document.getElementById('successRate').querySelector('.metric-value').textContent = 
-                `${(performance.success_rate * 100).toFixed(1)}%`;
-        }
-
-        // Update profit chart
-        if (performance.profit_trend) {
-            updateProfitChart(performance.profit_trend);
-        }
-    }
-
-    // Handle WebSocket messages
-    document.addEventListener('websocket-message', function(e) {
-        const data = e.detail;
-        console.log('Received WebSocket message:', data);
-
-        if (data.type === 'initial_state') {
-            console.log('Initial state metrics:', data.data.metrics);
-            
-            // Handle initial state
-            if (data.data.metrics) {
-                updateMetrics(data.data.metrics.performance);
-            }
-
-            // Update gas price from metrics data
-            if (data.data.metrics?.gas_price !== undefined) {
-                document.getElementById('gasPrice').querySelector('.metric-value').textContent = 
-                    `${data.data.metrics.gas_price.toFixed(1)}`;
-            }
-
-            // Update opportunities count
-            if (data.data.opportunities) {
-                document.getElementById('activeOpportunities').querySelector('.metric-value').textContent = 
-                    data.data.opportunities.length.toString();
-            }
-        }
-
-        if (data.type === 'metrics_update') {
-            console.log('Metrics update:', data.data);
-            // Update metrics from the performance data
-            if (data.data) {
-                updateMetrics(data.data);
-            }
-        }
-
-        if (data.type === 'memory_update') {
-            console.log('Memory update:', data.data);
-            // Update gas price from metrics data
-            if (data.data.metrics?.gas_price !== undefined) {
-                document.getElementById('gasPrice').querySelector('.metric-value').textContent = 
-                    `${data.data.metrics.gas_price.toFixed(1)} GWEI`;
-            }
-
-            // Update opportunities count
-            if (data.data.opportunities) {
-                document.getElementById('activeOpportunities').querySelector('.metric-value').textContent = 
-                    data.data.opportunities.length;
-            }
-        }
-    });
-
-    // Handle time range changes
-    document.getElementById('timeRange').addEventListener('change', function(e) {
-        const hours = parseInt(e.target.value);
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'update_time_range',
-                hours: hours
-            }));
-        }
-    });
-
-    // Initialize chart when page loads
-    document.addEventListener('DOMContentLoaded', initProfitChart);
-</script>
 {% endblock %}

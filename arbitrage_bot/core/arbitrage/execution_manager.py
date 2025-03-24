@@ -6,9 +6,13 @@ This module provides the implementation of the ExecutionManager protocol.
 
 import asyncio
 import logging
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from .interfaces import ExecutionStrategy, TransactionMonitor, ExecutionManager
+from ..memory.memory_bank import MemoryBank
 from .models import ArbitrageOpportunity, ExecutionResult, ExecutionStatus
 
 logger = logging.getLogger(__name__)
@@ -28,6 +32,7 @@ class EnhancedExecutionManager(ExecutionManager):
         self._active_executions = {}  # execution_id -> execution_info
         self._lock = asyncio.Lock()
         self._initialized = False
+        self._memory_bank = MemoryBank()
     
     async def initialize(self) -> None:
         """Initialize the execution manager."""
@@ -37,6 +42,7 @@ class EnhancedExecutionManager(ExecutionManager):
             
             logger.info("Initializing execution manager")
             self._initialized = True
+            await self._memory_bank.initialize()
     
     async def cleanup(self) -> None:
         """Clean up resources."""
@@ -55,6 +61,7 @@ class EnhancedExecutionManager(ExecutionManager):
             self._strategies.clear()
             self._monitors.clear()
             self._active_executions.clear()
+            await self._memory_bank.cleanup()
     
     async def register_strategy(
         self,
@@ -157,6 +164,9 @@ class EnhancedExecutionManager(ExecutionManager):
                     monitor_tasks.append(task)
                     self._active_executions[execution_id]["monitors"].append(task)
             
+            # Update memory bank state
+            await self._update_state(result)
+            
             return result
             
         except Exception as e:
@@ -250,3 +260,86 @@ class EnhancedExecutionManager(ExecutionManager):
         async with self._lock:
             if execution_id in self._active_executions:
                 del self._active_executions[execution_id]
+                
+    async def _update_state(self, result: ExecutionResult) -> None:
+        """Update memory bank state with execution result."""
+        try:
+            state_dir = Path("memory-bank/state")
+            state_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Update executions state
+            executions_file = state_dir / "executions.json"
+            executions = {}
+            if executions_file.exists():
+                with open(executions_file, "r") as f:
+                    executions = json.load(f)
+            
+            executions[result.id] = {
+                "id": result.id,
+                "status": result.status.value,
+                "strategy_id": result.strategy_id,
+                "transaction_hash": result.transaction_hash,
+                "gas_used": str(result.gas_used) if result.gas_used else None,
+                "error": result.error,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            
+            with open(executions_file, "w") as f:
+                json.dump(executions, f, indent=2)
+            
+            # Update metrics state
+            metrics_file = state_dir / "metrics.json"
+            metrics = {
+                "performance": {
+                    "total_executions": len(executions),
+                    "successful_executions": sum(
+                        1 for e in executions.values()
+                        if e["status"] == "completed"
+                    ),
+                    "failed_executions": sum(
+                        1 for e in executions.values()
+                        if e["status"] == "failed"
+                    ),
+                    "gas_stats": await self._calculate_gas_stats(executions),
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            
+            with open(metrics_file, "w") as f:
+                json.dump(metrics, f, indent=2)
+            
+            # Write trade file if execution completed
+            if result.status == ExecutionStatus.COMPLETED:
+                trade_dir = Path("memory-bank/trades")
+                trade_dir.mkdir(parents=True, exist_ok=True)
+                
+                trade_file = trade_dir / f"trade_{int(datetime.now().timestamp())}.json"
+                trade_data = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "execution_id": result.id,
+                    "opportunity": {
+                        "token_pair": result.opportunity.token_pair,
+                        "dex_1": result.opportunity.dex_1,
+                        "dex_2": result.opportunity.dex_2,
+                        "potential_profit": str(result.opportunity.expected_profit_wei)
+                    },
+                    "success": True,
+                    "net_profit": str(result.net_profit) if result.net_profit else "0",
+                    "gas_cost": str(result.gas_used) if result.gas_used else "0",
+                    "tx_hash": result.transaction_hash
+                }
+                
+                with open(trade_file, "w") as f:
+                    json.dump(trade_data, f, indent=2)
+                    
+        except Exception as e:
+            logger.error(f"Error updating execution state: {e}", exc_info=True)
+            
+    async def _calculate_gas_stats(self, executions: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate gas usage statistics."""
+        gas_values = [float(e["gas_used"]) for e in executions.values() if e["gas_used"]]
+        return {
+            "min": min(gas_values) if gas_values else 0,
+            "max": max(gas_values) if gas_values else 0,
+            "avg": sum(gas_values) / len(gas_values) if gas_values else 0
+        }

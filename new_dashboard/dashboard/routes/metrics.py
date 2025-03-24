@@ -9,12 +9,19 @@ from ..core.dependencies import get_metrics_service
 router = APIRouter()
 logger = get_logger("metrics_routes")
 
-@router.get("/current")
+# Log available routes on module load
+logger.debug("Initializing metrics router")
+logger.debug("Router base path: /api/metrics")
+logger.debug("Available endpoints: [GET] /current, [GET] /performance")
+
+@router.get("/current", name="get_current_metrics")
 @log_execution_time
 async def get_current_metrics(
     metrics_service=Depends(get_metrics_service)
 ) -> Dict[str, Any]:
     """Get current system metrics."""
+    logger.debug("Handling GET /current request")
+    logger.debug("Using metrics service: %s", metrics_service)
     return await metrics_service.get_current_metrics()
 
 @router.get("/performance")
@@ -24,4 +31,4 @@ async def get_performance_metrics(
 ) -> Dict[str, Any]:
     """Get performance metrics."""
     metrics = await metrics_service.get_current_metrics()
-    return metrics.get("performance", {})
+    return metrics.get("metrics", {})

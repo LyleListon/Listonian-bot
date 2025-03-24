@@ -39,6 +39,7 @@ class AaveFlashLoan:
         self.pool_address = pool_address
         self.min_profit = min_profit
         self._lock = AsyncLock()
+        self._initialized = False
 
         # Aave Pool ABI for flash loan function
         self.pool_abi = [{
@@ -80,17 +81,31 @@ class AaveFlashLoan:
             "type": "function"
         }]
 
-        # Create contract instance
-        self.pool_contract = self.w3.contract(
-            address=pool_address,
-            abi=self.pool_abi
-        )
+        # Contract instance will be initialized later
+        self.pool_contract = None
 
         logger.info(
             f"Aave flash loan manager initialized with "
             f"pool {pool_address} and "
-            f"min profit {self.w3.w3.from_wei(min_profit, 'ether')} ETH"
+            f"min profit {min_profit} wei"
         )
+
+    async def initialize(self) -> None:
+        """Initialize the flash loan manager."""
+        if self._initialized:
+            return
+
+        try:
+            # Create contract instance using the Web3Manager's web3 property
+            self.pool_contract = self.w3.eth.contract(
+                address=self.pool_address,
+                abi=self.pool_abi
+            )
+            self._initialized = True
+            logger.info("Aave flash loan manager initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize flash loan manager: {e}")
+            raise
 
     @with_retry(max_attempts=3, base_delay=1.0)
     async def build_flash_loan_tx(
@@ -112,6 +127,9 @@ class AaveFlashLoan:
         Returns:
             Transaction dictionary
         """
+        if not self._initialized:
+            await self.initialize()
+
         async with self._lock:
             try:
                 # Validate inputs
@@ -166,19 +184,22 @@ class AaveFlashLoan:
         Returns:
             True if valid, False otherwise
         """
+        if not self._initialized:
+            await self.initialize()
+
         try:
             # Check minimum profit
             if expected_profit < self.min_profit:
                 logger.warning(
-                    f"Expected profit {self.w3.w3.from_wei(expected_profit, 'ether')} ETH "
-                    f"below minimum {self.w3.w3.from_wei(self.min_profit, 'ether')} ETH"
+                    f"Expected profit {expected_profit} wei "
+                    f"below minimum {self.min_profit} wei"
                 )
                 return False
 
             # Check token liquidity
             for token, amount in zip(tokens, amounts):
                 # Get token contract
-                token_contract = self.w3.contract(
+                token_contract = self.w3.eth.contract(
                     address=token,
                     abi=[{
                         "constant": True,
@@ -197,8 +218,7 @@ class AaveFlashLoan:
                 if pool_balance < amount:
                     logger.warning(
                         f"Insufficient liquidity in pool for token {token}: "
-                        f"need {self.w3.w3.from_wei(amount, 'ether')} but have "
-                        f"{self.w3.w3.from_wei(pool_balance, 'ether')}"
+                        f"need {amount} wei but have {pool_balance} wei"
                     )
                     return False
 
@@ -231,12 +251,18 @@ async def create_aave_flash_loan(
         if not config.get('flash_loan', {}).get('aave_pool'):
             raise ValueError("Aave pool address not configured")
 
+        # Convert pool address to checksum format
+        pool_address = Web3.to_checksum_address(config['flash_loan']['aave_pool'])
+
         # Create instance
         flash_loan = AaveFlashLoan(
             w3=w3,
-            pool_address=config['flash_loan']['aave_pool'],
+            pool_address=pool_address,
             min_profit=int(config.get('flash_loan', {}).get('min_profit', '0'))
         )
+
+        # Initialize the instance
+        await flash_loan.initialize()
 
         logger.info("Aave flash loan manager created successfully")
         return flash_loan

@@ -189,7 +189,7 @@ async def create_arbitrage_executor(
     # Create PathFinder if not provided
     if path_finder is None:
         from .path_finder import create_path_finder
-        web3_manager = await create_web3_manager(config)
+        web3_manager = await create_web3_manager(config["web3"])
         dex_manager = await DexManager.create(web3_manager, config)
         path_finder = await create_path_finder(dex_manager, config)
 

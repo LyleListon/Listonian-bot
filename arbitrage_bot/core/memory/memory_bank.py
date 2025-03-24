@@ -9,7 +9,9 @@ import asyncio
 import logging
 from collections import deque
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional, Any, Deque
+from .file_manager import FileManager
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,8 @@ class MemoryBank:
         self,
         max_trades: int = 10000,
         metrics_ttl: int = 300,  # 5 minutes
-        state_ttl: int = 60  # 1 minute
+        state_ttl: int = 60,  # 1 minute
+        storage_dir: Path = Path("memory-bank")
     ):
         """
         Initialize the memory bank.
@@ -34,11 +37,15 @@ class MemoryBank:
             max_trades: Maximum number of trades to keep in memory
             metrics_ttl: Time to live for metrics cache in seconds
             state_ttl: Time to live for state cache in seconds
+            storage_dir: Directory for persistent storage
         """
         # Configuration
         self._max_trades = max_trades
         self._metrics_ttl = metrics_ttl
         self._state_ttl = state_ttl
+        self._storage_dir = storage_dir
+        self._trades_dir = storage_dir / "trades"
+        self._file_manager = FileManager()
         
         # Trade storage
         self._trades: Deque[Dict[str, Any]] = deque(maxlen=max_trades)
@@ -67,6 +74,13 @@ class MemoryBank:
                 return
             
             logger.info("Initializing memory bank")
+            
+            # Initialize file manager
+            await self._file_manager.initialize()
+            
+            # Create storage directories
+            await self._file_manager.ensure_directory(self._storage_dir)
+            await self._file_manager.ensure_directory(self._trades_dir)
             self._initialized = True
     
     async def cleanup(self) -> None:
@@ -79,6 +93,7 @@ class MemoryBank:
             self._state.clear()
             self._daily_stats.clear()
             self._hourly_stats.clear()
+            await self._file_manager.cleanup()
             
             self._initialized = False
     
@@ -96,9 +111,21 @@ class MemoryBank:
             raise RuntimeError("Memory bank not initialized")
         
         async with self._lock:
+            trade_id = trade['id']
+            timestamp = datetime.fromisoformat(trade['timestamp'])
+            
             # Add to trades list and index
             self._trades.append(trade)
-            self._trade_index[trade['id']] = trade
+            self._trade_index[trade_id] = trade
+            
+            # Persist trade to file
+            try:
+                file_path = self._trades_dir / f"trade_{int(timestamp.timestamp())}.json"
+                await self._file_manager.write_json(file_path, trade)
+                logger.debug(f"Persisted trade {trade_id} to {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to persist trade {trade_id}: {e}")
+                raise
             
             # Update statistics
             await self._update_stats(trade)
@@ -137,8 +164,31 @@ class MemoryBank:
         if not self._initialized:
             raise RuntimeError("Memory bank not initialized")
         
-        trades = list(self._trades)
-        return trades[-limit:]
+        async with self._lock:
+            try:
+                # List trade files
+                trade_files = await self._file_manager.list_files(
+                    self._trades_dir,
+                    "trade_*.json"
+                )
+                
+                # Sort by timestamp (newest first)
+                trade_files.sort(reverse=True)
+                
+                # Load trades
+                trades = []
+                for file_path in trade_files[:limit]:
+                    try:
+                        trade = await self._file_manager.read_json(file_path)
+                        trades.append(trade)
+                    except Exception as e:
+                        logger.error(f"Error reading trade file {file_path}: {e}")
+                        continue
+                
+                return trades
+            except Exception as e:
+                logger.error(f"Error getting recent trades: {e}")
+                return list(self._trades)[-limit:]  # Fallback to in-memory trades
     
     async def update_metrics(
         self,
@@ -155,7 +205,18 @@ class MemoryBank:
         
         async with self._lock:
             self._metrics.update(metrics)
-            self._metrics_timestamp = datetime.now()
+            timestamp = datetime.now()
+            self._metrics_timestamp = timestamp
+            
+            # Persist metrics
+            try:
+                file_path = self._storage_dir / "metrics.json"
+                await self._file_manager.write_json(file_path, {
+                    "timestamp": timestamp.isoformat(),
+                    "metrics": self._metrics
+                })
+            except Exception as e:
+                logger.error(f"Failed to persist metrics: {e}")
     
     async def get_metrics(self) -> Dict[str, Any]:
         """
@@ -191,7 +252,18 @@ class MemoryBank:
         
         async with self._lock:
             self._state.update(state)
-            self._state_timestamp = datetime.now()
+            timestamp = datetime.now()
+            self._state_timestamp = timestamp
+            
+            # Persist state
+            try:
+                file_path = self._storage_dir / "state.json"
+                await self._file_manager.write_json(file_path, {
+                    "timestamp": timestamp.isoformat(),
+                    "state": self._state
+                })
+            except Exception as e:
+                logger.error(f"Failed to persist state: {e}")
     
     async def get_state(self) -> Dict[str, Any]:
         """

@@ -9,7 +9,6 @@ import logging
 from pathlib import Path
 
 from ..core.logging import get_logger
-from arbitrage_bot.core.memory.memory_bank import MemoryBank
 
 logger = get_logger("system_service")
 
@@ -26,13 +25,30 @@ class SystemService:
         self._subscribers: List[asyncio.Queue] = []
         self._process_start_time = datetime.now()
         self._error_log: List[Dict[str, Any]] = []
+        self._initialized = False
 
     async def initialize(self) -> None:
         """Initialize the system service."""
+        if self._initialized:
+            return
+
         try:
+            # Check dependencies
+            if not hasattr(self.memory_service, '_initialized') or not self.memory_service._initialized:
+                raise RuntimeError("Memory service not initialized")
+            if not hasattr(self.metrics_service, '_initialized') or not self.metrics_service._initialized:
+                raise RuntimeError("Metrics service not initialized")
+
+            # Initialize status cache
+            status = await self.get_system_status()
+            async with self._cache_lock:
+                self._status_cache = status
+                self._last_update = datetime.now()
+
             # Start background update task
             self._update_task = asyncio.create_task(self._background_update())
-            logger.info("Started system status update task")
+            self._initialized = True
+            logger.info("System service initialized successfully")
 
         except Exception as e:
             logger.error(f"Failed to initialize system service: {e}")
@@ -40,6 +56,9 @@ class SystemService:
 
     async def shutdown(self) -> None:
         """Shutdown the system service."""
+        if not self._initialized:
+            return
+
         if self._update_task:
             self._update_task.cancel()
             try:
@@ -47,10 +66,14 @@ class SystemService:
             except asyncio.CancelledError:
                 pass
             self._update_task = None
+
+        self._initialized = False
         logger.info("System service shut down")
 
     async def subscribe(self) -> asyncio.Queue:
         """Subscribe to system status updates."""
+        if not self._initialized:
+            raise RuntimeError("System service not initialized")
         queue = asyncio.Queue()
         self._subscribers.append(queue)
         return queue
@@ -62,9 +85,8 @@ class SystemService:
 
     async def get_system_status(self) -> Dict[str, Any]:
         """Get current system status."""
-        async with self._cache_lock:
-            # Return cached data if it's fresh enough
-            if (datetime.now() - self._last_update) < timedelta(seconds=15):
+        if not self._initialized and self._status_cache:
+            async with self._cache_lock:
                 return self._status_cache.copy()
 
         try:
@@ -82,16 +104,8 @@ class SystemService:
             status = {
                 "system": {
                     "cpu_usage": cpu_percent,
-                    "memory_usage": {
-                        "total": memory.total,
-                        "available": memory.available,
-                        "percent": memory.percent
-                    },
-                    "disk_usage": {
-                        "total": disk.total,
-                        "free": disk.free,
-                        "percent": disk.percent
-                    },
+                    "memory_usage": memory.percent,  # Simplified to just percent
+                    "disk_usage": disk.percent,  # Simplified to just percent
                     "platform": {
                         "system": platform.system(),
                         "version": platform.version(),
@@ -114,15 +128,42 @@ class SystemService:
 
         except Exception as e:
             logger.error(f"Error getting system status: {e}")
-            return {
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            return self._get_default_status()
+
+    def _get_default_status(self) -> Dict[str, Any]:
+        """Get default status structure."""
+        return {
+            "system": {
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "disk_usage": 0,
+                "platform": {
+                    "system": platform.system(),
+                    "version": platform.version(),
+                    "machine": platform.machine()
+                },
+                "uptime": 0
+            },
+            "components": {
+                "memory_bank": {"status": "unknown"},
+                "metrics": {"status": "unknown"}
+            },
+            "network": {
+                "connected": False,
+                "error": "Service not initialized",
+                "last_update": datetime.utcnow().isoformat()
+            },
+            "errors": [],
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
     async def _background_update(self) -> None:
         """Background task to keep system status updated."""
         while True:
             try:
+                if not self._initialized:
+                    break
+
                 # Get current status
                 status = await self.get_system_status()
 
@@ -152,6 +193,15 @@ class SystemService:
             status = {}
             for name, component in components.items():
                 try:
+                    # Check if component is initialized
+                    if not hasattr(component, '_initialized') or not component._initialized:
+                        status[name] = {
+                            "status": "error",
+                            "error": "Component not initialized",
+                            "last_check": datetime.utcnow().isoformat()
+                        }
+                        continue
+
                     # Check if component is responding
                     is_healthy = True
                     error_message = None
@@ -183,8 +233,8 @@ class SystemService:
         except Exception as e:
             logger.error(f"Error checking component health: {e}")
             return {
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
+                "memory_bank": {"status": "error", "error": str(e)},
+                "metrics": {"status": "error", "error": str(e)}
             }
 
     async def _check_network_status(self) -> Dict[str, Any]:

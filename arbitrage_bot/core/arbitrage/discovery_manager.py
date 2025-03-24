@@ -6,9 +6,13 @@ This module provides the implementation of the OpportunityDiscoveryManager proto
 
 import asyncio
 import logging
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from .interfaces import OpportunityDetector, OpportunityValidator, OpportunityDiscoveryManager
+from ..memory.memory_bank import MemoryBank
 from .models import ArbitrageOpportunity
 
 logger = logging.getLogger(__name__)
@@ -27,6 +31,7 @@ class DiscoveryManager(OpportunityDiscoveryManager):
         self._validators = {}  # validator_id -> validator
         self._lock = asyncio.Lock()
         self._initialized = False
+        self._memory_bank = MemoryBank()
     
     async def initialize(self) -> None:
         """Initialize the discovery manager."""
@@ -35,6 +40,7 @@ class DiscoveryManager(OpportunityDiscoveryManager):
                 return
             
             logger.info("Initializing discovery manager")
+            await self._memory_bank.initialize()
             self._initialized = True
     
     async def cleanup(self) -> None:
@@ -43,6 +49,7 @@ class DiscoveryManager(OpportunityDiscoveryManager):
             self._initialized = False
             self._detectors.clear()
             self._validators.clear()
+            await self._memory_bank.cleanup()
     
     async def register_detector(
         self,
@@ -173,4 +180,46 @@ class DiscoveryManager(OpportunityDiscoveryManager):
             key=lambda x: x.expected_profit_wei,
             reverse=True
         )
-        return valid_opportunities[:max_results]
+        
+        # Get top opportunities
+        top_opportunities = valid_opportunities[:max_results]
+        
+        # Update memory bank state
+        await self._update_state(top_opportunities, market_condition)
+        
+        return top_opportunities
+
+    async def _update_state(
+        self,
+        opportunities: List[ArbitrageOpportunity],
+        market_condition: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Update memory bank state with current opportunities."""
+        try:
+            state_dir = Path("memory-bank/state")
+            state_dir.mkdir(parents=True, exist_ok=True)
+            
+            state = {
+                "opportunities": [
+                    {
+                        "id": opp.id,
+                        "token_pair": opp.token_pair,
+                        "dex_1": opp.dex_1,
+                        "dex_2": opp.dex_2,
+                        "expected_profit_wei": str(opp.expected_profit_wei),
+                        "confidence_score": opp.confidence_score,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                    for opp in opportunities
+                ],
+                "market_condition": market_condition or {},
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Write to state file
+            state_file = state_dir / "opportunities.json"
+            with open(state_file, "w") as f:
+                json.dump(state, f, indent=2)
+                
+        except Exception as e:
+            logger.error(f"Error updating discovery state: {e}", exc_info=True)

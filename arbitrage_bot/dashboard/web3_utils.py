@@ -46,7 +46,7 @@ class DashboardWeb3Utils:
 
             try:
                 self.web3_manager = await create_web3_manager()
-                self.w3 = self.web3_manager.web3
+                self.w3 = self.web3_manager.w3
                 self.wallet_address = self.web3_manager.wallet_address
                 self._initialized = True
                 logger.debug("Web3 utilities initialized successfully")

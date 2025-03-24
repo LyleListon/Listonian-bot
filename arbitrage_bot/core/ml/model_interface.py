@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
@@ -7,10 +8,18 @@ logger = logging.getLogger(__name__)
 class MLSystem:
     """Interface for ML-based market analysis."""
     
-    def __init__(self):
+    def __init__(
+        self,
+        model_path: str = "models/default",
+        confidence_threshold: float = 0.85,
+        update_interval: int = 3600
+    ):
         self._initialized = False
         self._lock = asyncio.Lock()
         self._model_cache: Dict[str, Any] = {}
+        self._model_path = model_path
+        self._confidence_threshold = confidence_threshold
+        self._update_interval = update_interval
     
     async def initialize(self) -> None:
         async with self._lock:
@@ -20,7 +29,18 @@ class MLSystem:
             logger.info("Initializing ML system")
             
             try:
+                # Load model configuration
+                config_path = f"{self._model_path}/config.json"
+                try:
+                    with open(config_path, 'r') as f:
+                        self._model_config = json.load(f)
+                except Exception as e:
+                    logger.error(f"Failed to load model config from {config_path}: {e}")
+                    raise
+                
                 self._model_cache.clear()
+                self._last_update = 0
+                
                 self._initialized = True
                 logger.info("ML system initialized successfully")
                 

@@ -1,10 +1,11 @@
 """Service manager for coordinating all dashboard services."""
 
 from typing import Dict, Any, Optional
+import os
 import asyncio
-import logging
+from pathlib import Path
 
-from ..core.logging import get_logger
+from ..utils.logging import get_logger
 from .memory_service import MemoryService
 from .metrics_service import MetricsService
 from .system_service import SystemService
@@ -31,8 +32,15 @@ class ServiceManager:
             try:
                 logger.info("Initializing services...")
 
+                # Set up memory bank directory
+                project_root = Path(__file__).parent.parent.parent.parent
+                memory_bank_dir = project_root / "memory-bank"
+                logger.info(f"Project root: {project_root}")
+                memory_bank_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Memory bank directory: {memory_bank_dir}")
+
                 # Create services in dependency order
-                memory_service = MemoryService()
+                memory_service = MemoryService(str(memory_bank_dir))
                 metrics_service = MetricsService(memory_service)
                 system_service = SystemService(memory_service, metrics_service)
 
@@ -137,7 +145,7 @@ class ServiceManager:
             logger.error(f"Error getting system overview: {e}")
             return {
                 "error": str(e),
-                "timestamp": system_status.get("timestamp")
+                "timestamp": system_status.get("timestamp") if "system_status" in locals() else None
             }
 
 # Global service manager instance

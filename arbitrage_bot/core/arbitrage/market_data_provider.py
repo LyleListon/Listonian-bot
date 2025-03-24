@@ -1,7 +1,7 @@
 """
 Market Data Provider Implementation
 
-This module provides the implementation of the MarketDataProvider protocol.
+This module provides a concrete implementation of the MarketDataProvider protocol.
 """
 
 import asyncio
@@ -9,14 +9,15 @@ import logging
 from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 
+from .interfaces import MarketDataProvider as MarketDataProviderABC
+
 logger = logging.getLogger(__name__)
 
-class MarketDataProvider:
+class MarketDataProvider(MarketDataProviderABC):
     """
-    Implementation of the MarketDataProvider protocol.
+    Base implementation of the MarketDataProvider protocol.
     
-    This class is responsible for providing real-time market data and
-    maintaining price feeds.
+    This class provides real-time market data and price feeds.
     """
     
     def __init__(self):
@@ -46,6 +47,7 @@ class MarketDataProvider:
             self._market_condition = await self._fetch_initial_market_data()
             
             self._initialized = True
+            logger.info("Market data provider initialized")
     
     async def cleanup(self) -> None:
         """Clean up resources."""
@@ -59,6 +61,7 @@ class MarketDataProvider:
             self._market_condition.clear()
             
             self._initialized = False
+            logger.info("Market data provider cleaned up")
     
     async def get_current_market_condition(self) -> Dict[str, Any]:
         """
@@ -91,7 +94,7 @@ class MarketDataProvider:
     
     async def start_monitoring(
         self,
-        update_interval_seconds: float = 60.0
+        update_interval_seconds: Optional[float] = None
     ) -> None:
         """
         Start monitoring market conditions.
@@ -102,13 +105,14 @@ class MarketDataProvider:
         if not self._initialized:
             await self.initialize()
         
-        self._update_interval = update_interval_seconds
+        if update_interval_seconds is not None:
+            self._update_interval = update_interval_seconds
         
         # Start update task if not running
         if not self._update_task or self._update_task.done():
             self._update_task = asyncio.create_task(self._update_loop())
             logger.info(
-                f"Started market monitoring with {update_interval_seconds}s interval"
+                f"Started market monitoring with {self._update_interval}s interval"
             )
     
     async def stop_monitoring(self) -> None:
@@ -189,11 +193,4 @@ class MarketDataProvider:
             Current market state
         """
         # Placeholder implementation
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "prices": {},
-            "liquidity": {},
-            "volume_24h": {},
-            "volatility": {},
-            "market_depth": {}
-        }
+        return await self._fetch_initial_market_data()
