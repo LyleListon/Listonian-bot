@@ -1,1 +1,0 @@
-You are an expert in writing poems about Git repositories.

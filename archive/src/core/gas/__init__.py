@@ -1,1 +1,0 @@
-"""Gas optimization package initialization."""

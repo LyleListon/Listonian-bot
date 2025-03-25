@@ -80,14 +80,14 @@ function Install-Dependencies {
 # Function to start the arbitrage bot
 function Start-ArbitrageBot {
     Write-Host "Starting arbitrage bot..."
-    $script:BotProcess = Start-Process -FilePath "python" -ArgumentList "main.py" -PassThru -NoNewWindow -RedirectStandardError "logs/bot.err"
+    $script:BotProcess = Start-Process -FilePath "python" -ArgumentList "run_bot.py" -PassThru -NoNewWindow -RedirectStandardError "logs/bot.err"
     return $script:BotProcess
 }
 
 # Function to start the dashboard
 function Start-Dashboard {
     Write-Host "Starting dashboard..."
-    $script:DashProcess = Start-Process -FilePath "python" -ArgumentList "run_dashboard.py" -PassThru -NoNewWindow -RedirectStandardError "logs/dashboard.err"
+    $script:DashProcess = Start-Process -FilePath "cmd" -ArgumentList "/c set MEMORY_BANK_PATH=%CD%\memory-bank && cd new_dashboard && uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9050 --reload" -PassThru -NoNewWindow -RedirectStandardError "logs/dashboard.err"
     return $script:DashProcess
 }
 
@@ -122,8 +122,8 @@ try {
     # Clean up any existing processes first
     Write-Host "Cleaning up any existing processes..."
     
-    # Kill any processes using port 8090
-    $netstat = netstat -ano | Select-String ":8090"
+    # Kill any processes using port 9050
+    $netstat = netstat -ano | Select-String ":9050"
     if ($netstat) {
         $processId = $netstat -split ' +' | Select-Object -Last 1
         Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
@@ -180,7 +180,7 @@ try {
     Write-Host "Dashboard PID: $($dashProcess.Id)"
     Write-Host "Monitor logs in logs/bot.err and logs/dashboard.err"
 
-    Write-Host "Dashboard available at http://localhost:8090"
+    Write-Host "Dashboard available at http://localhost:9050"
     # Wait for processes
     Write-Host "Press Ctrl+C to stop all processes..."
     while ($true) {

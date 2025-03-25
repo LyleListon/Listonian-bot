@@ -83,6 +83,34 @@ class DashboardWeb3Utils:
             logger.error("Error in eth_call: %s", str(e))
             raise
 
+    async def get_network_name(self) -> str:
+        """Get the name of the connected network.
+        
+        Returns:
+            str: Network name or error message
+        """
+        if not self._initialized and not await self.initialize():
+            return "Not Connected"
+
+        try:
+            chain_id = await self.w3.eth.chain_id
+            networks = {
+                1: "Ethereum Mainnet",
+                3: "Ropsten Testnet",
+                4: "Rinkeby Testnet",
+                5: "Goerli Testnet",
+                42: "Kovan Testnet",
+                56: "Binance Smart Chain",
+                137: "Polygon Mainnet",
+                42161: "Arbitrum",
+                10: "Optimism",
+                8453: "Base"
+            }
+            return networks.get(chain_id, f"Unknown Network (Chain ID: {chain_id})")
+        except Exception as e:
+            logger.error("Error getting network name: %s", str(e))
+            return "Unknown"
+
     async def get_balance(self) -> float:
         """Get ETH balance for wallet address"""
         if not self._initialized and not await self.initialize():
