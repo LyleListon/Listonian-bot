@@ -13,15 +13,15 @@
     },
     "dexes": {
         "baseswap_v3": {
-            "factory": "0x38015D05f4fEC8AFe15D7cc0386a126574111a8B",
-            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
-            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856",
+            "factory": "0x38015D05f4fEC8AFe15D7cc0386a126574e8077B",
+            "router": "0x1B8eea9315bE495187D873DA7773a874545D9D48",
+            "quoter": "0x0C1Ef7cA95C6C2CeF48eDFc51CE1BeB2Aa2D8410",
             "fee_tiers": [100, 500, 3000, 10000]
         },
         "aerodrome_v3": {
             "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
-            "router": "0x9c12939390052919aF3155f41Bf4160Fd3666A6f",
-            "quoter": "0x14332Eb8e7aC7957f1069284a0dF5B2f04c1Acf7",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "quoter": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
             "fee_tiers": [100, 500, 3000, 10000]
         }
     },
@@ -86,7 +86,7 @@
         "backup_interval_hours": 24
     },
     "logging": {
-        "level": "INFO",
+        "level": "DEBUG",
         "file_path": "logs/arbitrage.log",
         "max_file_size_mb": 100,
         "backup_count": 5

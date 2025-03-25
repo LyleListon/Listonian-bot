@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
-from .utils.logging import configure_logging, get_logger
+from .core.logging import configure_logging, get_logger
 from .routes import metrics, system, main
 from .services.service_manager import service_manager
 

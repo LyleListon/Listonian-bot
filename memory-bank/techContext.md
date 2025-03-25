@@ -1,114 +1,273 @@
-# Listonian Arbitrage Bot - Technical Context
+# Technical Context - Dashboard Implementation
 
-Created: 2025-03-23T15:57:44Z
+## Architecture Overview
 
-## Technology Stack
+### Core Components
+```mermaid
+graph TD
+    A[Frontend] -->|WebSocket| B[FastAPI Backend]
+    B --> C[Service Layer]
+    C --> D[Metrics Service]
+    C --> E[Memory Service]
+    C --> F[System Service]
+    D --> G[Metrics Collection]
+    E --> H[Memory Management]
+    F --> I[System Monitoring]
+```
 
-### Core Technologies
-- Python 3.12+ for improved async support
-- Pure asyncio for asynchronous operations
-- Web3.py for blockchain interactions
-- Flashbots SDK for MEV protection
-- Balancer SDK for flash loans
+## Technical Stack
 
-### Development Requirements
-- Type hints throughout codebase
-- Comprehensive test coverage
-- Automated CI/CD pipeline
-- Performance monitoring
-- Error tracking and logging
+### Backend
+- FastAPI: Web framework
+- asyncio: Asynchronous operations
+- WebSocket: Real-time communication
+- Python 3.12+: Language runtime
 
-## Implementation Patterns
+### Frontend
+- HTML/CSS: Base structure
+- JavaScript: Dynamic updates
+- WebSocket: Real-time data
+- Chart.js: Data visualization
 
-### Asynchronous Architecture
-- Pure asyncio implementation
-- No eventlet/gevent usage
-- Proper resource cleanup
-- Lock management for thread safety
-- Atomic operations for critical sections
+## Implementation Details
 
-### DEX Integration
-- Inheritance-based implementation (BaseDEX → BaseDEXV2/V3 → Specific DEXs)
-- Standardized interface for all DEXs
-- Version-specific optimizations
-- Unified error handling
-- Consistent price normalization
+### Service Architecture
+```python
+# Service pattern for all services
+class BaseService:
+    def __init__(self):
+        self._initialized = False
+        self._lock = asyncio.Lock()
+        self._subscribers = set()
 
-### Security Implementation
-- Checksummed address validation
-- Multi-source price verification
-- Slippage protection mechanisms
-- Oracle manipulation detection
-- MEV protection via Flashbots
+    async def initialize(self):
+        async with self._lock:
+            if not self._initialized:
+                await self._do_initialize()
+                self._initialized = True
 
-### Performance Optimization
-- Parallel market scanning
-- Price data caching with TTL
-- Gas usage optimization
+    async def shutdown(self):
+        async with self._lock:
+            if self._initialized:
+                await self._do_shutdown()
+                self._initialized = False
+```
+
+### Connection Management
+```python
+# WebSocket connection lifecycle
+class ConnectionState:
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    DISCONNECTING = "disconnecting"
+    DISCONNECTED = "disconnected"
+
+class ConnectionManager:
+    def __init__(self):
+        self._connections = WeakKeyDictionary()
+        self._task_manager = TaskManager()
+        self._lock = asyncio.Lock()
+```
+
+### Task Management
+```python
+# Async task handling
+class TaskState:
+    RUNNING = "running"
+    CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+
+class TaskManager:
+    def __init__(self):
+        self._tasks = {}
+        self._state = {}
+        self._lock = asyncio.Lock()
+```
+
+## Design Decisions
+
+### 1. Asynchronous Architecture
+- **Decision**: Use pure asyncio
+- **Rationale**: Better performance and resource usage
+- **Impact**: All operations must be async-aware
+
+### 2. Service Pattern
+- **Decision**: Implement service-based architecture
+- **Rationale**: Better separation of concerns
+- **Impact**: More modular and maintainable code
+
+### 3. WebSocket Management
+- **Decision**: Use context managers
+- **Rationale**: Better resource cleanup
+- **Impact**: More reliable connection handling
+
+## Performance Considerations
+
+### Resource Management
+- Use WeakKeyDictionary for connections
+- Implement proper task cancellation
+- Handle cleanup in context managers
+
+### Memory Optimization
+- Batch updates when possible
+- Use connection pooling
+- Implement TTL for cached data
+
+### CPU Usage
+- Throttle update frequency
 - Batch operations where possible
-- Resource usage monitoring
-
-## System Components
-
-### Core Modules
-- Arbitrage Engine
-- Price Discovery
-- Trade Execution
-- Risk Management
-- Memory Bank
-- Monitoring System
-
-### Supporting Systems
-- Health Checks
-- Metrics Collection
-- Alert Management
-- Data Validation
-- State Management
-
-## Integration Points
-
-### External Services
-- Blockchain RPC Endpoints
-- Flashbots RPC
-- Price Oracles
-- DEX Contracts
-- Flash Loan Providers
-
-### Internal Systems
-- Memory Bank
-- Monitoring Dashboard
-- Alert System
-- Logging Infrastructure
-- Analytics Engine
+- Use efficient serialization
 
 ## Error Handling
 
-### Retry Mechanisms
-- Exponential backoff
-- Circuit breakers
-- Fallback strategies
-- Error categorization
-- Recovery procedures
+### Connection Errors
+```python
+async def handle_connection_error(websocket, error):
+    logger.error(f"Connection error: {error}")
+    await manager.disconnect(websocket)
+    await cleanup_resources(websocket)
+```
 
-### Validation Layers
-- Input validation
-- State validation
-- Output validation
-- Schema validation
-- Integrity checks
+### Task Errors
+```python
+async def handle_task_error(task, error):
+    logger.error(f"Task error: {error}")
+    await cancel_dependent_tasks(task)
+    await cleanup_task_resources(task)
+```
 
-## Monitoring and Metrics
+## Monitoring Strategy
 
-### Key Metrics
-- Transaction success rate
-- Gas optimization effectiveness
-- Price impact analysis
-- Profit calculations
+### Metrics Collection
 - System resource usage
-
-### Health Indicators
-- Component status
-- Resource utilization
+- Connection statistics
+- Task performance
 - Error rates
-- Response times
-- Data integrity
+
+### Alerting
+- Resource thresholds
+- Error frequency
+- Performance degradation
+- Connection issues
+
+## Testing Strategy
+
+### Unit Tests
+```python
+async def test_connection_lifecycle():
+    manager = ConnectionManager()
+    websocket = MockWebSocket()
+    
+    await manager.connect(websocket)
+    assert manager.is_active(websocket)
+    
+    await manager.disconnect(websocket)
+    assert not manager.is_active(websocket)
+```
+
+### Integration Tests
+```python
+async def test_metrics_flow():
+    service = MetricsService()
+    await service.initialize()
+    
+    metrics = await service.get_metrics()
+    assert metrics["cpu_usage"] is not None
+    assert metrics["memory_usage"] is not None
+```
+
+## Security Considerations
+
+### Connection Security
+- Validate connection states
+- Implement timeouts
+- Handle disconnections gracefully
+
+### Resource Protection
+- Limit connection count
+- Implement rate limiting
+- Monitor resource usage
+
+## Deployment Notes
+
+### Requirements
+- Python 3.12+
+- FastAPI
+- asyncio
+- WebSocket support
+
+### Configuration
+```python
+class Config:
+    MAX_CONNECTIONS = 100
+    UPDATE_INTERVAL = 1.0  # seconds
+    CLEANUP_INTERVAL = 60.0  # seconds
+    RESOURCE_LIMITS = {
+        "cpu": 75.0,  # percent
+        "memory": 80.0  # percent
+    }
+```
+
+## Development Guidelines
+
+### Code Style
+- Use type hints
+- Follow asyncio patterns
+- Document all functions
+- Handle all errors
+
+### Best Practices
+- Test thoroughly
+- Log appropriately
+- Clean up resources
+- Monitor performance
+
+## Future Improvements
+
+### Short-term
+- Implement connection state machine
+- Add comprehensive monitoring
+- Improve error handling
+- Optimize performance
+
+### Long-term
+- Scale connection handling
+- Add advanced features
+- Improve UI/UX
+- Enhance monitoring
+
+## Technical Debt
+
+### Current Issues
+- WebSocket cleanup
+- Task cancellation
+- Resource management
+- Error handling
+
+### Planned Solutions
+- Implement proper state machine
+- Add robust task management
+- Improve resource cleanup
+- Enhance error handling
+
+## Notes for Developers
+
+### Key Files
+- websocket.py: Connection handling
+- service_manager.py: Service coordination
+- metrics_service.py: Metrics collection
+- app.py: Main application
+
+### Important Patterns
+- Use async/await consistently
+- Implement proper cleanup
+- Handle all edge cases
+- Log appropriately
+
+### Development Flow
+1. Read documentation
+2. Understand architecture
+3. Follow patterns
+4. Test thoroughly
+5. Document changes

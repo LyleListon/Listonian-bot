@@ -11,9 +11,16 @@ from pathlib import Path
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
+# Load config to get logging level
+import json
+with open('config.json') as f:
+    config = json.load(f)
+log_level = getattr(logging, config['logging']['level'].upper())
+
 # Configure logging first
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
+    force=True,  # Override any existing loggers
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('logs/arbitrage.log'),

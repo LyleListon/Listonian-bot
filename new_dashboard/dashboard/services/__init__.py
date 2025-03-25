@@ -1,13 +1,14 @@
-"""Service layer for the dashboard."""
+"""Services package for dashboard functionality."""
 
+from .service_manager import service_manager
 from .memory_service import MemoryService
 from .metrics_service import MetricsService
-from .system_service import SystemService
-from .service_manager import service_manager
+from .file_handler import FileManager, AsyncMemoryMappedFile
 
 __all__ = [
+    'service_manager',
     'MemoryService',
     'MetricsService',
-    'SystemService',
-    'service_manager'
+    'FileManager',
+    'AsyncMemoryMappedFile'
 ]

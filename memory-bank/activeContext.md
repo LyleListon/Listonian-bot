@@ -1,169 +1,247 @@
-# Listonian Arbitrage Bot - Active Context
+# Active Context - Dashboard Development
 
-Created: 2025-03-23T15:58:17Z
+## Current Focus
+Working on real-time metrics display and WebSocket connection management in the dashboard implementation.
 
-## Current Development Focus
+## Active Components
 
-### Flashbots Integration
-- Status: In Progress
+### 1. WebSocket Implementation
+- Location: new_dashboard/dashboard/routes/websocket.py
+- Status: Working with cleanup issues
 - Priority: High
-- Components:
-  - RPC Integration
-  - Bundle Submission
-  - MEV Protection
-  - Transaction Privacy
+- Current Focus: Connection cleanup and resource management
 
-### Dashboard Service Enhancement
-- Status: In Progress
-- Priority: High
-- Components:
-  - Service Initialization
-  - Process Management
-  - Error Handling
-  - Resource Management
+### 2. Metrics Service
+- Location: new_dashboard/dashboard/services/metrics_service.py
+- Status: Functional
+- Updates: Real-time
+- Performance: Good
 
-### Active Tasks
+### 3. Memory Service
+- Location: new_dashboard/dashboard/services/memory_service.py
+- Status: Functional
+- Updates: Real-time
+- Performance: Needs optimization
 
-#### 1. Flashbots RPC Integration
-- Implement Flashbots RPC client
-- Configure connection management
-- Set up fallback mechanisms
-- Implement retry logic
-- Add monitoring hooks
+## Current Metrics
+- CPU Usage: ~14.8%
+- Memory Usage: ~27.4%
+- WebSocket Status: Connected
+- Update Frequency: Real-time
 
-#### 2. Flash Loan Optimization
-- Optimize Balancer integration
-- Implement capital efficiency improvements
-- Add validation checks
-- Enhance error handling
-- Monitor gas costs
+## Active Issues
 
-#### 3. Multi-path Arbitrage
-- Implement path finding algorithm
-- Add liquidity depth analysis
-- Optimize route selection
-- Implement parallel execution
-- Add profit validation
+### 1. WebSocket Cleanup
+```python
+# Current implementation
+async def disconnect(self, websocket):
+    """Current problematic cleanup."""
+    try:
+        if websocket in self._connections:
+            self._connections[websocket]["active"] = False
+            # Tasks not properly cancelled
+            del self._connections[websocket]
+    except Exception as e:
+        logger.error(f"Error during disconnect: {e}")
 
-#### 4. Bundle Submission
-- Implement bundle creation
-- Add simulation support
-- Configure gas pricing
-- Add validation checks
-- Monitor success rates
+# Needed implementation
+async def disconnect(self, websocket):
+    """Proper cleanup implementation needed."""
+    try:
+        async with self._lock:
+            if websocket in self._connections:
+                # Mark as disconnecting
+                self._connections[websocket]["state"] = "disconnecting"
+                # Cancel all tasks
+                await self._cancel_tasks(websocket)
+                # Clean up resources
+                await self._cleanup_resources(websocket)
+                # Remove connection
+                del self._connections[websocket]
+    except Exception as e:
+        logger.error(f"Error during disconnect: {e}")
+```
 
-#### 5. Dashboard Improvements
-- Fix service initialization sequence
-- Implement proper process management
-- Enhance error handling
-- Optimize resource cleanup
-- Add service health monitoring
+### 2. Task Management
+```python
+# Current implementation
+def add_task(self, websocket, task):
+    """Basic task tracking."""
+    if websocket in self._connections:
+        self._connections[websocket]["tasks"].add(task)
 
-## Ongoing Improvements
+# Needed implementation
+async def add_task(self, websocket, task):
+    """Proper task management needed."""
+    async with self._lock:
+        if websocket in self._connections:
+            task_wrapper = TaskWrapper(task)
+            self._connections[websocket]["tasks"].add(task_wrapper)
+            await self._monitor_task(task_wrapper)
+```
 
-### Performance Optimization
-- Gas usage optimization
-- Transaction timing
-- Price impact analysis
-- Execution speed
-- Resource utilization
-- Service initialization efficiency
+### 3. Resource Management
+```python
+# Current implementation
+class ConnectionManager:
+    """Basic connection management."""
+    def __init__(self):
+        self._connections = {}
+        self._lock = asyncio.Lock()
 
-### Security Enhancements
-- Price validation
-- Slippage protection
-- Oracle manipulation detection
-- Transaction privacy
-- Access control
-- Process isolation
-
-### Monitoring Improvements
-- Real-time alerts
-- Performance metrics
-- Health checks
-- Error tracking
-- Resource monitoring
-- Service status tracking
-
-## Recent Changes
-
-### System Updates
-- Memory bank initialization
-- Monitoring system setup
-- Schema validation
-- Error handling improvements
-- Documentation updates
-- Service initialization fixes
-- Process management enhancements
-
-### Infrastructure Updates
-- Directory structure
-- File organization
-- Backup systems
-- Monitoring setup
-- Alert configuration
-- Service lifecycle management
-- Process cleanup optimization
-
-## Next Steps
-
-### Short Term
-1. Complete Flashbots integration
-2. Optimize flash loan execution
-3. Implement multi-path arbitrage
-4. Enhance monitoring system
-5. Update documentation
-6. Fix dashboard service initialization
-7. Improve process management
-
-### Medium Term
-1. Expand DEX coverage
-2. Improve profit strategies
-3. Enhance security measures
-4. Optimize resource usage
-5. Add advanced analytics
-6. Refine service architecture
-
-### Long Term
-1. Scale system capacity
-2. Add new trading strategies
-3. Enhance automation
-4. Improve resilience
-5. Expand monitoring
-6. Service orchestration improvements
-
-## Current Technical Challenges
-
-### Service Initialization
-- Challenge: Proper initialization sequence for services
-- Status: In Progress
-- Solution: Implementing service lifecycle management
-- Priority: High
-
-### Process Management
-- Challenge: Clean process termination and resource cleanup
-- Status: In Progress
-- Solution: Enhanced process management in startup scripts
-- Priority: High
-
-### Error Handling
-- Challenge: Robust error recovery in service initialization
-- Status: In Progress
-- Solution: Implementing comprehensive error handling
-- Priority: High
+# Needed implementation
+class ConnectionManager:
+    """Enhanced connection management needed."""
+    def __init__(self):
+        self._connections = WeakKeyDictionary()
+        self._task_manager = TaskManager()
+        self._resource_manager = ResourceManager()
+        self._lock = asyncio.Lock()
+```
 
 ## Implementation Progress
 
-### Dashboard Service
-- Service manager refactoring
-- Process cleanup implementation
-- Error handling enhancement
-- Resource management optimization
-- Health monitoring setup
+### Completed
+- ✅ Basic WebSocket connection handling
+- ✅ Real-time metrics display
+- ✅ System resource monitoring
+- ✅ Initial cleanup implementation
 
-### Process Management
-- Startup script improvements
-- Process cleanup mechanisms
-- Resource tracking
-- Error recovery procedures
-- Health check implementation
+### In Progress
+- 🔄 WebSocket cleanup improvements
+- 🔄 Task cancellation handling
+- 🔄 Resource management optimization
+- 🔄 Error handling enhancement
+
+### Pending
+- ⏳ Connection pooling
+- ⏳ Performance optimization
+- ⏳ Advanced monitoring
+- ⏳ Comprehensive testing
+
+## Current Challenges
+
+### 1. Resource Cleanup
+- Issue: Tasks not properly cancelled
+- Impact: Memory leaks
+- Status: Being addressed
+- Priority: High
+
+### 2. Connection Management
+- Issue: Improper state tracking
+- Impact: Cleanup errors
+- Status: In progress
+- Priority: High
+
+### 3. Performance
+- Issue: High resource usage
+- Impact: System performance
+- Status: To be addressed
+- Priority: Medium
+
+## Next Steps
+
+### Immediate Actions
+1. Implement proper task cancellation
+2. Add connection state machine
+3. Improve resource cleanup
+4. Fix disconnection handling
+
+### Short-term Goals
+1. Optimize performance
+2. Add connection pooling
+3. Implement monitoring
+4. Add comprehensive testing
+
+### Long-term Goals
+1. Scale connection handling
+2. Add advanced features
+3. Improve UI/UX
+4. Enhance monitoring
+
+## Development Notes
+
+### Key Files
+- websocket.py: WebSocket implementation
+- service_manager.py: Service coordination
+- metrics_service.py: Metrics handling
+- app.py: Main application
+
+### Important Patterns
+- Use async/await consistently
+- Implement proper cleanup
+- Handle edge cases
+- Document changes
+
+### Testing Requirements
+- Unit tests for components
+- Integration tests for flow
+- Performance tests
+- Connection tests
+
+## Technical Considerations
+
+### Architecture
+- FastAPI backend
+- WebSocket communication
+- Async operations
+- Service-based design
+
+### Performance
+- Monitor resource usage
+- Optimize connections
+- Handle cleanup properly
+- Track metrics
+
+### Security
+- Validate connections
+- Handle timeouts
+- Protect resources
+- Monitor usage
+
+## Documentation Status
+
+### Updated
+- ✅ WebSocket status
+- ✅ Technical context
+- ✅ System patterns
+- ✅ Progress tracking
+
+### Needs Update
+- ⏳ API documentation
+- ⏳ Deployment guide
+- ⏳ Testing guide
+- ⏳ Monitoring guide
+
+## Team Notes
+
+### Current Focus
+- Fix WebSocket cleanup
+- Improve performance
+- Add monitoring
+- Update documentation
+
+### Important Reminders
+- Follow async patterns
+- Test thoroughly
+- Document changes
+- Monitor performance
+
+### Code Review Points
+- Check cleanup handling
+- Verify resource management
+- Test error handling
+- Review performance
+
+## Environment Details
+- Python 3.12+
+- FastAPI
+- asyncio
+- WebSocket support
+
+## Next Developer Tasks
+1. Review memory bank files
+2. Understand current state
+3. Follow patterns
+4. Test changes
+5. Update documentation

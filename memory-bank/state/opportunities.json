@@ -1,18 +1,10 @@
 {
   "opportunities": [],
   "market_condition": {
-    "timestamp": "2025-03-24T02:10:56.327685",
-    "analysis": {
-      "is_valid": false,
-      "reason": "Price validation failed",
-      "validation": [
-        false,
-        "No prices available",
-        0.0
-      ]
-    },
-    "prices": {},
-    "liquidity": {}
+    "gas_price": 50,
+    "network_status": "active",
+    "pools": {},
+    "timestamp": null
   },
-  "timestamp": "2025-03-24T06:11:18.974195+00:00"
+  "timestamp": "2025-03-25T12:37:46.988164+00:00"
 }

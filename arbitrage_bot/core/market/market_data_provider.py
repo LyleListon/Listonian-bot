@@ -104,12 +104,16 @@ class EnhancedMarketDataProvider(MarketDataProvider):
             if self._monitor_task and not self._monitor_task.done():
                 self._monitor_task.cancel()
                 try:
-                    await self._monitor_task
+                    await asyncio.wait_for(self._monitor_task, timeout=5.0)
                 except asyncio.CancelledError:
                     pass
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout waiting for monitor task to cancel")
+                finally:
+                    self._monitor_task = None
             
             self._monitoring = False
-            self._monitor_task = None
+            logger.info("Market monitoring stopped")
     
     async def get_current_market_condition(self) -> Dict[str, Any]:
         """

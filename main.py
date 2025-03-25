@@ -57,12 +57,8 @@ async def create_ml_system(config):
 async def create_web3_manager(config):
     """Create and initialize the Web3 manager."""
     try:
-        # Map provider_url to rpc_url for Web3Manager
-        web3_config = config.copy()
-        web3_config["rpc_url"] = web3_config.pop("provider_url")
-        
         web3_manager = Web3Manager(
-            web3_config)
+            config)
         await web3_manager.initialize()
         return web3_manager
     except Exception as e:
@@ -73,7 +69,7 @@ async def create_flashbots_provider(web3_manager, config):
     """Create and initialize the Flashbots provider."""
     try:
         # Get Web3 instance and create account
-        web3 = web3_manager.web3
+        web3 = web3_manager.w3
         account = web3.eth.account.from_key(config.get("private_key"))
         
         flashbots_provider = FlashbotsProvider(
@@ -173,8 +169,21 @@ async def init_and_run():
                 while True:
                     await asyncio.sleep(1)
             except KeyboardInterrupt:
-                logger.info("Received shutdown signal")
-                await bot.stop()
+                logger.info("Received shutdown signal, cleaning up...")
+                try:
+                    # Stop the bot first
+                    await bot.stop()
+                    
+                    # Cancel all pending tasks
+                    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+                    for task in tasks:
+                        task.cancel()
+                    
+                    # Wait for all tasks to complete
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    logger.info("Successfully cleaned up all tasks")
+                except Exception as e:
+                    logger.error("Error during task cleanup: %s", str(e), exc_info=True)
             
         except Exception as e:
             logger.error("Failed to start ArbitrageBot: %s", str(e), exc_info=True)
@@ -217,6 +226,14 @@ def main():
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
+                # Cancel all pending tasks
+                tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+                for task in tasks:
+                    task.cancel()
+                
+                # Wait for tasks to complete with a timeout
+                loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+                
                 loop.stop()
             if not loop.is_closed():
                 loop.close()

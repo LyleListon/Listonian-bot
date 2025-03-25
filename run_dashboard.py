@@ -4,13 +4,25 @@ Dashboard entry point script.
 """
 
 import uvicorn
-from dashboard.main import app
+import logging
+from new_dashboard import app
+
+# Configure basic logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Disable uvicorn access logging
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 if __name__ == "__main__":
     uvicorn.run(
-        "dashboard.main:app",
+        "new_dashboard:app",
         host="0.0.0.0",
         port=8080,
         reload=True,
-        log_level="debug"
+        log_level="debug",
+        access_log=False,
+        use_colors=False
     )

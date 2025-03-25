@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .interfaces import MarketDataProvider as MarketDataProviderABC
 from ..market.enhanced_market_analyzer import EnhancedMarketAnalyzer
+from ..web3.web3_manager import Web3Manager
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,9 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
         self._lock = asyncio.Lock()
         self._initialized = False
         
-        # Initialize enhanced analyzer
-        self._analyzer = EnhancedMarketAnalyzer()
+        # Initialize enhanced analyzer and web3
+        self._analyzer = EnhancedMarketAnalyzer(config)
+        self._web3 = Web3Manager(config["web3"])
         
         # Cache for market data
         self._last_update = None
@@ -54,8 +56,9 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
             
             logger.info("Initializing enhanced market data provider")
             
-            # Initialize analyzer
+            # Initialize components
             await self._analyzer.initialize()
+            await self._web3.initialize()
             
             # Initialize caches
             self._last_update = datetime.now()
@@ -214,34 +217,59 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
         try:
             timestamp = datetime.now()
             
-            # Initialize with test data
-            test_market_data = {
-                "token_pair": ("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", # WETH
-                             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"), # USDC
-                "liquidity": {
-                    "uniswap_v3": 1000000,
-                    "sushiswap": 800000,
-                    "baseswap": 500000
-                }
-            }
+            # Get token addresses from config
+            weth_address = self._config["tokens"]["WETH"]["address"]
+            usdc_address = self._config["tokens"]["USDC"]["address"]
             
-            test_prices = {
-                "uniswap_v3": 3500.50,
-                "sushiswap": 3500.45,
-                "baseswap": 3500.55
-            }
+            # Fetch prices from DEXes
+            prices = {}
+            liquidity = {}
+            
+            # BaseSwap V3
+            baseswap_quoter = self._config["dexes"]["baseswap_v3"]["quoter"]
+            try:
+                baseswap_price = await self._web3.get_quote(
+                    factory=self._config["dexes"]["baseswap_v3"]["factory"],
+                    token_in=weth_address,
+                    token_out=usdc_address,
+                    amount="1000000000000000000"  # 1 WETH
+                )
+                prices["baseswap_v3"] = baseswap_price / 1e6  # Convert to USD
+                liquidity["baseswap_v3"] = await self._web3.get_pool_liquidity(
+                    self._config["dexes"]["baseswap_v3"]["factory"],
+                    weth_address,
+                    usdc_address
+                )
+            except Exception as e:
+                logger.warning(f"Error fetching BaseSwap V3 price: {e}")
+            
+            # Aerodrome V3
+            aerodrome_quoter = self._config["dexes"]["aerodrome_v3"]["quoter"]
+            try:
+                aerodrome_price = await self._web3.get_quote(
+                    factory=self._config["dexes"]["aerodrome_v3"]["factory"],
+                    token_in=weth_address,
+                    token_out=usdc_address,
+                    amount="1000000000000000000"  # 1 WETH
+                )
+                prices["aerodrome_v3"] = aerodrome_price / 1e6  # Convert to USD
+                liquidity["aerodrome_v3"] = await self._web3.get_pool_liquidity(
+                    self._config["dexes"]["aerodrome_v3"]["factory"],
+                    weth_address,
+                    usdc_address
+                )
+            except Exception as e:
+                logger.warning(f"Error fetching Aerodrome V3 price: {e}")
             
             # Get initial analysis
-            analysis = await self._analyzer.analyze_market_data(
-                market_data=test_market_data,
-                prices=list(test_prices.values()),
-                sources=list(test_prices.keys())
-            )
+            market_data = {"token_pair": (weth_address, usdc_address), "liquidity": liquidity}
+            analysis = await self._analyzer.analyze_market_data(market_data, list(prices.values()), list(prices.keys()))
+            
             return {
                 "timestamp": timestamp.isoformat(),
                 "analysis": analysis,
-                "prices": test_prices,
-                "liquidity": test_market_data["liquidity"]
+                "prices": prices,
+                "liquidity": liquidity
             }
         except Exception as e:
             logger.error(f"Error fetching initial market data: {e}", exc_info=True)
@@ -256,17 +284,60 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
         """
         try:
             timestamp = datetime.now()
+            
+            # Get token addresses from config
+            weth_address = self._config["tokens"]["WETH"]["address"]
+            usdc_address = self._config["tokens"]["USDC"]["address"]
+            
+            # Fetch prices from DEXes
+            prices = {}
+            liquidity = {}
+            
+            # BaseSwap V3
+            baseswap_quoter = self._config["dexes"]["baseswap_v3"]["quoter"]
+            try:
+                baseswap_price = await self._web3.get_quote(
+                    factory=self._config["dexes"]["baseswap_v3"]["factory"],
+                    token_in=weth_address,
+                    token_out=usdc_address,
+                    amount="1000000000000000000"  # 1 WETH
+                )
+                prices["baseswap_v3"] = baseswap_price / 1e6  # Convert to USD
+                liquidity["baseswap_v3"] = await self._web3.get_pool_liquidity(
+                    self._config["dexes"]["baseswap_v3"]["factory"],
+                    weth_address,
+                    usdc_address
+                )
+            except Exception as e:
+                logger.warning(f"Error fetching BaseSwap V3 price: {e}")
+            
+            # Aerodrome V3
+            aerodrome_quoter = self._config["dexes"]["aerodrome_v3"]["quoter"]
+            try:
+                aerodrome_price = await self._web3.get_quote(
+                    factory=self._config["dexes"]["aerodrome_v3"]["factory"],
+                    token_in=weth_address,
+                    token_out=usdc_address,
+                    amount="1000000000000000000"  # 1 WETH
+                )
+                prices["aerodrome_v3"] = aerodrome_price / 1e6  # Convert to USD
+                liquidity["aerodrome_v3"] = await self._web3.get_pool_liquidity(
+                    self._config["dexes"]["aerodrome_v3"]["factory"],
+                    weth_address,
+                    usdc_address
+                )
+            except Exception as e:
+                logger.warning(f"Error fetching Aerodrome V3 price: {e}")
+            
             # Get updated analysis
-            analysis = await self._analyzer.analyze_market_data(
-                market_data=self._market_condition,
-                prices=list(self._price_cache.values()),
-                sources=list(self._price_cache.keys())
-            )
+            market_data = {"token_pair": (weth_address, usdc_address), "liquidity": liquidity}
+            analysis = await self._analyzer.analyze_market_data(market_data, list(prices.values()), list(prices.keys()))
+            
             return {
                 "timestamp": timestamp.isoformat(),
                 "analysis": analysis,
-                "prices": self._price_cache.copy(),
-                "liquidity": self._liquidity_cache.copy()
+                "prices": prices,
+                "liquidity": liquidity
             }
         except Exception as e:
             logger.error(f"Error fetching market data: {e}", exc_info=True)

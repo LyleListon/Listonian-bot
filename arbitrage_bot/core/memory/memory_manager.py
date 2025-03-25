@@ -105,9 +105,12 @@ class MemoryManager:
             if self._backup_task:
                 self._backup_task.cancel()
                 try:
-                    await self._backup_task
+                    await asyncio.wait_for(self._backup_task
+, timeout=5.0)
                 except asyncio.CancelledError:
                     pass
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout waiting for backup task to cancel")
             
             # Save final state
             await self._save_metrics()

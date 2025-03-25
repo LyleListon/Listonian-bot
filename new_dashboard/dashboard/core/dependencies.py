@@ -25,3 +25,9 @@ async def get_system_service():
     if not service_manager._initialized:
         await service_manager.initialize()
     return service_manager.system_service
+
+async def get_market_data_service():
+    """Get the market data service instance."""
+    if not service_manager._initialized:
+        await service_manager.initialize()
+    return service_manager.market_data_service

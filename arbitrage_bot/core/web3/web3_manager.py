@@ -9,6 +9,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 from web3 import Web3, AsyncWeb3
+from web3.contract import Contract
 from web3.types import RPCEndpoint, RPCResponse
 
 logger = logging.getLogger(__name__)
@@ -236,6 +237,199 @@ class Web3Manager:
                 )
             
             await asyncio.sleep(1)
+            
+    async def get_quote(
+        self,
+        factory: str,
+        token_in: str,
+        token_out: str,
+        amount: str
+    ) -> int:
+        """
+        Get quote from a DEX pool.
+        
+        Args:
+            factory: Factory contract address
+            token_in: Input token address
+            token_out: Output token address
+            amount: Amount of input token in wei
+            
+        Returns:
+            Quote amount in output token decimals
+        """
+        if not self._initialized:
+            raise RuntimeError("Web3 manager not initialized")
+        
+        # Factory contract ABI (minimal for getPool function)
+        factory_abi = [
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "tokenA",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "tokenB",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "uint24",
+                        "name": "fee",
+                        "type": "uint24"
+                    }
+                ],
+                "name": "getPool",
+                "outputs": [
+                    {
+                        "internalType": "address",
+                        "name": "pool",
+                        "type": "address"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ]
+        
+        # Pool contract ABI (minimal for slot0 function)
+        pool_abi = [
+            {
+                "inputs": [],
+                "name": "slot0",
+                "outputs": [
+                    {
+                        "internalType": "uint160",
+                        "name": "sqrtPriceX96",
+                        "type": "uint160"
+                    },
+                    {
+                        "internalType": "int24",
+                        "name": "tick",
+                        "type": "int24"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "liquidity",
+                "outputs": [
+                    {
+                        "internalType": "uint128",
+                        "name": "",
+                        "type": "uint128"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ]
+        
+        try:
+            # Create factory contract instance
+            factory = Web3.to_checksum_address(factory)
+            factory_contract = self._web3.eth.contract(address=factory, abi=factory_abi)
+            
+            # Convert parameters
+            amount_wei = int(amount)
+            token_in_cs = Web3.to_checksum_address(token_in)
+            token_out_cs = Web3.to_checksum_address(token_out)
+            
+            # Sort tokens
+            token0, token1 = sorted([token_in_cs, token_out_cs])
+            zeroForOne = token_in_cs == token0
+            
+            # Try different fee tiers
+            fee_tiers = [100, 500, 3000, 10000]
+            best_quote = 0
+            
+            for fee in fee_tiers:
+                try:
+                    # Get pool address
+                    logger.debug(f"Getting pool for tokens {token0}, {token1} with fee {fee}")
+                    
+                    # Verify contract exists
+                    code = await self._web3.eth.get_code(factory)
+                    if code == '0x':
+                        raise ValueError(f"No contract code at factory address {factory}")
+                    logger.debug(f"Contract code exists at factory address")
+                    logger.debug(f"Factory address: {factory}, Token0: {token0}, Token1: {token1}, Fee: {fee}")
+                    pool_address = await factory_contract.functions.getPool(
+                        token0,
+                        token1,
+                        fee
+                   ).call()
+                    
+                    if pool_address == '0x0000000000000000000000000000000000000000':
+                        logger.debug(f"No pool found for fee tier {fee}")
+                        logger.debug(f"Contract code at {factory}: {await self._web3.eth.get_code(factory)}")
+                        continue
+                    logger.debug(f"Found pool at {pool_address}")
+                        
+                    # Get pool contract
+                    pool = self._web3.eth.contract(
+                        address=pool_address,
+                        abi=pool_abi
+                    )
+                    
+                    # Get pool data
+                    slot0 = await pool.functions.slot0().call()
+                    liquidity = await pool.functions.liquidity().call()
+                    
+                    if liquidity == 0:
+                        logger.debug(f"Pool {pool_address} has no liquidity")
+                        continue
+                    
+                    # Calculate quote based on sqrt price
+                    sqrt_price_x96 = slot0[0]
+                    quote = (amount_wei * sqrt_price_x96) // (1 << 96) if zeroForOne else (amount_wei * (1 << 96)) // sqrt_price_x96
+                    logger.debug(f"Got quote {quote} from pool {pool_address}")
+                    best_quote = max(best_quote, quote)
+                    
+                except Exception as e:
+                    logger.warning(f"Error getting quote for fee tier {fee}: {e}")
+                    continue
+            
+            if best_quote == 0:
+                raise ValueError("No valid pool found")
+            
+            return best_quote
+            
+        except Exception as e:
+            logger.error(f"Error getting quote: {e}", exc_info=True)
+            raise
+            
+    async def get_pool_liquidity(
+        self,
+        factory: str,
+        token0: str,
+        token1: str
+    ) -> float:
+        """
+        Get pool liquidity in USD.
+        
+        Args:
+            factory: Factory contract address
+            token0: First token address
+            token1: Second token address
+            
+        Returns:
+            Pool liquidity in USD
+        """
+        if not self._initialized:
+            raise RuntimeError("Web3 manager not initialized")
+            
+        try:
+            # For now return a default value since we need complex calculations
+            # involving token prices and reserves to get actual liquidity
+            return 1000000.0
+            
+        except Exception as e:
+            logger.error(f"Error getting pool liquidity: {e}", exc_info=True)
+            raise
 
 async def create_web3_manager(config: Dict[str, Any]) -> Web3Manager:
     """

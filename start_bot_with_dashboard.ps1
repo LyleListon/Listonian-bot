@@ -87,7 +87,7 @@ function Start-ArbitrageBot {
 # Function to start the dashboard
 function Start-Dashboard {
     Write-Host "Starting dashboard..."
-    $script:DashProcess = Start-Process -FilePath "python" -ArgumentList "-m new_dashboard.dashboard.run" -PassThru -NoNewWindow -RedirectStandardError "logs/dashboard.err"
+    $script:DashProcess = Start-Process -FilePath "python" -ArgumentList "run_dashboard.py" -PassThru -NoNewWindow -RedirectStandardError "logs/dashboard.err"
     return $script:DashProcess
 }
 

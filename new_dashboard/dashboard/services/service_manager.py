@@ -3,12 +3,14 @@
 from typing import Dict, Any, Optional
 import os
 import asyncio
+import json
 from pathlib import Path
 
-from ..utils.logging import get_logger
+from ..core.logging import get_logger
 from .memory_service import MemoryService
 from .metrics_service import MetricsService
 from .system_service import SystemService
+from .market_data_service import MarketDataService
 
 logger = get_logger("service_manager")
 
@@ -39,16 +41,23 @@ class ServiceManager:
                 memory_bank_dir.mkdir(parents=True, exist_ok=True)
                 logger.info(f"Memory bank directory: {memory_bank_dir}")
 
+                # Load configuration
+                config_path = project_root / "config.json"
+                with open(config_path) as f:
+                    config = json.loads(f.read())
+
                 # Create services in dependency order
                 memory_service = MemoryService(str(memory_bank_dir))
                 metrics_service = MetricsService(memory_service)
                 system_service = SystemService(memory_service, metrics_service)
+                market_data_service = MarketDataService(memory_service, metrics_service, config)
 
                 # Store services
                 self._services.update({
                     "memory": memory_service,
                     "metrics": metrics_service,
-                    "system": system_service
+                    "system": system_service,
+                    "market": market_data_service
                 })
 
                 # Initialize services in order
@@ -60,6 +69,9 @@ class ServiceManager:
 
                 await system_service.initialize()
                 logger.info("System service initialized")
+
+                await market_data_service.initialize()
+                logger.info("Market data service initialized")
 
                 self._initialized = True
                 logger.info("All services initialized successfully")
@@ -82,13 +94,13 @@ class ServiceManager:
             logger.info("Shutting down services...")
 
             # Shutdown in reverse dependency order
-            shutdown_order = ["system", "metrics", "memory"]
+            shutdown_order = ["market", "system", "metrics", "memory"]
             
             for service_name in shutdown_order:
                 service = self._services.get(service_name)
                 if service:
                     try:
-                        await service.shutdown()
+                        await service.cleanup()
                         logger.info(f"{service_name.capitalize()} service shut down")
                     except Exception as e:
                         logger.error(f"Error shutting down {service_name} service: {e}")
@@ -123,6 +135,11 @@ class ServiceManager:
         """Get the system service."""
         return self.get_service("system")
 
+    @property
+    def market_data_service(self) -> MarketDataService:
+        """Get the market data service."""
+        return self.get_service("market")
+
     async def get_system_overview(self) -> Dict[str, Any]:
         """Get a complete system overview from all services."""
         if not self._initialized:
@@ -133,11 +150,13 @@ class ServiceManager:
             memory_state = await self.memory_service.get_current_state()
             metrics = await self.metrics_service.get_current_metrics()
             system_status = await self.system_service.get_system_status()
+            market_data = await self.market_data_service.get_current_market_data()
 
             return {
                 "memory": memory_state,
                 "metrics": metrics,
                 "system": system_status,
+                "market": market_data,
                 "timestamp": system_status.get("timestamp")
             }
 
