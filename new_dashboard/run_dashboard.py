@@ -8,7 +8,7 @@ import socket
 import contextlib
 
 from new_dashboard.dashboard.core.logging import configure_logging
-from new_dashboard.dashboard.app import create_app
+from new_dashboard.dashboard.app import app
 
 # Configure logging
 configure_logging()
@@ -43,26 +43,14 @@ def main():
         # Find available port
         port = find_available_port()
         logger.info(f"Using port: {port}")
-
-        # Create and run the application
-        app = create_app()
         
-        config = uvicorn.Config(
-            app=app,
-            host="0.0.0.0",
-            port=port,
-            log_level="info",
-            reload=True,
-            workers=1,  # Single worker for WebSocket support
-            loop="asyncio",
-            log_config=None,  # Use our custom logging config
-            ws_ping_interval=5,  # WebSocket ping every 5 seconds
-            ws_ping_timeout=10,  # WebSocket timeout after 10 seconds
-            timeout_keep_alive=30,  # Keep-alive timeout
-            access_log=True
-        )
+        # Set up asyncio policy for Windows
+        if hasattr(asyncio, 'WindowsSelectorEventLoopPolicy'):
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         
-        server = uvicorn.Server(config)
+        # Run uvicorn directly with CLI options
+        import sys
+        sys.argv = ["uvicorn", "new_dashboard.app:app", "--host", "0.0.0.0", "--port", str(port), "--no-access-log"]
         logger.info(f"Dashboard ready at http://localhost:{port}")
         
         # Set up asyncio policy for Windows
@@ -70,7 +58,7 @@ def main():
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         # Run the server
-        server.run()
+        uvicorn.main()
 
     except Exception as e:
         logger.error(f"Error starting dashboard: {e}")

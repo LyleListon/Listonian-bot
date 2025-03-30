@@ -25,7 +25,7 @@ logger = get_logger("dashboard")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
-    
+
     # Startup
     try:
         logger.info("Initializing dashboard...")
@@ -43,102 +43,99 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
-# Create and configure the FastAPI application
-app = FastAPI(
-    title="Arbitrage Bot Dashboard",
-    lifespan=lifespan,
-    debug=True
-)
+def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
 
-# Configure static files and templates
-static_dir = Path(__file__).parent / "static"
-templates_dir = Path(__file__).parent / "templates"
-
-# Configure CORS with WebSocket support
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-# Debug middleware to log all requests
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    logger.debug(f"Incoming request: {request.method} {request.url.path}")
-    response = await call_next(request)
-    logger.debug(f"Response status: {response.status_code}")
-    return response
-
-# Register API routers with detailed logging
-logger.debug("Available routes before registration:")
-for route in app.routes:
-    if hasattr(route, 'methods'):
-        logger.debug(f"  {route.name}: {route.path} [{route.methods}]")
-    elif hasattr(route, 'path'):
-        logger.debug(f"  {route.__class__.__name__}: {route.path}")
-    else:
-        logger.debug(f"  {route.__class__.__name__}: {route}")
-
-# Register routers
-app.include_router(
-    metrics.router,
-    prefix="/api/metrics",
-    tags=["metrics"]
-)
-app.include_router(
-    system.router,
-    prefix="/api/system",
-    tags=["system"],
-    include_in_schema=True
-)
-app.include_router(
-    websocket.router,
-    tags=["websocket"],
-    include_in_schema=True
-)
-
-logger.debug("Available routes after registration:")
-for route in app.routes:
-    if hasattr(route, 'methods'):
-        logger.debug(f"  {route.name}: {route.path} [{route.methods}]")
-    elif hasattr(route, 'path'):
-        logger.debug(f"  {route.__class__.__name__}: {route.path}")
-    else:
-        logger.debug(f"  {route.__class__.__name__}: {route}")
-
-# Mount static files and templates after API routes
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-templates = Jinja2Templates(directory=str(templates_dir))
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup."""
-    logger.info("Initializing services on startup...")
-    await service_manager.initialize()
-    logger.info("Services initialized successfully")
-
-@app.middleware("http")
-async def initialize_services(request: Request, call_next):
-    """Ensure services are initialized before handling requests."""
-    if not service_manager._initialized:
-        await service_manager.initialize()
-    response = await call_next(request)
-    return response
-
-@app.get("/favicon.ico")
-async def favicon():
-    """Handle favicon requests."""
-    return Response(status_code=204)
-
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Serve dashboard frontend."""
-    if not service_manager._initialized:
-        await service_manager.initialize()
-    return templates.TemplateResponse(
-        "base.html",
-        {"request": request}
+    app = FastAPI(
+        title="Arbitrage Bot Dashboard",
+        lifespan=lifespan,
+        debug=True
     )
+
+    # Configure static files and templates
+    static_dir = Path(__file__).parent / "static"
+    templates_dir = Path(__file__).parent / "templates"
+
+    # Configure CORS with WebSocket support
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+    )
+
+    # Debug middleware to log all requests
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        logger.debug(f"Incoming request: {request.method} {request.url.path}")
+        response = await call_next(request)
+        logger.debug(f"Response status: {response.status_code}")
+        return response
+
+    # Register API routers with detailed logging
+    logger.debug("Available routes before registration:")
+    for route in app.routes:
+        if hasattr(route, 'methods'):
+            logger.debug(f"  {route.name}: {route.path} [{route.methods}]")
+        elif hasattr(route, 'path'):
+            logger.debug(f"  {route.__class__.__name__}: {route.path}")
+        else:
+            logger.debug(f"  {route.__class__.__name__}: {route}")
+
+    # Register routers
+    app.include_router(
+        metrics.router,
+        prefix="/api/metrics",
+        tags=["metrics"]
+    )
+    app.include_router(
+        system.router,
+        prefix="/api/system",
+        tags=["system"],
+        include_in_schema=True
+    )
+    app.include_router(
+        websocket.router,
+        tags=["websocket"],
+        include_in_schema=True
+    )
+
+    logger.debug("Available routes after registration:")
+    for route in app.routes:
+        if hasattr(route, 'methods'):
+            logger.debug(f"  {route.name}: {route.path} [{route.methods}]")
+        elif hasattr(route, 'path'):
+            logger.debug(f"  {route.__class__.__name__}: {route.path}")
+        else:
+            logger.debug(f"  {route.__class__.__name__}: {route}")
+
+    # Mount static files and templates after API routes
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    templates = Jinja2Templates(directory=str(templates_dir))
+
+    # Removed redundant startup event handler
+    # Removed redundant middleware for initialization
+
+    @app.get("/favicon.ico")
+    async def favicon():
+        """Handle favicon requests."""
+        return Response(status_code=204)
+
+    @app.get("/", response_class=HTMLResponse)
+    async def root(request: Request):
+        """Serve dashboard frontend."""
+        # Ensure services are initialized (handled by lifespan now, but keep check just in case)
+        if not service_manager._initialized:
+             logger.warning("Lifespan did not initialize services? Attempting manual init.")
+             await service_manager.initialize() # Should ideally not be needed
+        return templates.TemplateResponse(
+            "base.html",
+            {"request": request}
+        )
+
+    return app
+
+# Create default application instance
+app = create_app()

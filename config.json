@@ -18,12 +18,7 @@
             "quoter": "0x0C1Ef7cA95C6C2CeF48eDFc51CE1BeB2Aa2D8410",
             "fee_tiers": [100, 500, 3000, 10000]
         },
-        "aerodrome_v3": {
-            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
-            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-            "quoter": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-            "fee_tiers": [100, 500, 3000, 10000]
-        }
+        "aerodrome_v3": null
     },
     "tokens": {
         "WETH": {
@@ -64,7 +59,7 @@
     },
     "execution": {
         "default_execution_strategy": "standard",
-        "auto_execute": false,
+        "auto_execute": true,
         "max_concurrent_executions": 1,
         "min_confidence_score": 0.8,
         "gas_limit_buffer": 1.2,

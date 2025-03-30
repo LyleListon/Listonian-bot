@@ -50,31 +50,20 @@ class ConnectionManager:
         try:
             async with self._lock:
                 if websocket in self._connections:
-                    # Mark connection as inactive first
                     self._connections[websocket]["active"] = False
-                    
-                    # Cancel all tasks
                     tasks = list(self._connections[websocket]["tasks"])
                     for task in tasks:
                         if not task.done():
                             task.cancel()
-                    
-                    # Wait for tasks to complete
                     if tasks:
                         try:
                             await asyncio.wait(tasks, timeout=1.0)
                         except asyncio.TimeoutError:
                             logger.warning("Timeout waiting for tasks to cancel")
-                    
-                    # Clear queues and tasks
                     self._connections[websocket]["queues"].clear()
                     self._connections[websocket]["tasks"].clear()
-                    
-                    # Remove connection
                     del self._connections[websocket]
-                    
             logger.info(f"WebSocket disconnected. Remaining connections: {len(self._connections)}")
-            
         except Exception as e:
             logger.error(f"Error during connection cleanup: {e}")
             
@@ -107,7 +96,6 @@ async def handle_updates(
     try:
         while connection_active():
             try:
-                # Use wait_for to prevent hanging
                 update = await asyncio.wait_for(queue.get(), timeout=1.0)
                 if connection_active():
                     processed_update = process_update(update)
@@ -131,24 +119,15 @@ async def websocket_metrics(
     memory_service: MemoryService = Depends(get_memory_service),
     market_data_service: MarketDataService = Depends(get_market_data_service)
 ):
-    """WebSocket endpoint for real-time metrics updates."""
+    """WebSocket endpoint for all metrics updates."""
     metrics_queue = None
-    memory_queue = None
-    market_queue = None
     
     async with manager.connection(websocket):
         try:
             logger.info("WebSocket client connected to metrics endpoint")
             
-            # Subscribe to updates
             metrics_queue = await metrics_service.subscribe()
-            memory_queue = await memory_service.subscribe()
-            market_queue = await market_data_service.subscribe()
-            
-            # Track queues
             manager.add_queue(websocket, metrics_queue)
-            manager.add_queue(websocket, memory_queue)
-            manager.add_queue(websocket, market_queue)
             
             # Send initial state
             initial_metrics = await metrics_service.get_current_metrics()
@@ -159,46 +138,22 @@ async def websocket_metrics(
                     "timestamp": datetime.utcnow().isoformat()
                 })
             
-            # Create update handlers
-            metrics_handler = handle_updates(
+            update_task = asyncio.create_task(handle_updates(
                 websocket,
                 metrics_queue,
                 lambda x: {**x, "_timestamp": datetime.utcnow().isoformat()},
                 lambda: manager.is_active(websocket)
-            )
+            ))
             
-            memory_handler = handle_updates(
-                websocket,
-                memory_queue,
-                lambda x: {**x, "_timestamp": datetime.utcnow().isoformat()},
-                lambda: manager.is_active(websocket)
-            )
-
-            market_handler = handle_updates(
-                websocket,
-                market_queue,
-                lambda x: {**x, "_timestamp": datetime.utcnow().isoformat()},
-                lambda: manager.is_active(websocket)
-            )
+            manager.add_task(websocket, update_task)
             
-            # Start handlers
-            metrics_task = asyncio.create_task(metrics_handler)
-            memory_task = asyncio.create_task(memory_handler)
-            market_task = asyncio.create_task(market_handler)
-            
-            # Track tasks
-            manager.add_task(websocket, metrics_task)
-            manager.add_task(websocket, memory_task)
-            manager.add_task(websocket, market_task)
-            
-            # Wait for completion
             try:
-                await asyncio.gather(metrics_task, memory_task, market_task)
+                await update_task
             except asyncio.CancelledError:
-                logger.info("WebSocket tasks cancelled")
+                logger.info("Metrics WebSocket task cancelled")
             except Exception as e:
-                logger.error(f"Error in WebSocket tasks: {e}")
-                    
+                logger.error(f"Error in metrics WebSocket task: {e}")
+                
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected from metrics endpoint")
         except Exception as e:
@@ -206,11 +161,265 @@ async def websocket_metrics(
         finally:
             if metrics_queue:
                 await metrics_service.unsubscribe(metrics_queue)
-            if memory_queue:
-                await memory_service.unsubscribe(memory_queue)
-            if market_queue:
-                await market_data_service.unsubscribe(market_queue)
 
+@router.websocket("/ws/profitability")
+async def websocket_profitability(
+    websocket: WebSocket,
+    metrics_service: MetricsService = Depends(get_metrics_service)
+):
+    """WebSocket endpoint for profitability metrics."""
+    metrics_queue = None
+    
+    async with manager.connection(websocket):
+        try:
+            logger.info("WebSocket client connected to profitability endpoint")
+            
+            metrics_queue = await metrics_service.subscribe()
+            manager.add_queue(websocket, metrics_queue)
+            
+            # Send initial state
+            initial_metrics = await metrics_service.get_current_metrics()
+            if manager.is_active(websocket):
+                await websocket.send_json({
+                    'profitability': initial_metrics.get('metrics', {}).get('profitability', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            
+            def process_update(update):
+                return {
+                    'profitability': update.get('metrics', {}).get('profitability', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            update_task = asyncio.create_task(handle_updates(
+                websocket,
+                metrics_queue,
+                process_update,
+                lambda: manager.is_active(websocket)
+            ))
+            
+            manager.add_task(websocket, update_task)
+            await update_task
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected from profitability endpoint")
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}")
+        finally:
+            if metrics_queue:
+                await metrics_service.unsubscribe(metrics_queue)
+
+@router.websocket("/ws/dex-performance")
+async def websocket_dex_performance(
+    websocket: WebSocket,
+    metrics_service: MetricsService = Depends(get_metrics_service)
+):
+    """WebSocket endpoint for DEX performance metrics."""
+    metrics_queue = None
+    
+    async with manager.connection(websocket):
+        try:
+            metrics_queue = await metrics_service.subscribe()
+            manager.add_queue(websocket, metrics_queue)
+            
+            initial_metrics = await metrics_service.get_current_metrics()
+            if manager.is_active(websocket):
+                await websocket.send_json({
+                    'dex_performance': initial_metrics.get('metrics', {}).get('dex_performance', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            
+            def process_update(update):
+                return {
+                    'dex_performance': update.get('metrics', {}).get('dex_performance', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            update_task = asyncio.create_task(handle_updates(
+                websocket,
+                metrics_queue,
+                process_update,
+                lambda: manager.is_active(websocket)
+            ))
+            
+            manager.add_task(websocket, update_task)
+            await update_task
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected from DEX performance endpoint")
+        finally:
+            if metrics_queue:
+                await metrics_service.unsubscribe(metrics_queue)
+
+@router.websocket("/ws/flash-loans")
+async def websocket_flash_loans(
+    websocket: WebSocket,
+    metrics_service: MetricsService = Depends(get_metrics_service)
+):
+    """WebSocket endpoint for flash loan metrics."""
+    metrics_queue = None
+    
+    async with manager.connection(websocket):
+        try:
+            metrics_queue = await metrics_service.subscribe()
+            manager.add_queue(websocket, metrics_queue)
+            
+            initial_metrics = await metrics_service.get_current_metrics()
+            if manager.is_active(websocket):
+                await websocket.send_json({
+                    'flash_loans': initial_metrics.get('metrics', {}).get('flash_loans', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            
+            def process_update(update):
+                return {
+                    'flash_loans': update.get('metrics', {}).get('flash_loans', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            update_task = asyncio.create_task(handle_updates(
+                websocket,
+                metrics_queue,
+                process_update,
+                lambda: manager.is_active(websocket)
+            ))
+            
+            manager.add_task(websocket, update_task)
+            await update_task
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected from flash loans endpoint")
+        finally:
+            if metrics_queue:
+                await metrics_service.unsubscribe(metrics_queue)
+
+@router.websocket("/ws/execution")
+async def websocket_execution(
+    websocket: WebSocket,
+    metrics_service: MetricsService = Depends(get_metrics_service)
+):
+    """WebSocket endpoint for execution metrics."""
+    metrics_queue = None
+    
+    async with manager.connection(websocket):
+        try:
+            metrics_queue = await metrics_service.subscribe()
+            manager.add_queue(websocket, metrics_queue)
+            
+            initial_metrics = await metrics_service.get_current_metrics()
+            if manager.is_active(websocket):
+                await websocket.send_json({
+                    'execution': initial_metrics.get('metrics', {}).get('execution', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            
+            def process_update(update):
+                return {
+                    'execution': update.get('metrics', {}).get('execution', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            update_task = asyncio.create_task(handle_updates(
+                websocket,
+                metrics_queue,
+                process_update,
+                lambda: manager.is_active(websocket)
+            ))
+            
+            manager.add_task(websocket, update_task)
+            await update_task
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected from execution endpoint")
+        finally:
+            if metrics_queue:
+                await metrics_service.unsubscribe(metrics_queue)
+
+@router.websocket("/ws/token-performance")
+async def websocket_token_performance(
+    websocket: WebSocket,
+    metrics_service: MetricsService = Depends(get_metrics_service)
+):
+    """WebSocket endpoint for token performance metrics."""
+    metrics_queue = None
+    
+    async with manager.connection(websocket):
+        try:
+            metrics_queue = await metrics_service.subscribe()
+            manager.add_queue(websocket, metrics_queue)
+            
+            initial_metrics = await metrics_service.get_current_metrics()
+            if manager.is_active(websocket):
+                await websocket.send_json({
+                    'token_performance': initial_metrics.get('metrics', {}).get('token_performance', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            
+            def process_update(update):
+                return {
+                    'token_performance': update.get('metrics', {}).get('token_performance', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            update_task = asyncio.create_task(handle_updates(
+                websocket,
+                metrics_queue,
+                process_update,
+                lambda: manager.is_active(websocket)
+            ))
+            
+            manager.add_task(websocket, update_task)
+            await update_task
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected from token performance endpoint")
+        finally:
+            if metrics_queue:
+                await metrics_service.unsubscribe(metrics_queue)
+
+@router.websocket("/ws/system-performance")
+async def websocket_system_performance(
+    websocket: WebSocket,
+    metrics_service: MetricsService = Depends(get_metrics_service)
+):
+    """WebSocket endpoint for system performance metrics."""
+    metrics_queue = None
+    
+    async with manager.connection(websocket):
+        try:
+            metrics_queue = await metrics_service.subscribe()
+            manager.add_queue(websocket, metrics_queue)
+            
+            initial_metrics = await metrics_service.get_current_metrics()
+            if manager.is_active(websocket):
+                await websocket.send_json({
+                    'system_performance': initial_metrics.get('metrics', {}).get('system_performance', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            
+            def process_update(update):
+                return {
+                    'system_performance': update.get('metrics', {}).get('system_performance', {}),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            update_task = asyncio.create_task(handle_updates(
+                websocket,
+                metrics_queue,
+                process_update,
+                lambda: manager.is_active(websocket)
+            ))
+            
+            manager.add_task(websocket, update_task)
+            await update_task
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected from system performance endpoint")
+        finally:
+            if metrics_queue:
+                await metrics_service.unsubscribe(metrics_queue)
+
+# Keep existing endpoints
 @router.websocket("/ws/system")
 async def websocket_system(
     websocket: WebSocket,
@@ -221,12 +430,9 @@ async def websocket_system(
     
     async with manager.connection(websocket):
         try:
-            logger.info("WebSocket client connected to system endpoint")
-            
             metrics_queue = await metrics_service.subscribe()
             manager.add_queue(websocket, metrics_queue)
             
-            # Send initial state
             initial_metrics = await metrics_service.get_current_metrics()
             if manager.is_active(websocket):
                 system_metrics = {
@@ -235,7 +441,6 @@ async def websocket_system(
                 }
                 await websocket.send_json(system_metrics)
             
-            # Create update handler
             def process_update(update):
                 return {
                     'system': update.get('system', {}),
@@ -249,21 +454,11 @@ async def websocket_system(
                 lambda: manager.is_active(websocket)
             ))
             
-            # Track task
             manager.add_task(websocket, update_task)
+            await update_task
             
-            # Wait for completion
-            try:
-                await update_task
-            except asyncio.CancelledError:
-                logger.info("System WebSocket task cancelled")
-            except Exception as e:
-                logger.error(f"Error in system WebSocket task: {e}")
-                    
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected from system endpoint")
-        except Exception as e:
-            logger.error(f"WebSocket error: {e}")
         finally:
             if metrics_queue:
                 await metrics_service.unsubscribe(metrics_queue)
@@ -278,12 +473,9 @@ async def websocket_trades(
     
     async with manager.connection(websocket):
         try:
-            logger.info("WebSocket client connected to trades endpoint")
-            
             memory_queue = await memory_service.subscribe()
             manager.add_queue(websocket, memory_queue)
             
-            # Send initial state
             initial_state = await memory_service.get_current_state()
             if manager.is_active(websocket):
                 trade_data = {
@@ -292,7 +484,6 @@ async def websocket_trades(
                 }
                 await websocket.send_json(trade_data)
             
-            # Create update handler
             def process_update(update):
                 return {
                     'trade_history': update.get('trade_history', []),
@@ -306,21 +497,11 @@ async def websocket_trades(
                 lambda: manager.is_active(websocket)
             ))
             
-            # Track task
             manager.add_task(websocket, update_task)
+            await update_task
             
-            # Wait for completion
-            try:
-                await update_task
-            except asyncio.CancelledError:
-                logger.info("Trades WebSocket task cancelled")
-            except Exception as e:
-                logger.error(f"Error in trades WebSocket task: {e}")
-                    
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected from trades endpoint")
-        except Exception as e:
-            logger.error(f"WebSocket error: {e}")
         finally:
             if memory_queue:
                 await memory_service.unsubscribe(memory_queue)
@@ -335,12 +516,9 @@ async def websocket_market(
     
     async with manager.connection(websocket):
         try:
-            logger.info("WebSocket client connected to market endpoint")
-            
             market_queue = await market_data_service.subscribe()
             manager.add_queue(websocket, market_queue)
             
-            # Send initial state
             initial_data = await market_data_service.get_current_market_data()
             if manager.is_active(websocket):
                 market_data = {
@@ -349,7 +527,6 @@ async def websocket_market(
                 }
                 await websocket.send_json(market_data)
             
-            # Create update handler
             def process_update(update):
                 market_data = update.get('market_data', {})
                 return {
@@ -367,21 +544,11 @@ async def websocket_market(
                 lambda: manager.is_active(websocket)
             ))
             
-            # Track task
             manager.add_task(websocket, update_task)
+            await update_task
             
-            # Wait for completion
-            try:
-                await update_task
-            except asyncio.CancelledError:
-                logger.info("Market WebSocket task cancelled")
-            except Exception as e:
-                logger.error(f"Error in market WebSocket task: {e}")
-                    
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected from market endpoint")
-        except Exception as e:
-            logger.error(f"WebSocket error: {e}")
         finally:
             if market_queue:
                 await market_data_service.unsubscribe(market_queue)

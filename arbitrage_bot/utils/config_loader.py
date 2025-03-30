@@ -77,7 +77,7 @@ def load_config() -> Dict[str, Any]:
     config = DEFAULT_CONFIG.copy()
     
     # Load from config file if exists
-    config_path = Path("config.json")
+    config_path = Path("configs/config.json")
     if config_path.exists():
         try:
             with open(config_path) as f:

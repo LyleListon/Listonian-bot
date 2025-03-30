@@ -2,6 +2,18 @@
 
 ## Recent Updates
 
+### Dashboard Metrics Enhancement (March 25, 2025)
+- Implemented comprehensive metrics tracking system
+- Added new metric categories:
+  * Profitability metrics
+  * DEX performance tracking
+  * Flash loan analytics
+  * Execution metrics
+  * Token performance
+  * System performance
+- Added dedicated WebSocket endpoints for each category
+- Enhanced real-time monitoring capabilities
+
 ### Project Cleanup (March 25, 2025)
 - Removed obsolete dashboard implementations
 - Consolidated documentation in memory bank
@@ -26,6 +38,13 @@
    - WebSocket communication
    - System resource monitoring
    - Performance tracking
+   - New metrics categories:
+     * Net profit tracking by token pair
+     * ROI analysis by trade type
+     * DEX-specific performance metrics
+     * Flash loan analytics
+     * Execution performance tracking
+     * Token market analysis
 
 3. Memory Bank
    - Project documentation

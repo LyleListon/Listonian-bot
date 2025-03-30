@@ -205,16 +205,12 @@ class MemoryBank:
         
         async with self._lock:
             self._metrics.update(metrics)
-            timestamp = datetime.now()
-            self._metrics_timestamp = timestamp
+            self._metrics_timestamp = datetime.now()
             
             # Persist metrics
             try:
                 file_path = self._storage_dir / "metrics.json"
-                await self._file_manager.write_json(file_path, {
-                    "timestamp": timestamp.isoformat(),
-                    "metrics": self._metrics
-                })
+                await self._file_manager.write_json(file_path, self._metrics)
             except Exception as e:
                 logger.error(f"Failed to persist metrics: {e}")
     
@@ -252,14 +248,13 @@ class MemoryBank:
         
         async with self._lock:
             self._state.update(state)
-            timestamp = datetime.now()
-            self._state_timestamp = timestamp
+            self._state_timestamp = datetime.now()
             
             # Persist state
             try:
                 file_path = self._storage_dir / "state.json"
                 await self._file_manager.write_json(file_path, {
-                    "timestamp": timestamp.isoformat(),
+                    "timestamp": self._state_timestamp.isoformat(),
                     "state": self._state
                 })
             except Exception as e:

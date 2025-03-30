@@ -31,6 +31,7 @@ class AerodromeV3(BaseDEX):
         router_address = config.get("router")
         quoter_address = config.get("quoter")
         
+        logger.debug(f"Aerodrome V3 Config - Factory: {factory_address}, Router: {router_address}, Quoter: {quoter_address}")
         if not all([factory_address, router_address, quoter_address]):
             raise ValueError("Missing Aerodrome V3 contract addresses")
             
@@ -62,12 +63,14 @@ class AerodromeV3(BaseDEX):
             # Sort tokens to match factory's sorting
             token0, token1 = sorted([token_a, token_b])
             
+            logger.debug(f"Calling factory.getPool with token0={token0}, token1={token1}, fee={fee}")
             # Get pool address
             pool_address = self.factory.functions.getPool(
                 token0,
                 token1,
                 fee
             ).call()
+            logger.debug(f"Factory returned pool address: {pool_address}")
             
             if pool_address == "0x0000000000000000000000000000000000000000":
                 raise ValueError(f"No pool found for {token_a}/{token_b} with fee {fee}")

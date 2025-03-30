@@ -1,0 +1,43 @@
+"baseswap":
+            "name": "BaseSwap",
+            "version": "v2",
+            "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86"
+            (Router: 0x55e27f7e2A7c7BAcA81dC3418e03F54e9C9bCdCF​)
+            "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB"
+            ("Factory: 0xded1ab23389d6d6305e1a1a4f4225f084fd7b28b​")
+            "quoter": "0x4d47fd5a29904Dae0Ef51b1c450C9750F15D7856"
+           ("quoter": "0x0Fc98F0ED4C4645693bA5C4A4C4FfEE61C823B8c")
+            "fee": 3000
+        2. BaseSwap
+
+
+"pancakeswap":
+            "name": "PancakeSwap"
+            "version": "v3"
+            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86"
+            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865"
+            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997"
+           ("quoter": "0x86dcd3293C53Cf8EFd7303B57beb2a3F671dDE98")
+           "fee": 2500
+
+"sushiswap":
+           "name": "SushiSwap"
+          "router": "0x6BdedD42c6Da8FBf0D2BA55B2Fa120C5e0C8D7891"
+          "quoter": "0x7A5f0BD5623fc6EcB3c6632D2295A1f5c2B9dB0F"
+ 
+"uniswap v2":
+         "name":  "Uniswap"
+         "router": '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D'
+         "factory": '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f'
+        "fee": 0.003                
+
+"Pancakeswap":
+       "name": "Pancakeswap"
+       "router":  Router (SwapRouter v3) – 0x1b81D678ffb9C0263b24A97847620C99d213eB14   
+       "factory": Factory (PancakeV3Factory) – 0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865 
+       "quoter":   Quoter (QuoterV2) – 0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997     
+
+Aerodrome:
+      Router: 0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43​
+      Factory: 0x420DD381b31aEf6683db6B902084cB0FFECe40Da
+

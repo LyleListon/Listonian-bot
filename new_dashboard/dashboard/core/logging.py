@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import logging.config
 import os
 import sys
 import time
@@ -17,18 +18,35 @@ def configure_logging(level: str = "DEBUG") -> None:
     # Get log level from environment or parameter
     log_level = os.getenv("LOG_LEVEL", level).upper()
     
-    # Basic configuration
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        stream=sys.stdout
-    )
-    
-    # Reduce verbosity of some loggers
-    logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
-    logging.getLogger("fastapi").setLevel(logging.DEBUG)
-    logging.getLogger("dashboard").setLevel(logging.DEBUG)
+    # Configure logging using dictConfig for compatibility with uvicorn
+    logging.config.dictConfig({
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {
+                "format": "%(asctime)s [%(levelname)s] %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S"
+            }
+        },
+        "handlers": {
+            "default": {
+                "formatter": "standard",
+                "class": "logging.StreamHandler",
+                "stream": sys.stderr
+            }
+        },
+        "root": {
+            "handlers": ["default"],
+            "level": log_level
+        },
+        "loggers": {
+            "dashboard": {
+                "handlers": ["default"],
+                "level": "DEBUG",
+                "propagate": False
+            }
+        }
+    })
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Get a logger instance.

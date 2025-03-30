@@ -40,13 +40,26 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
         
         # Initialize enhanced analyzer and web3
         self._analyzer = EnhancedMarketAnalyzer(config)
-        self._web3 = Web3Manager(config["web3"])
+        # Construct the config dict expected by Web3Manager
+        web3_config = {
+            "rpc_url": config.get("provider_url"), # Map provider_url to rpc_url
+            "chain_id": config.get("chain_id"),
+            # Include other relevant settings if needed, or let Web3Manager use defaults
+            "retry_count": config.get("web3", {}).get("retry_count"),
+            "retry_delay": config.get("web3", {}).get("retry_delay"),
+            "timeout": config.get("web3", {}).get("timeout"),
+        }
+        # Filter out None values in case top-level keys were missing
+        web3_config = {k: v for k, v in web3_config.items() if v is not None}
+        self._web3 = Web3Manager(web3_config)
         
         # Cache for market data
         self._last_update = None
         self._market_condition = {}
         self._price_cache = {}  # token -> price
         self._liquidity_cache = {}  # pool -> liquidity
+        self._retry_count = config.get("retry_count", 3)
+        self._retry_delay = config.get("retry_delay", 1.0)
     
     async def initialize(self) -> None:
         """Initialize the market data provider."""
@@ -207,6 +220,54 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
                 logger.error(f"Error in market data update loop: {e}", exc_info=True)
                 await asyncio.sleep(5)  # Wait before retrying
     
+    async def _fetch_dex_price(
+self,
+        dex_name: str,
+        factory: str,
+        weth_address: str,
+        usdc_address: str,
+        amount: str
+    ) -> Optional[float]:
+        """
+        Fetch price from a specific DEX with retries.
+        
+        Args:
+            dex_name: Name of the DEX
+            factory: Factory contract address
+            weth_address: WETH token address
+            usdc_address: USDC token address
+            amount: Amount to quote in wei
+            
+        Returns:
+            Price in USD or None if unavailable
+        """
+        for attempt in range(self._retry_count):
+            try:
+                # Verify DEX configuration
+                # Get DEX version from config
+                # Normalize dex_name to match config keys (e.g., "BaseSwap V3" -> "baseswap")
+                config_key = dex_name.lower().replace(" ", "_").replace("_v3", "").replace("_v2", "")
+                dex_config = self._config.get("dexes", {}).get(config_key)
+                version = dex_config.get("version", "v3") if dex_config else "v3" # Default to v3 if not specified
+
+                if not all([factory, weth_address, usdc_address]):
+                    logger.debug(f"Skipping {dex_name}: missing required addresses")
+                    return None
+                
+                price = await self._web3.get_quote(
+                    factory=factory,
+                    token_in=weth_address,
+                    token_out=usdc_address,
+                    amount=amount,
+                    version=version,
+                )
+                return price / 1e6  # Convert to USD
+            except Exception as e:
+                if attempt == self._retry_count - 1:
+                    logger.debug(f"Failed to fetch {dex_name} price after {self._retry_count} attempts: {e}")
+                    return None
+                await asyncio.sleep(self._retry_delay * (attempt + 1))  # Exponential backoff
+    
     async def _fetch_initial_market_data(self) -> Dict[str, Any]:
         """
         Fetch initial market data.
@@ -225,41 +286,61 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
             prices = {}
             liquidity = {}
             
+            dex_configs = {k: v for k, v in self._config["dexes"].items() if v is not None}
+            
             # BaseSwap V3
-            baseswap_quoter = self._config["dexes"]["baseswap_v3"]["quoter"]
-            try:
-                baseswap_price = await self._web3.get_quote(
-                    factory=self._config["dexes"]["baseswap_v3"]["factory"],
-                    token_in=weth_address,
-                    token_out=usdc_address,
-                    amount="1000000000000000000"  # 1 WETH
-                )
-                prices["baseswap_v3"] = baseswap_price / 1e6  # Convert to USD
-                liquidity["baseswap_v3"] = await self._web3.get_pool_liquidity(
-                    self._config["dexes"]["baseswap_v3"]["factory"],
+            baseswap_config = dex_configs.get("baseswap") # Use correct key
+            logger.debug(f"Initial fetch - BaseSwap config retrieved: {baseswap_config}")
+            if baseswap_config and baseswap_config.get("enabled", False):
+                baseswap_price = await self._fetch_dex_price(
+                    "BaseSwap V3",
+                    baseswap_config.get("factory"),
                     weth_address,
-                    usdc_address
-                )
-            except Exception as e:
-                logger.warning(f"Error fetching BaseSwap V3 price: {e}")
+                    usdc_address,
+                    "1000000000000000000"  # 1 WETH
+              )
+                if baseswap_price is not None:
+                    prices["baseswap_v3"] = baseswap_price
+                    # Assuming get_pool_liquidity also needs factory, weth, usdc
+                    try:
+                        liquidity["baseswap_v3"] = await self._web3.get_pool_liquidity(
+                            baseswap_config.get("factory"),
+                            weth_address,
+                            usdc_address
+                        )
+                    except Exception as liq_error:
+                         logger.warning(f"Failed to get BaseSwap V3 liquidity: {liq_error}")
+                         liquidity["baseswap_v3"] = 0 # Default liquidity if fetch fails
+                    self._price_cache["baseswap_v3"] = baseswap_price
+            else:
+                logger.info("BaseSwap V3 is disabled in config, skipping initial fetch.")
             
             # Aerodrome V3
-            aerodrome_quoter = self._config["dexes"]["aerodrome_v3"]["quoter"]
-            try:
-                aerodrome_price = await self._web3.get_quote(
-                    factory=self._config["dexes"]["aerodrome_v3"]["factory"],
-                    token_in=weth_address,
-                    token_out=usdc_address,
-                    amount="1000000000000000000"  # 1 WETH
-                )
-                prices["aerodrome_v3"] = aerodrome_price / 1e6  # Convert to USD
-                liquidity["aerodrome_v3"] = await self._web3.get_pool_liquidity(
-                    self._config["dexes"]["aerodrome_v3"]["factory"],
+            aerodrome_config = dex_configs.get("aerodrome") # Use correct key
+            logger.debug(f"Initial fetch - Aerodrome config retrieved: {aerodrome_config}")
+            if aerodrome_config and aerodrome_config.get("enabled", False):
+                aerodrome_price = await self._fetch_dex_price(
+                    "Aerodrome V3",
+                    aerodrome_config.get("factory"),
                     weth_address,
-                    usdc_address
-                )
-            except Exception as e:
-                logger.warning(f"Error fetching Aerodrome V3 price: {e}")
+                    usdc_address,
+                    "1000000000000000000"  # 1 WETH
+                 )
+    
+                if aerodrome_price is not None:
+                        prices["aerodrome_v3"] = aerodrome_price
+                        try:
+                            liquidity["aerodrome_v3"] = await self._web3.get_pool_liquidity(
+                                aerodrome_config.get("factory"),
+                                weth_address,
+                                usdc_address
+                            )
+                        except Exception as liq_error:
+                             logger.warning(f"Failed to get Aerodrome V3 liquidity: {liq_error}")
+                             liquidity["aerodrome_v3"] = 0 # Default liquidity if fetch fails
+                        self._price_cache["aerodrome_v3"] = aerodrome_price
+            else:
+                 logger.info("Aerodrome V3 is disabled in config, skipping initial fetch.")
             
             # Get initial analysis
             market_data = {"token_pair": (weth_address, usdc_address), "liquidity": liquidity}
@@ -293,41 +374,60 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
             prices = {}
             liquidity = {}
             
+            dex_configs = {k: v for k, v in self._config["dexes"].items() if v is not None}
+            
             # BaseSwap V3
-            baseswap_quoter = self._config["dexes"]["baseswap_v3"]["quoter"]
-            try:
-                baseswap_price = await self._web3.get_quote(
-                    factory=self._config["dexes"]["baseswap_v3"]["factory"],
-                    token_in=weth_address,
-                    token_out=usdc_address,
-                    amount="1000000000000000000"  # 1 WETH
-                )
-                prices["baseswap_v3"] = baseswap_price / 1e6  # Convert to USD
-                liquidity["baseswap_v3"] = await self._web3.get_pool_liquidity(
-                    self._config["dexes"]["baseswap_v3"]["factory"],
+            baseswap_config = dex_configs.get("baseswap") # Use correct key
+            logger.debug(f"Update fetch - BaseSwap config retrieved: {baseswap_config}")
+            if baseswap_config and baseswap_config.get("enabled", False):
+                baseswap_price = await self._fetch_dex_price(
+                    "BaseSwap V3",
+                    baseswap_config.get("factory"),
                     weth_address,
-                    usdc_address
-                )
-            except Exception as e:
-                logger.warning(f"Error fetching BaseSwap V3 price: {e}")
+                    usdc_address,
+                    "1000000000000000000"  # 1 WETH
+               )
+                if baseswap_price is not None:
+                    prices["baseswap_v3"] = baseswap_price
+                    try:
+                        liquidity["baseswap_v3"] = await self._web3.get_pool_liquidity(
+                            baseswap_config.get("factory"),
+                            weth_address,
+                            usdc_address
+                     )   
+                    except Exception as liq_error:
+                         logger.warning(f"Failed to get BaseSwap V3 liquidity: {liq_error}")
+                         liquidity["baseswap_v3"] = 0 # Default liquidity if fetch fails
+                    self._price_cache["baseswap_v3"] = baseswap_price
+            else:
+                logger.debug("BaseSwap V3 is disabled in config, skipping update fetch.")
             
             # Aerodrome V3
-            aerodrome_quoter = self._config["dexes"]["aerodrome_v3"]["quoter"]
-            try:
-                aerodrome_price = await self._web3.get_quote(
-                    factory=self._config["dexes"]["aerodrome_v3"]["factory"],
-                    token_in=weth_address,
-                    token_out=usdc_address,
-                    amount="1000000000000000000"  # 1 WETH
-                )
-                prices["aerodrome_v3"] = aerodrome_price / 1e6  # Convert to USD
-                liquidity["aerodrome_v3"] = await self._web3.get_pool_liquidity(
-                    self._config["dexes"]["aerodrome_v3"]["factory"],
+            aerodrome_config = dex_configs.get("aerodrome") # Use correct key
+            logger.debug(f"Update fetch - Aerodrome config retrieved: {aerodrome_config}")
+            if aerodrome_config and aerodrome_config.get("enabled", False):
+                aerodrome_price = await self._fetch_dex_price(
+                    "Aerodrome V3",
+                    aerodrome_config.get("factory"),
                     weth_address,
-                    usdc_address
-                )
-            except Exception as e:
-                logger.warning(f"Error fetching Aerodrome V3 price: {e}")
+                    usdc_address,
+                    "1000000000000000000"  # 1 WETH
+                 )
+       
+                if aerodrome_price is not None:
+                        prices["aerodrome_v3"] = aerodrome_price
+                        try:
+                            liquidity["aerodrome_v3"] = await self._web3.get_pool_liquidity(
+                                    aerodrome_config.get("factory"),
+                                    weth_address,
+                                    usdc_address
+                             )
+                        except Exception as liq_error:
+                             logger.warning(f"Failed to get Aerodrome V3 liquidity: {liq_error}")
+                             liquidity["aerodrome_v3"] = 0 # Default liquidity if fetch fails
+                        self._price_cache["aerodrome_v3"] = aerodrome_price
+            else:
+                 logger.debug("Aerodrome V3 is disabled in config, skipping update fetch.")
             
             # Get updated analysis
             market_data = {"token_pair": (weth_address, usdc_address), "liquidity": liquidity}

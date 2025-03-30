@@ -3,20 +3,43 @@
     "chain_id": 8453,
     "private_key": "",
     "tokens": {
-        "WETH": "0x4200000000000000000000000000000000000006",
-        "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "USDT": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
-        "DAI": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+        "WETH": {
+            "address": "0x4200000000000000000000000000000000000006",
+            "decimals": 18,
+            "symbol": "WETH"
+        },
+        "USDC": {
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "decimals": 6,
+            "symbol": "USDC"
+        },
+        "USDT": {
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 6,
+            "symbol": "USDT"
+        },
+        "DAI": {
+            "address": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+            "decimals": 18,
+            "symbol": "DAI"
+        }
     },
     "dexes": {
         "aerodrome": {
+            "factory": "0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "enabled": false,
+            "version": "v2"
+        },
+        "aerodrome_v3": {
             "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
             "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
             "enabled": true,
-            "version": "aerodrome"
+            "version": "v3"
         },
         "baseswap": {
-            "factory": "0xFDa619b6d20975be80a10332cD39b9a4b0FAa8BB",
+            "factory": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
             "router": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
             "enabled": true,
             "version": "v2"
@@ -50,7 +73,7 @@
         "buffer_percent": 20
     },
     "logging": {
-        "level": "INFO",
+        "level": "DEBUG",
         "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         "file": "logs/arbitrage.log",
         "max_size": 10485760,

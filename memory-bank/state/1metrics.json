@@ -1,0 +1,26 @@
+{
+    "metrics": {
+        "total_profit_eth": 0.0,
+        "success_rate": 0.0,
+        "total_trades": 0,
+        "gas_price": 0.0
+    },
+    "system": {
+        "cpu_usage": 0.0,
+        "memory_usage": 0.0,
+        "disk_usage": 0.0
+    },
+    "market_data": {
+        "prices": {},
+        "liquidity": {},
+        "spreads": {},
+        "analysis": {}
+    },
+    "system_status": {
+        "network_status": "Connected",
+        "bot_status": "Running",
+        "last_update": "2025-03-25T13:14:28.000Z"
+    },
+    "trade_history": [],
+    "timestamp": "2025-03-25T13:14:28.000Z"
+}

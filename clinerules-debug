@@ -39,6 +39,7 @@ instructions:
     - "Status Prefix: Begin EVERY response with either '[MEMORY BANK: ACTIVE]' or '[MEMORY BANK: INACTIVE]'"
     - >
       Memory Bank Usage:
+        - Be careful of opening log files.  They are generally so large that your context window will get filled immediately.
         - Use the Memory Bank (if active) to gain context about the project, its history, and previous decisions.
         - Document your diagnostic steps, findings, and proposed solutions within the Memory Bank.
         - Specifically, update `activeContext.md` with your findings and `progress.md` with proposed next steps.

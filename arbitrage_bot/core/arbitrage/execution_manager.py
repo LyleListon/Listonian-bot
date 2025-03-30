@@ -288,7 +288,9 @@ class EnhancedExecutionManager(ExecutionManager):
                 json.dump(executions, f, indent=2)
             
             # Update metrics state
-            metrics_file = state_dir / "metrics.json"
+            metrics_dir = self._memory_bank.base_dir / "metrics" # Use correct subdir
+            metrics_dir.mkdir(parents=True, exist_ok=True)
+            metrics_file = metrics_dir / "metrics.json"
             metrics = {
                 "performance": {
                     "total_executions": len(executions),
@@ -308,30 +310,57 @@ class EnhancedExecutionManager(ExecutionManager):
             with open(metrics_file, "w") as f:
                 json.dump(metrics, f, indent=2)
             
-            # Write trade file if execution completed
-            if result.status == ExecutionStatus.COMPLETED:
-                trade_dir = Path("memory-bank/trades")
-                trade_dir.mkdir(parents=True, exist_ok=True)
+            # Update aggregated trade history file
+            trade_dir = self._memory_bank.base_dir / "trades"
+            trade_dir.mkdir(parents=True, exist_ok=True)
+            trade_history_file = trade_dir / "recent_trades.json"
+            trade_history = []
+
+            # Read existing history
+            if trade_history_file.exists():
+                try:
+                    with open(trade_history_file, "r") as f:
+                        data = json.load(f)
+                        if isinstance(data, dict) and 'trades' in data:
+                            trade_history = data['trades']
+                        elif isinstance(data, list): # Handle older format if necessary
+                            trade_history = data
+                except json.JSONDecodeError:
+                    logger.warning(f"Could not decode existing trade history file: {trade_history_file}")
+                except Exception as e:
+                    logger.error(f"Error reading trade history file {trade_history_file}: {e}")
+
+            # Prepare current trade record (ensure all necessary fields are present)
+            current_trade = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "execution_id": result.id,
+                "status": result.status.value,
+                "token_pair": result.opportunity.token_pair if result.opportunity else "N/A",
+                "dex_1": result.opportunity.dex_1 if result.opportunity else "N/A",
+                "dex_2": result.opportunity.dex_2 if result.opportunity else "N/A",
+                "strategy_type": result.strategy_id, # Assuming strategy_id represents the type
+                "trade_type": result.opportunity.trade_type if result.opportunity else "unknown", # e.g., 'flashloan', 'simple'
+                "profit": str(result.net_profit) if result.net_profit else "0", # Assuming net_profit is gross profit for now
+                "gas_cost": str(result.gas_used) if result.gas_used else "0",
+                "initial_investment": str(result.opportunity.amount_in) if result.opportunity else "0", # Or borrowed amount for flashloan
+                "tx_hash": result.transaction_hash,
+                "error": result.error
+            }
+
+            # Append new trade and limit history size (e.g., keep last 1000)
+            trade_history.append(current_trade)
+            max_history = 1000
+            if len(trade_history) > max_history:
+                trade_history = trade_history[-max_history:]
+
+            # Write updated history back
+            try:
+                with open(trade_history_file, "w") as f:
+                    # Store as a dictionary with a 'trades' key for consistency
+                    json.dump({"trades": trade_history}, f, indent=2)
+            except Exception as e:
+                 logger.error(f"Error writing trade history file {trade_history_file}: {e}")
                 
-                trade_file = trade_dir / f"trade_{int(datetime.now().timestamp())}.json"
-                trade_data = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "execution_id": result.id,
-                    "opportunity": {
-                        "token_pair": result.opportunity.token_pair,
-                        "dex_1": result.opportunity.dex_1,
-                        "dex_2": result.opportunity.dex_2,
-                        "potential_profit": str(result.opportunity.expected_profit_wei)
-                    },
-                    "success": True,
-                    "net_profit": str(result.net_profit) if result.net_profit else "0",
-                    "gas_cost": str(result.gas_used) if result.gas_used else "0",
-                    "tx_hash": result.transaction_hash
-                }
-                
-                with open(trade_file, "w") as f:
-                    json.dump(trade_data, f, indent=2)
-                    
         except Exception as e:
             logger.error(f"Error updating execution state: {e}", exc_info=True)
             

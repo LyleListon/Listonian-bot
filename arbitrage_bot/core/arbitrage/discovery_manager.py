@@ -129,6 +129,9 @@ class DiscoveryManager(OpportunityDiscoveryManager):
             except Exception as e:
                 logger.error(f"Error in detector {detector_id}: {e}", exc_info=True)
         
+        logger.debug(f"Detected {len(all_opportunities)} raw opportunities before profit filtering.")
+        for opp in all_opportunities:
+            logger.debug(f"  - Raw Opp ID: {opp.id}, Profit: {opp.expected_profit_wei}")
         # Filter by profit threshold
         filtered_opportunities = [
             opp for opp in all_opportunities

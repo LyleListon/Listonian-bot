@@ -54,8 +54,78 @@ class AsyncMemoryMappedFile:
             # Ensure file exists with minimum size
             if not self.file_path.exists():
                 self.file_path.parent.mkdir(parents=True, exist_ok=True)
+                # Initialize with proper default structure based on file type
+                default_content = '{}'
+                if 'metrics.json' in str(self.file_path):
+                    default_content = '''{
+                        "profitability": {
+                            "net_profit_by_pair": {},
+                            "roi_by_trade_type": {},
+                            "profit_per_gas": 0.0,
+                            "profit_by_strategy": {},
+                            "total_profit": 0.0,
+                            "total_gas_spent": 0.0
+                        },
+                        "dex_performance": {
+                            "success_rates": {},
+                            "cross_dex_frequency": {},
+                            "slippage_patterns": {},
+                            "liquidity_correlation": {}
+                        },
+                        "flash_loans": {
+                            "provider_success_rates": {},
+                            "peak_reliability": {},
+                            "cost_impact": 0.0,
+                            "max_loan_sizes": {}
+                        },
+                        "execution": {
+                            "gas_by_strategy": {},
+                            "mev_protection": {
+                                "front_running_prevented": 0,
+                                "sandwich_attacks_avoided": 0,
+                                "successful_bundles": 0
+                            },
+                            "path_length_correlation": {},
+                            "avg_execution_time": 0.0
+                        },
+                        "token_performance": {
+                            "cbeth_eth_opportunities": {
+                                "count": 0,
+                                "total_profit": 0.0,
+                                "success_rate": 0.0
+                            },
+                            "usdc_pairs": {
+                                "arbitrage_frequency": 0,
+                                "total_profit": 0.0,
+                                "success_rate": 0.0
+                            },
+                            "token_volatility": {},
+                            "migration_patterns": {}
+                        },
+                        "system_performance": {
+                            "network_congestion": {
+                                "current_level": 0.0,
+                                "impact_on_success": 0.0
+                            },
+                            "opportunity_timing": {
+                                "hourly_distribution": {},
+                                "peak_hours": []
+                            },
+                            "recurring_patterns": {
+                                "identified_paths": [],
+                                "success_rates": {}
+                            },
+                            "multi_path_comparison": {
+                                "simple_success_rate": 0.0,
+                                "multi_success_rate": 0.0,
+                                "profit_difference": 0.0
+                            }
+                        }
+                    }'''
+                elif 'recent_trades.json' in str(self.file_path):
+                    default_content = '{"trades": []}'
                 async with aiofiles.open(self.file_path, 'w') as f:
-                    await f.write('{}')
+                    await f.write(default_content)
             
             # Ensure file is at least max_size
             stat = await aiofiles.os.stat(self.file_path)
@@ -66,7 +136,7 @@ class AsyncMemoryMappedFile:
             # Open file and create memory mapping
             self._file = await aiofiles.open(self.file_path, 'r+b')
             raw_file = self._file.fileno()
-            self._mmap = mmap.mmap(raw_file, 0, access=mmap.ACCESS_READ)
+            self._mmap = mmap.mmap(raw_file, 0, access=mmap.ACCESS_WRITE)
             logger.info(f"Initialized memory-mapped file: {self.file_path}")
             
         except Exception as e:
@@ -108,10 +178,15 @@ class AsyncMemoryMappedFile:
                     content = content[:null_pos]
                     
                 # Decode and parse JSON
+                if not content:
+                    logger.warning("Empty content in memory-mapped file")
+                    return {}
+                    
                 try:
                     return json.loads(content.decode('utf-8'))
                 except json.JSONDecodeError:
-                    logger.error("Invalid JSON in memory-mapped file")
+                    logger.error("Invalid JSON in memory-mapped file: %s", 
+                               content.decode('utf-8', errors='replace'))
                     return {}
             except Exception as e:
                 logger.error(f"Error reading from memory-mapped file: {e}")
@@ -122,27 +197,32 @@ class AsyncMemoryMappedFile:
         if not self._mmap:
             raise RuntimeError("Memory-mapped file not initialized")
             
-        # Write to file first
-        async with aiofiles.open(self.file_path, 'r+b') as f:
+        async with self._lock:
             try:
-                # Convert data to bytes
-                content = json.dumps(data).encode()
-                if len(content) > self.max_size:
-                    raise ValueError(f"Data size ({len(content)}) exceeds maximum size ({self.max_size})")
+                # Convert data to JSON bytes
+                content = json.dumps(data, ensure_ascii=False).encode('utf-8')
+                content_len = len(content)
                 
-                # Write content and padding
-                await f.write(content)
-                padding_size = self.max_size - len(content)
+                if content_len > self.max_size:
+                    raise ValueError(
+                        f"Data size ({content_len}) exceeds maximum size ({self.max_size})"
+                    )
+                
+                # Write to memory map
+                self._mmap.seek(0)
+                self._mmap.write(content)
+                
+                # Add null padding
+                padding_size = self.max_size - content_len
                 if padding_size > 0:
-                    await f.write(b'\0' * padding_size)
-                await f.flush()
+                    self._mmap.write(b'\0' * padding_size)
+                
+                # Ensure changes are written to disk
+                self._mmap.flush()
                 
             except Exception as e:
                 logger.error(f"Error writing to file: {e}")
                 raise
-            
-        # Re-read from memory map to ensure consistency
-        self._mmap.seek(0)
 
 class FileManager:
     """Manage memory-mapped files and file system watching."""
@@ -174,7 +254,7 @@ class FileManager:
                 max_size=2 * 1024 * 1024  # 2MB for trade history
             )
             self.files['metrics'] = AsyncMemoryMappedFile(
-                self.base_dir / 'state' / 'metrics.json',
+                self.base_dir / 'metrics' / 'metrics.json',
                 max_size=1024 * 1024  # 1MB for metrics
             )
             

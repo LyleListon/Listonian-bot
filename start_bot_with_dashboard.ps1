@@ -87,7 +87,11 @@ function Start-ArbitrageBot {
 # Function to start the dashboard
 function Start-Dashboard {
     Write-Host "Starting dashboard..."
-    $script:DashProcess = Start-Process -FilePath "cmd" -ArgumentList "/c set MEMORY_BANK_PATH=%CD%\memory-bank && cd new_dashboard && uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9050 --reload" -PassThru -NoNewWindow -RedirectStandardError "logs/dashboard.err"
+    $env:MEMORY_BANK_PATH = Join-Path $PWD "memory-bank"
+    Write-Host "Setting MEMORY_BANK_PATH to: $env:MEMORY_BANK_PATH"
+    # Add current directory to PYTHONPATH
+    $env:PYTHONPATH = $PWD
+    $script:DashProcess = Start-Process -FilePath "python" -ArgumentList "-m uvicorn new_dashboard.dashboard.app:app --host 0.0.0.0 --port 9050 --no-use-colors" -WorkingDirectory $PWD -PassThru -NoNewWindow -RedirectStandardError "logs/dashboard.err"
     return $script:DashProcess
 }
 
