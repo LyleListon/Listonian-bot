@@ -23,16 +23,16 @@ from ..models import (
     TokenAmount,
     StrategyType
 )
-from ..discovery_manager import BaseOpportunityDiscoveryManager
+from ..discovery_manager import DiscoveryManager
 
 logger = logging.getLogger(__name__)
 
 
-class DefaultDiscoveryManager(BaseOpportunityDiscoveryManager):
+class DefaultDiscoveryManager(DiscoveryManager):
     """
     Default implementation of the OpportunityDiscoveryManager for the Listonian Arbitrage Bot.
     
-    This class extends the BaseOpportunityDiscoveryManager with specific optimizations and
+    This class extends the DiscoveryManager with specific optimizations and
     strategies focused on profit maximization, risk minimization, and MEV protection.
     """
     
@@ -49,7 +49,10 @@ class DefaultDiscoveryManager(BaseOpportunityDiscoveryManager):
             config: Configuration dictionary
         """
         # Initialize base class
-        super().__init__(market_data_provider, config)
+        super().__init__()
+        
+        self.market_data_provider = market_data_provider
+        self.config = config or {}
         
         # Default configuration values
         default_config = {
@@ -73,326 +76,259 @@ class DefaultDiscoveryManager(BaseOpportunityDiscoveryManager):
             "preferred_flash_loan_providers": ["balancer", "aave"],  # Preferred flash loan providers
             
             # MEV protection
-            "use_flashbots_rpc": True,  # Use Flashbots RPC
-            "min_bundle_tip_wei": 10000000000000,  # 0.00001 ETH minimum tip for Flashbots
+            "use_flashbots": True,  # Use Flashbots for MEV protection
+            "bundle_submission_strategy": "progressive",  # Progressive bundle submission strategy
+            "max_bundle_wait_time_seconds": 30,  # Maximum time to wait for bundle inclusion
             
-            # Parallel processing
-            "batch_size_pools": 50,  # Process 50 pools per batch
-            "batch_size_tokens": 20,  # Process 20 tokens per batch
-            "max_parallel_detector_calls": 5,  # Maximum parallel detector calls
-            
-            # Safety limits
-            "max_slippage_percentage": 0.5,  # 0.5% maximum slippage
-            "liquidity_depth_threshold_usd": 10000,  # $10,000 minimum liquidity depth
+            # Performance optimization
+            "parallel_detection": True,  # Run detectors in parallel
+            "batch_size": 10,  # Batch size for parallel processing
+            "max_concurrent_detectors": 5  # Maximum number of concurrent detectors
         }
         
-        # Merge provided config with defaults
-        self.config = {**default_config, **(config or {})}
+        # Merge default config with provided config
+        for key, value in default_config.items():
+            if key not in self.config:
+                self.config[key] = value
         
         # Initialize caches
-        self._price_cache = {}
-        self._pool_data_cache = {}
-        self._last_cache_cleanup = time.time()
+        self._price_cache = {}  # token_address -> (price, timestamp)
+        self._pool_data_cache = {}  # pool_address -> (data, timestamp)
         
-        # Strategy-specific configuration
-        self._strategy_config = {
-            StrategyType.CROSS_DEX: {
-                "max_dexes": 3,
-                "min_profit_multiplier": 1.0,
-            },
-            StrategyType.TRIANGULAR: {
-                "max_tokens": 4,
-                "min_profit_multiplier": 1.2,
-            },
-            StrategyType.MULTI_PATH: {
-                "max_paths": 3,
-                "min_profit_multiplier": 1.3,
-            },
-            StrategyType.FLASH_LOAN: {
-                "max_loan_amount_wei": 10000 * 10**18,  # 10,000 ETH
-                "min_profit_multiplier": 1.5,
-            },
+        # Initialize strategy selectors
+        self._strategy_selectors = {
+            StrategyType.SIMPLE: self._select_simple_strategy,
+            StrategyType.FLASH_LOAN: self._select_flash_loan_strategy,
+            StrategyType.MULTI_PATH: self._select_multi_path_strategy,
+            StrategyType.CUSTOM: self._select_custom_strategy
         }
-        
-        # Additional locks for thread safety
-        self._cache_lock = asyncio.Lock()
-        self._strategy_lock = asyncio.Lock()
-        
-        logger.info("DefaultDiscoveryManager initialized with advanced configuration")
     
     async def discover_opportunities(
         self,
         max_results: int = 10,
-        detector_ids: Optional[List[str]] = None,
-        strategy_types: Optional[List[StrategyType]] = None,
-        min_profit_wei: Optional[int] = None,
-        max_slippage: Optional[float] = None,
-        include_flash_loans: bool = True,
+        min_profit_wei: int = 0,
+        market_condition: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> List[ArbitrageOpportunity]:
         """
-        Discover arbitrage opportunities with enhanced filtering and optimization.
+        Discover arbitrage opportunities.
         
         Args:
             max_results: Maximum number of opportunities to return
-            detector_ids: Specific detectors to use, or None for all
-            strategy_types: Specific strategy types to include, or None for all
-            min_profit_wei: Minimum profit threshold in wei, overrides config value
-            max_slippage: Maximum allowed slippage, overrides config value
-            include_flash_loans: Whether to include flash loan strategies
-            **kwargs: Additional discovery parameters
+            min_profit_wei: Minimum profit threshold in wei
+            market_condition: Current market state
+            **kwargs: Additional parameters
             
         Returns:
-            List of validated arbitrage opportunities
+            List of discovered opportunities
         """
-        # Perform cache maintenance if needed
-        await self._maintain_caches()
+        if not self._initialized:
+            await self.initialize()
         
-        # Use config values if not provided
-        actual_min_profit = min_profit_wei if min_profit_wei is not None else self.config["min_profit_wei"]
-        actual_max_slippage = max_slippage if max_slippage is not None else self.config["max_slippage_percentage"] / 100
+        # Use provided min_profit_wei or default from config
+        min_profit = min_profit_wei or self.config.get("min_profit_wei", 0)
         
-        # Add parameters to kwargs for base class
-        discovery_kwargs = {
-            **kwargs,
-            "min_profit_wei": actual_min_profit,
-            "max_slippage": actual_max_slippage,
-            "strategy_filter": strategy_types,
-            "flash_loan_config": {
-                "enabled": include_flash_loans,
-                "preferred_providers": self.config["preferred_flash_loan_providers"],
-                "max_loan_amount": self.config["_strategy_config"][StrategyType.FLASH_LOAN]["max_loan_amount_wei"] if include_flash_loans else 0
-            }
-        }
+        # Get current market condition if not provided
+        if market_condition is None:
+            market_condition = await self._get_market_condition()
         
-        # Call base class implementation
-        opportunities = await super().discover_opportunities(
-            max_results=max_results,
-            detector_ids=detector_ids,
-            **discovery_kwargs
-        )
+        # Discover opportunities using all registered detectors
+        all_opportunities = []
         
-        # Apply additional filtering and optimization
-        enhanced_opportunities = await self._enhance_opportunities(opportunities)
+        if self.config.get("parallel_detection", True):
+            # Run detectors in parallel
+            tasks = []
+            batch_size = self.config.get("batch_size", 10)
+            max_concurrent = self.config.get("max_concurrent_detectors", 5)
+            
+            # Create semaphore to limit concurrency
+            semaphore = asyncio.Semaphore(max_concurrent)
+            
+            # Create tasks for each detector
+            for detector_id, detector in self._detectors.items():
+                tasks.append(self._run_detector(detector, detector_id, market_condition, semaphore))
+            
+            # Run tasks in batches
+            for i in range(0, len(tasks), batch_size):
+                batch = tasks[i:i+batch_size]
+                batch_results = await asyncio.gather(*batch)
+                for opportunities in batch_results:
+                    all_opportunities.extend(opportunities)
+        else:
+            # Run detectors sequentially
+            for detector_id, detector in self._detectors.items():
+                try:
+                    opportunities = await detector.detect_opportunities(market_condition)
+                    all_opportunities.extend(opportunities)
+                except Exception as e:
+                    logger.error(f"Error in detector {detector_id}: {e}")
         
-        # Apply strategy-specific filters
-        if strategy_types:
-            enhanced_opportunities = [
-                opp for opp in enhanced_opportunities 
-                if opp.strategy_type in strategy_types
-            ]
+        # Validate opportunities
+        validated_opportunities = []
         
-        # Apply profit threshold
-        enhanced_opportunities = [
-            opp for opp in enhanced_opportunities 
-            if opp.expected_profit >= actual_min_profit
-        ]
+        for opportunity in all_opportunities:
+            # Skip opportunities below profit threshold
+            if opportunity.expected_profit_wei < min_profit:
+                continue
+            
+            # Validate opportunity
+            is_valid = await self._validate_opportunity(opportunity, market_condition)
+            
+            if is_valid:
+                validated_opportunities.append(opportunity)
         
-        # If using Flashbots, include bundle tip in gas calculations
-        if self.config["use_flashbots_rpc"]:
-            for opp in enhanced_opportunities:
-                if "flashbots_bundle_tip" not in opp.metadata:
-                    opp.metadata["flashbots_bundle_tip"] = self.config["min_bundle_tip_wei"]
-                opp.gas_price = opp.gas_price + (opp.metadata["flashbots_bundle_tip"] // opp.gas_estimate)
-        
-        # Sort by expected profit after gas costs and limit to max_results
-        sorted_opportunities = sorted(
-            enhanced_opportunities,
-            key=lambda o: o.expected_profit_after_gas,
+        # Sort by expected profit (descending)
+        validated_opportunities.sort(
+            key=lambda x: x.expected_profit_wei,
             reverse=True
         )
         
-        return sorted_opportunities[:max_results]
+        # Return top opportunities
+        return validated_opportunities[:max_results]
     
-    async def _enhance_opportunities(
-        self, 
-        opportunities: List[ArbitrageOpportunity]
+    async def _run_detector(
+        self,
+        detector: OpportunityDetector,
+        detector_id: str,
+        market_condition: Dict[str, Any],
+        semaphore: asyncio.Semaphore
     ) -> List[ArbitrageOpportunity]:
         """
-        Enhance opportunities with additional data and optimization.
+        Run a detector with semaphore for concurrency control.
         
         Args:
-            opportunities: List of opportunities to enhance
+            detector: Opportunity detector
+            detector_id: Detector ID
+            market_condition: Current market state
+            semaphore: Semaphore for concurrency control
             
         Returns:
-            Enhanced opportunities
+            List of detected opportunities
         """
-        # Skip if no opportunities
-        if not opportunities:
-            return []
-        
-        enhanced = []
-        enhancement_tasks = []
-        
-        # Create tasks for parallel enhancement
-        for opportunity in opportunities:
-            task = asyncio.create_task(self._enhance_single_opportunity(opportunity))
-            enhancement_tasks.append(task)
-        
-        # Wait for all enhancement tasks
-        results = await asyncio.gather(*enhancement_tasks, return_exceptions=True)
-        
-        # Process results
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"Error enhancing opportunity: {result}")
-                continue
-            
-            if result:
-                enhanced.append(result)
-        
-        return enhanced
+        async with semaphore:
+            try:
+                return await detector.detect_opportunities(market_condition)
+            except Exception as e:
+                logger.error(f"Error in detector {detector_id}: {e}")
+                return []
     
-    async def _enhance_single_opportunity(
-        self, 
-        opportunity: ArbitrageOpportunity
-    ) -> Optional[ArbitrageOpportunity]:
+    async def _get_market_condition(self) -> Dict[str, Any]:
         """
-        Enhance a single opportunity with additional data and checks.
+        Get current market condition.
         
-        Args:
-            opportunity: Opportunity to enhance
-            
         Returns:
-            Enhanced opportunity or None if it should be filtered out
+            Current market state
         """
-        try:
-            # Get latest market condition
-            market_condition = await self.market_data_provider.get_current_market_condition()
-            
-            # Check profit margin
-            min_roi = self.config["min_roi_percentage"] / 100
-            actual_roi = opportunity.profit_margin_percentage / 100
-            
-            if actual_roi < min_roi:
-                logger.debug(f"Opportunity {opportunity.id} filtered out due to low ROI: {actual_roi:.4f}% < {min_roi:.4f}%")
-                return None
-            
-            # Verify across multiple price sources if configured
-            if self.config["price_verification_sources"] > 1:
-                if not await self._verify_prices(opportunity, market_condition):
-                    logger.debug(f"Opportunity {opportunity.id} filtered out due to price verification failure")
-                    return None
-            
-            # Apply strategy-specific multipliers
-            strategy_config = self._strategy_config.get(opportunity.strategy_type, {})
-            min_profit_multiplier = strategy_config.get("min_profit_multiplier", 1.0)
-            
-            if min_profit_multiplier > 1.0:
-                min_strategy_profit = self.config["min_profit_wei"] * min_profit_multiplier
-                if opportunity.expected_profit < min_strategy_profit:
-                    logger.debug(f"Opportunity {opportunity.id} filtered out due to strategy-specific profit threshold")
-                    return None
-            
-            # Verify liquidity depth if relevant data is available
-            if "pool_reserves" in market_condition:
-                if not await self._verify_liquidity_depth(opportunity, market_condition):
-                    logger.debug(f"Opportunity {opportunity.id} filtered out due to insufficient liquidity depth")
-                    return None
-            
-            # Check gas usage percentage
-            gas_cost = opportunity.gas_estimate * (opportunity.gas_price + opportunity.priority_fee)
-            gas_percentage = (gas_cost / opportunity.expected_profit) * 100
-            
-            if gas_percentage > self.config["max_gas_usage_percentage"]:
-                logger.debug(f"Opportunity {opportunity.id} filtered out due to high gas usage: {gas_percentage:.2f}%")
-                return None
-            
-            # Add optimization metadata
-            opportunity.metadata["enhanced"] = True
-            opportunity.metadata["verification_level"] = self.config["price_verification_sources"]
-            opportunity.metadata["roi_percentage"] = actual_roi * 100
-            opportunity.metadata["gas_cost_percentage"] = gas_percentage
-            
-            return opportunity
-            
-        except Exception as e:
-            logger.error(f"Error enhancing opportunity {opportunity.id}: {e}")
-            return None
+        # This is a placeholder. In a real implementation, this would
+        # fetch current market data from the market data provider.
+        return {
+            "timestamp": time.time(),
+            "prices": {},
+            "gas_price": 0,
+            "block_number": 0
+        }
     
-    async def _verify_prices(
-        self, 
-        opportunity: ArbitrageOpportunity, 
+    async def _validate_opportunity(
+        self,
+        opportunity: ArbitrageOpportunity,
         market_condition: Dict[str, Any]
     ) -> bool:
         """
-        Verify prices across multiple sources.
+        Validate an opportunity.
         
         Args:
-            opportunity: Opportunity to verify
-            market_condition: Current market condition
+            opportunity: Opportunity to validate
+            market_condition: Current market state
             
         Returns:
-            True if prices are verified, False otherwise
+            True if the opportunity is valid, False otherwise
         """
-        # Implementation should verify prices across multiple sources
-        # For now, return True to simulate successful verification
-        # In a real implementation, this would check external price feeds, oracles, etc.
+        # Run all validators
+        for validator_id, validator in self._validators.items():
+            try:
+                is_valid, error_message, confidence = await validator.validate_opportunity(
+                    opportunity, market_condition
+                )
+                
+                if not is_valid:
+                    logger.debug(f"Opportunity {opportunity.id} rejected by validator {validator_id}: {error_message}")
+                    return False
+                
+                # Update confidence score
+                opportunity.confidence_score = min(opportunity.confidence_score, confidence or 1.0)
+            
+            except Exception as e:
+                logger.error(f"Error in validator {validator_id}: {e}")
+                return False
+        
         return True
     
-    async def _verify_liquidity_depth(
-        self, 
-        opportunity: ArbitrageOpportunity, 
-        market_condition: Dict[str, Any]
-    ) -> bool:
+    def _select_simple_strategy(self, opportunity: ArbitrageOpportunity) -> Dict[str, Any]:
         """
-        Verify that pools have sufficient liquidity depth.
+        Select a simple strategy for the opportunity.
         
         Args:
-            opportunity: Opportunity to verify
-            market_condition: Current market condition
+            opportunity: Arbitrage opportunity
             
         Returns:
-            True if liquidity depth is sufficient, False otherwise
+            Strategy configuration
         """
-        # Implementation should verify liquidity depth
-        # For now, return True to simulate successful verification
-        # In a real implementation, this would check pool reserves, liquidity, etc.
-        return True
+        return {
+            "type": StrategyType.SIMPLE,
+            "params": {}
+        }
     
-    async def _maintain_caches(self) -> None:
-        """Perform cache maintenance to clean expired entries."""
-        now = time.time()
+    def _select_flash_loan_strategy(self, opportunity: ArbitrageOpportunity) -> Dict[str, Any]:
+        """
+        Select a flash loan strategy for the opportunity.
         
-        # Only perform cleanup occasionally
-        if now - self._last_cache_cleanup < 60:  # Every minute
-            return
+        Args:
+            opportunity: Arbitrage opportunity
+            
+        Returns:
+            Strategy configuration
+        """
+        preferred_providers = self.config.get("preferred_flash_loan_providers", ["balancer", "aave"])
         
-        async with self._cache_lock:
-            # Clean price cache
-            price_ttl = self.config["price_cache_ttl_seconds"]
-            expired_prices = [k for k, (v, ts) in self._price_cache.items() if now - ts > price_ttl]
-            for key in expired_prices:
-                del self._price_cache[key]
-            
-            # Clean pool data cache
-            pool_ttl = self.config["pool_data_cache_ttl_seconds"]
-            expired_pools = [k for k, (v, ts) in self._pool_data_cache.items() if now - ts > pool_ttl]
-            for key in expired_pools:
-                del self._pool_data_cache[key]
-            
-            self._last_cache_cleanup = now
-            
-            logger.debug(f"Cache maintenance: removed {len(expired_prices)} price entries and {len(expired_pools)} pool entries")
-
-
-async def create_default_discovery_manager(
-    market_data_provider: MarketDataProvider,
-    config: Dict[str, Any] = None
-) -> DefaultDiscoveryManager:
-    """
-    Create and initialize a default discovery manager.
+        return {
+            "type": StrategyType.FLASH_LOAN,
+            "params": {
+                "providers": preferred_providers,
+                "amount": opportunity.amount_in_wei
+            }
+        }
     
-    Args:
-        market_data_provider: Provider of market data
-        config: Configuration dictionary
+    def _select_multi_path_strategy(self, opportunity: ArbitrageOpportunity) -> Dict[str, Any]:
+        """
+        Select a multi-path strategy for the opportunity.
         
-    Returns:
-        Initialized default discovery manager
-    """
-    manager = DefaultDiscoveryManager(
-        market_data_provider=market_data_provider,
-        config=config
-    )
+        Args:
+            opportunity: Arbitrage opportunity
+            
+        Returns:
+            Strategy configuration
+        """
+        max_path_length = self.config.get("max_path_length", 4)
+        
+        return {
+            "type": StrategyType.MULTI_PATH,
+            "params": {
+                "max_path_length": max_path_length,
+                "paths": opportunity.path
+            }
+        }
     
-    return manager
+    def _select_custom_strategy(self, opportunity: ArbitrageOpportunity) -> Dict[str, Any]:
+        """
+        Select a custom strategy for the opportunity.
+        
+        Args:
+            opportunity: Arbitrage opportunity
+            
+        Returns:
+            Strategy configuration
+        """
+        return {
+            "type": StrategyType.CUSTOM,
+            "params": opportunity.risk_factors.get("custom_strategy_params", {})
+        }

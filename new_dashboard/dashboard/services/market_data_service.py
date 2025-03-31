@@ -33,8 +33,15 @@ class MarketDataService:
         self._update_task: Optional[asyncio.Task] = None
         self._initialized = False
         
+        # Create a modified config for EnhancedMarketDataProvider
+        # It expects provider_url at the top level, but our config has it under web3.rpc_url
+        enhanced_config = config.copy()
+        if "web3" in config and "rpc_url" in config["web3"]:
+            enhanced_config["provider_url"] = config["web3"]["rpc_url"]
+            enhanced_config["chain_id"] = config["web3"].get("chain_id")
+        
         # Initialize market data components
-        self._market_data_provider = EnhancedMarketDataProvider(config)
+        self._market_data_provider = EnhancedMarketDataProvider(enhanced_config)
         self._web3 = Web3Manager(config["web3"])
         
         # Cache for market data

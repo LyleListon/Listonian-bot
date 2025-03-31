@@ -1,167 +1,117 @@
-# Arbitrage Bot Dashboard
+# Listonian Arbitrage Bot - Dashboard
 
-A real-time monitoring dashboard for the arbitrage bot system, built with FastAPI and WebSocket for live updates.
+This dashboard provides real-time monitoring and visualization of the Listonian Arbitrage Bot's performance, trade history, and market data.
 
 ## Features
 
-### 1. Blockchain Monitoring
-- Real-time block number tracking
-- Gas price monitoring
-- Network connection status
-- Chain ID verification
+- Real-time metrics display
+- Trade history tracking
+- Performance analytics
+- WebSocket-based updates
+- Mock data generation for testing
 
-### 2. Cache System Metrics
-- Cache hit ratio tracking
-- Cache size monitoring
-- TTL eviction statistics
-- Performance optimization insights
+## Getting Started
 
-### 3. Performance Monitoring
-- Memory usage tracking
-- CPU utilization
-- Active connection count
-- Batch operation statistics
+### Prerequisites
 
-### 4. Security Metrics
-- Slippage violation tracking
-- Transaction validation status
-- Suspicious transaction detection
-- Risk assessment metrics
+- Python 3.12+
+- FastAPI
+- Uvicorn
+- WebSockets support
 
-### 5. DEX Integration Status
-- Active pool monitoring
-- Total liquidity tracking
-- Price update frequency
-- Integration health checks
+### Installation
 
-## Technology Stack
+1. Make sure you have all dependencies installed:
 
-- **Backend**: FastAPI + Python 3.12+
-- **Frontend**: HTML + JavaScript
-- **Real-time Updates**: WebSocket
-- **Blockchain**: Web3.py
-- **Monitoring**: psutil
-
-## Setup
-
-1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install fastapi uvicorn websockets
 ```
 
-2. Configure environment variables in `.env`:
-```env
-# Network Configuration
-RPC_URL=https://mainnet.base.org
-CHAIN_ID=8453
+2. Navigate to the project directory:
 
-# Dashboard Configuration
-DASHBOARD_HOST=127.0.0.1
-DASHBOARD_PORT=3000
-
-# Logging Configuration
-LOG_LEVEL=INFO
-LOG_FILE=logs/dashboard.log
-```
-
-3. Start the dashboard:
 ```bash
-./start_dashboard.ps1  # Windows
-# or
-./start_dashboard.sh   # Linux/Mac
+cd new_dashboard
 ```
 
-4. Access the dashboard:
+### Running the Test Server
+
+To run the test server with mock data:
+
+```bash
+# Using PowerShell
+.\run_test_server.ps1
+
+# Or using Python directly
+python run_test_server.py
 ```
-http://127.0.0.1:3000
+
+The test server will start on port 9050. You can access the dashboard at:
+
+```
+http://localhost:9050/test
 ```
 
-## API Endpoints
+### Running the Production Server
 
-### WebSocket
-- `/ws` - Real-time metric updates
+To run the production server connected to the actual bot:
 
-### REST API
-- `GET /api/status` - Overall system status
-- `GET /api/metrics` - Detailed system metrics
-- `GET /api/cache` - Cache system metrics
-- `GET /api/performance` - Performance metrics
-- `GET /api/security` - Security metrics
-- `GET /api/dex` - DEX integration metrics
-- `GET /health` - Health check endpoint
+```bash
+# Using Python
+python -m uvicorn dashboard.app:app --host 0.0.0.0 --port 9051
+```
+
+The production server will start on port 9051. You can access the dashboard at:
+
+```
+http://localhost:9051
+```
 
 ## Architecture
 
-The dashboard follows a modular architecture:
+The dashboard consists of the following components:
 
-1. **Web3 Layer**
-   - Blockchain connection management
-   - Transaction monitoring
-   - Gas price tracking
-
-2. **Metrics Collection**
-   - System resource monitoring
-   - Cache performance tracking
-   - Security metric aggregation
-
-3. **Real-time Updates**
-   - WebSocket communication
-   - Event-driven updates
-   - Connection management
-
-4. **Frontend**
-   - Responsive design
-   - Real-time data visualization
-   - Status indicators
-
-## Security Considerations
-
-- Environment variables for sensitive configuration
-- CORS protection
-- Error handling and logging
-- Rate limiting (TODO)
-- Authentication (TODO)
+1. **FastAPI Backend**: Handles WebSocket connections and serves the dashboard UI
+2. **WebSocket Server**: Provides real-time updates to connected clients
+3. **Data Processing Layer**: Processes and formats data from the bot
+4. **UI Layer**: Visualizes the data in an intuitive interface
 
 ## Development
 
-### Adding New Metrics
+### Test Environment
 
-1. Add metric to the metrics dictionary in `app.py`:
-```python
-metrics = {
-    'new_category': {
-        'metric_name': initial_value
-    }
-}
+The test environment uses mock data to simulate the bot's behavior. This is useful for UI development and testing without needing to run the actual bot.
+
+### Directory Structure
+
+```
+new_dashboard/
+├── README.md
+├── run_test_server.ps1
+├── run_test_server.py
+├── tests/
+│   └── dashboard/
+│       ├── app.py
+│       └── templates/
+│           └── test.html
+└── dashboard/
+    ├── app.py
+    ├── static/
+    └── templates/
 ```
 
-2. Create corresponding API endpoint:
-```python
-@app.get("/api/new_category")
-async def get_new_category_metrics():
-    return {
-        "timestamp": datetime.utcnow().isoformat(),
-        "metrics": metrics['new_category']
-    }
-```
+## Integration with the Bot
 
-3. Update the frontend to display the new metrics in `index.html`
-
-### Testing
-
-Run the development server with auto-reload:
-```bash
-python -m uvicorn app:app --reload --port 3000
-```
+The dashboard integrates with the Listonian Arbitrage Bot through a shared memory interface. The bot updates the shared memory with its current state, and the dashboard reads this data to display it to the user.
 
 ## Contributing
 
-1. Follow the project's async/await patterns
-2. Maintain error handling standards
-3. Update documentation for new features
-4. Add appropriate logging
-5. Test thoroughly before submitting changes
+When contributing to the dashboard, please follow these guidelines:
+
+1. Use async/await patterns for all I/O operations
+2. Implement proper error handling
+3. Add appropriate logging
+4. Follow the project's coding standards
 
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the terms of the license included with the Listonian Arbitrage Bot.

@@ -1,4 +1,45 @@
-# Arbitrage Bot Documentation
+# Listonian Arbitrage Bot Documentation
+
+## System Overview
+
+The Listonian Arbitrage Bot is a comprehensive system for discovering, executing, and analyzing arbitrage opportunities across multiple DEXes. The system is built with a focus on performance, reliability, and profitability.
+
+## Core Components
+
+1. [DEX Discovery System](dex_discovery.md)
+   - Automatic discovery of DEXes from multiple sources
+   - Validation of DEX contracts and functions
+   - Storage and retrieval of DEX information
+
+2. [Flashbots Integration](FLASHBOTS_INTEGRATION.md)
+   - Private transaction routing
+   - Bundle submission for atomic execution
+   - MEV protection against front-running and sandwich attacks
+   - Flash loan integration with Balancer
+
+3. [Multi-Path Arbitrage](multi_path_arbitrage.md)
+   - Advanced path finding with Bellman-Ford algorithm
+   - Capital allocation with Kelly criterion
+   - Risk management and position sizing
+   - Parallel execution of multiple paths
+
+4. [Real-Time Metrics](real_time_metrics_optimization.md)
+   - Task management for async operations
+   - Connection management with state machine
+   - Metrics batching and throttling
+   - Resource cleanup and monitoring
+
+5. [Performance Optimization](performance_optimization.md)
+   - Shared memory for efficient data sharing
+   - WebSocket optimization with binary format
+   - Resource management for memory, CPU, and I/O
+   - Message batching and compression
+
+6. [Advanced Analytics](advanced_analytics.md)
+   - Profit tracking and attribution
+   - Trading journal with insights
+   - Alert system for opportunities and risks
+   - Performance analysis and visualization
 
 ## System Architecture
 
@@ -7,7 +48,7 @@ The system is divided into several key components, each documented with detailed
 1. [Core Components Flow](CORE_FLOW.md)
    - Main system architecture
    - Component relationships
-   - MCP integration
+   - Execution flow
 
 2. [Dashboard Flow](DASHBOARD_FLOW.md)
    - Web interface components
@@ -20,19 +61,29 @@ The system is divided into several key components, each documented with detailed
    - Execution process
    - Failure handling
 
-## Failed Attempts Documentation
+## Getting Started
 
-See [failed_attempts/](failed_attempts/) directory for detailed documentation of problems encountered and solutions found:
+1. [Quick Start Guide](setup/STARTUP_GUIDE.md)
+   - Environment setup
+   - Configuration
+   - Starting services
+   - Verification
 
-- Price monitoring challenges
-- Trade execution issues
-- Gas optimization attempts
-- Integration problems
+2. [System Overview](SYSTEM_ARCHITECTURE.md)
+   - Component overview
+   - Data flow
+   - Integration points
+
+3. [Profit Analysis Guide](PROFIT_ANALYSIS_GUIDE.md)
+   - Analyzing performance
+   - Identifying profitable strategies
+   - Optimizing parameters
+   - Risk management
 
 ## Development Guidelines
 
 1. **Documentation First Policy**
-   - Update [CURRENT_WORK_STATUS.md](../CURRENT_WORK_STATUS.md) before making changes
+   - Update documentation before making changes
    - Document failed attempts immediately
    - Keep diagrams current
 
@@ -42,14 +93,15 @@ See [failed_attempts/](failed_attempts/) directory for detailed documentation of
    - Utilities in arbitrage_bot/utils/
    - Configurations in arbitrage_bot/configs/
 
-3. **MCP Integration**
-   - crypto-price server for real-time pricing
-   - market-analysis server for opportunity detection
-   - See [project_map.html](../project_map.html) for details
+3. **Testing Strategy**
+   - Unit tests for all components
+   - Integration tests for system flow
+   - Performance benchmarks
+   - Simulation tests for arbitrage scenarios
 
 ## Quick Links
 
-- [Project Map](../project_map.html) - Visual system overview
-- [Current Status](../CURRENT_WORK_STATUS.md) - Latest development status
-- [Quick Start Guide](../QUICK_START_GUIDE.md) - Getting started
-- [System Monitor Guide](../SYSTEM_MONITOR_GUIDE.md) - Monitoring and maintenance
+- [Getting Started Guide](GETTING_STARTED.md) - Comprehensive guide for new assistants
+- [System Architecture](SYSTEM_ARCHITECTURE.md) - Visual system overview
+- [Configuration Guide](CONFIGURATION_SETUP.md) - Detailed configuration options
+- [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions

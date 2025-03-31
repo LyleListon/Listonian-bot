@@ -12,12 +12,16 @@
         "max_amount": "100000000000000000000"
     },
     "dexes": {
-        "baseswap_v3": {
+        "baseswap": {
             "factory": "0x38015D05f4fEC8AFe15D7cc0386a126574e8077B",
             "router": "0x1B8eea9315bE495187D873DA7773a874545D9D48",
             "quoter": "0x0C1Ef7cA95C6C2CeF48eDFc51CE1BeB2Aa2D8410",
             "fee_tiers": [100, 500, 3000, 10000]
+,
+            "enabled": true,
+            "version": "v3"
         },
+        "baseswap_v3": null,
         "aerodrome_v3": null
     },
     "tokens": {
@@ -44,6 +48,25 @@
         "min_profit_wei": 1000000000000000,
         "max_path_length": 3
     },
+   "dex_discovery": {
+       "discovery_interval_seconds": 3600,
+       "auto_validate": true,
+       "chain_id": 8453,
+       "storage_dir": "data/dexes",
+       "storage_file": "dexes.json",
+       "defillama": {
+           "base_url": "https://api.llama.fi",
+           "cache_ttl": 3600
+       },
+       "dexscreener": {
+           "base_url": "https://api.dexscreener.com/latest",
+           "cache_ttl": 3600
+       },
+       "defipulse": {
+           "base_url": "https://data-api.defipulse.com/api/v1",
+           "cache_ttl": 3600
+       }
+   },
     "ml": {
         "model_path": "models/default",
         "confidence_threshold": 0.85,

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Listonian Arbitrage Bot - Test Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.css" rel="stylesheet">
+    <link href="/static/styles.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Listonian Arbitrage Bot</a>
+            <span class="navbar-text">Test Dashboard</span>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- System Status -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        System Status
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="metric-label">Network Status</div>
+                                <div class="metric-value">
+                                    <span id="network-status-indicator" class="status-indicator status-connected"></span>
+                                    <span id="network-status">Connected</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">Gas Price</div>
+                                <div class="metric-value" id="gas-price">25.0 Gwei</div>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-6">
+                                <div class="metric-label">Uptime</div>
+                                <div class="metric-value" id="uptime">0h 0m 0s</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="metric-label">Scan Time</div>
+                                <div class="metric-value" id="scan-time">120 ms</div>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="metric-label">CPU Usage</div>
+                                <div class="progress">
+                                    <div id="cpu-usage-bar" class="progress-bar bg-info" role="progressbar" style="width: 15%;" aria-valuenow="15" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <div class="metric-value" id="cpu-usage">15%</div>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="metric-label">Memory Usage</div>
+                                <div class="progress">
+                                    <div id="memory-usage-bar" class="progress-bar bg-warning" role="progressbar" style="width: 25%;" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <div class="metric-value" id="memory-usage">256 MB</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price Chart -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        Price Comparison
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="price-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- Profit Chart -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        Profit Analysis
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="profit-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gas Usage Chart -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        Gas Usage
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="gas-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- Recent Trades -->
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        Recent Trades
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Path</th>
+                                        <th>Profit</th>
+                                        <th>Gas Used</th>
+                                        <th>Gas Price</th>
+                                        <th>Gas Cost</th>
+                                        <th>Net Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="trades-table-body">
+                                    <!-- Trades will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script>
+        // WebSocket connection
+        const socket = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        // Chart configurations
+        let priceChart, profitChart, gasChart;
+        const priceData = {
+            labels: [],
+            datasets: [
+                {
+                    label: 'BaseSwap V3',
+                    data: [],
+                    borderColor: '#1d8cf8',
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2
+                },
+                {
+                    label: 'Uniswap V3',
+                    data: [],
+                    borderColor: '#ff8d72',
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2
+                },
+                {
+                    label: 'SushiSwap V2',
+                    data: [],
+                    borderColor: '#00f2c3',
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2
+                }
+            ]
+        };
+        
+        const profitData = {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Net Profit',
+                    data: [],
+                    borderColor: '#00f2c3',
+                    backgroundColor: 'rgba(0, 242, 195, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 2
+                }
+            ]
+        };
+        
+        const gasData = {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Gas Used',
+                    data: [],
+                    borderColor: '#fd5d93',
+                    backgroundColor: 'rgba(253, 93, 147, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 2
+                }
+            ]
+        };
+        
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 0
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#9a9a9a'
+                    }
+                },
+                y: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#9a9a9a'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#ffffff'
+                    }
+                }
+            }
+        };
+        
+        // Initialize charts when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            const priceCtx = document.getElementById('price-chart').getContext('2d');
+            const profitCtx = document.getElementById('profit-chart').getContext('2d');
+            const gasCtx = document.getElementById('gas-chart').getContext('2d');
+            
+            priceChart = new Chart(priceCtx, {
+                type: 'line',
+                data: priceData,
+                options: chartOptions
+            });
+            
+            profitChart = new Chart(profitCtx, {
+                type: 'line',
+                data: profitData,
+                options: chartOptions
+            });
+            
+            gasChart = new Chart(gasCtx, {
+                type: 'line',
+                data: gasData,
+                options: chartOptions
+            });
+        });
+        
+        // WebSocket event handlers
+        socket.onopen = function(e) {
+            console.log('WebSocket connection established');
+        };
+        
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            updateDashboard(data);
+        };
+        
+        socket.onclose = function(event) {
+            if (event.wasClean) {
+                console.log(`WebSocket connection closed cleanly, code=${event.code}, reason=${event.reason}`);
+            } else {
+                console.error('WebSocket connection died');
+            }
+        };
+        
+        socket.onerror = function(error) {
+            console.error(`WebSocket error: ${error.message}`);
+        };
+        
+        // Update dashboard with received data
+        function updateDashboard(data) {
+            // Update metrics
+            updateMetrics(data.metrics);
+            
+            // Update trade history
+            updateTradeHistory(data.trade_history);
+            
+            // Update charts
+            updateCharts(data);
+        }
+        
+        function updateMetrics(metrics) {
+            // Network status
+            const networkStatus = document.getElementById('network-status');
+            const networkStatusIndicator = document.getElementById('network-status-indicator');
+            
+            networkStatus.textContent = metrics.network_status;
+            if (metrics.network_status === 'Connected') {
+                networkStatusIndicator.className = 'status-indicator status-connected';
+            } else {
+                networkStatusIndicator.className = 'status-indicator status-disconnected';
+            }
+            
+            // Gas price
+            document.getElementById('gas-price').textContent = `${metrics.gas_price.toFixed(1)} Gwei`;
+            
+            // Uptime
+            const uptime = metrics.uptime;
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+            document.getElementById('uptime').textContent = `${hours}h ${minutes}m ${seconds}s`;
+            
+            // Performance metrics
+            document.getElementById('scan-time').textContent = `${metrics.performance.scan_time.toFixed(0)} ms`;
+            
+            const cpuUsage = metrics.performance.cpu_usage;
+            document.getElementById('cpu-usage').textContent = `${cpuUsage.toFixed(1)}%`;
+            const cpuUsageBar = document.getElementById('cpu-usage-bar');
+            cpuUsageBar.style.width = `${cpuUsage}%`;
+            cpuUsageBar.setAttribute('aria-valuenow', cpuUsage);
+            
+            const memoryUsage = metrics.performance.memory_usage;
+            document.getElementById('memory-usage').textContent = `${memoryUsage.toFixed(0)} MB`;
+            const memoryUsageBar = document.getElementById('memory-usage-bar');
+            const memoryPercentage = (memoryUsage / 1024) * 100; // Assuming 1GB max
+            memoryUsageBar.style.width = `${memoryPercentage}%`;
+            memoryUsageBar.setAttribute('aria-valuenow', memoryPercentage);
+        }
+        
+        function updateTradeHistory(trades) {
+            const tableBody = document.getElementById('trades-table-body');
+            
+            // Clear existing rows if needed
+            if (trades.length > 0) {
+                tableBody.innerHTML = '';
+                
+                // Add new rows
+                trades.forEach(trade => {
+                    const row = document.createElement('tr');
+                    row.className = 'trade-row';
+                    
+                    // Format timestamp
+                    const date = new Date(trade.timestamp * 1000);
+                    const timeString = date.toLocaleTimeString();
+                    
+                    // Format profit class
+                    const profitClass = trade.net_profit >= 0 ? 'profit-positive' : 'profit-negative';
+                    
+                    row.innerHTML = `
+                        <td>${timeString}</td>
+                        <td>${trade.path}</td>
+                        <td class="profit-positive">$${trade.profit.toFixed(4)}</td>
+                        <td>${trade.gas_used.toLocaleString()}</td>
+                        <td>${trade.gas_price.toFixed(1)} Gwei</td>
+                        <td>$${trade.gas_cost_usd.toFixed(4)}</td>
+                        <td class="${profitClass}">$${trade.net_profit.toFixed(4)}</td>
+                    `;
+                    
+                    tableBody.prepend(row);
+                });
+            }
+        }
+        
+        function updateCharts(data) {
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Update price chart (mock data for now)
+            if (priceData.labels.length > 30) {
+                priceData.labels.shift();
+                priceData.datasets.forEach(dataset => dataset.data.shift());
+            }
+            
+            priceData.labels.push(timestamp);
+            priceData.datasets[0].data.push(42495201.744674 + Math.random() * 1000 - 500);
+            priceData.datasets[1].data.push(42498123.123456 + Math.random() * 1000 - 500);
+            priceData.datasets[2].data.push(42490567.891234 + Math.random() * 1000 - 500);
+            
+            priceChart.update();
+            
+            // Update profit chart if there are trades
+            if (data.trade_history && data.trade_history.length > 0) {
+                const latestTrade = data.trade_history[data.trade_history.length - 1];
+                
+                if (profitData.labels.length > 30) {
+                    profitData.labels.shift();
+                    profitData.datasets[0].data.shift();
+                }
+                
+                profitData.labels.push(timestamp);
+                profitData.datasets[0].data.push(latestTrade.net_profit);
+                
+                profitChart.update();
+                
+                // Update gas chart
+                if (gasData.labels.length > 30) {
+                    gasData.labels.shift();
+                    gasData.datasets[0].data.shift();
+                }
+                
+                gasData.labels.push(timestamp);
+                gasData.datasets[0].data.push(latestTrade.gas_used / 10000); // Scale down for better visualization
+                
+                gasChart.update();
+            }
+        }
+    </script>
+</body>
+</html>

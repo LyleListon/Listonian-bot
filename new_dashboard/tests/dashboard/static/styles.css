@@ -1,0 +1,148 @@
+/* Dashboard Styles */
+body {
+    background-color: #1e1e2f;
+    color: #ffffff;
+    font-family: 'Roboto', sans-serif;
+}
+
+.navbar {
+    background-color: #1e1e2f;
+    border-bottom: 1px solid #2e2e4f;
+    padding: 15px 0;
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: #00f2c3 !important;
+}
+
+.navbar-text {
+    color: #9a9a9a !important;
+}
+
+.card {
+    background-color: #27293d;
+    border: none;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 20px 0 rgba(0,0,0,.1);
+}
+
+.card-header {
+    background-color: #2a2c42;
+    border-bottom: 1px solid #2e2e4f;
+    color: #ffffff;
+    font-weight: 500;
+    padding: 15px 20px;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+.metric-label {
+    color: #9a9a9a;
+    font-size: 0.8rem;
+    margin-bottom: 5px;
+}
+
+.metric-value {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.status-connected {
+    background-color: #00f2c3;
+}
+
+.status-disconnected {
+    background-color: #fd5d93;
+}
+
+.chart-container {
+    position: relative;
+    height: 250px;
+    width: 100%;
+}
+
+.trade-row {
+    transition: background-color 0.3s;
+}
+
+.trade-row:hover {
+    background-color: #2a2c42;
+}
+
+.profit-positive {
+    color: #00f2c3;
+}
+
+.profit-negative {
+    color: #fd5d93;
+}
+
+.progress {
+    background-color: #2a2c42;
+    height: 6px;
+    margin-bottom: 15px;
+}
+
+.progress-bar {
+    border-radius: 3px;
+}
+
+.bg-info {
+    background-color: #1d8cf8 !important;
+}
+
+.bg-warning {
+    background-color: #ff8d72 !important;
+}
+
+.bg-success {
+    background-color: #00f2c3 !important;
+}
+
+.table {
+    color: #ffffff;
+}
+
+.table thead th {
+    border-bottom: 1px solid #2e2e4f;
+    border-top: none;
+    color: #9a9a9a;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.table td {
+    border-top: 1px solid #2e2e4f;
+    padding: 12px 8px;
+    vertical-align: middle;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 15px;
+    }
+    
+    .chart-container {
+        height: 200px;
+    }
+    
+    .metric-value {
+        font-size: 1rem;
+    }
+}

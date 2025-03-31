@@ -20,7 +20,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "new_dashboard:app",
         host="0.0.0.0",
-        port=8080,
+        port=9050,
         reload=True,
         log_level="debug",
         access_log=False,

@@ -9,6 +9,13 @@ from datetime import datetime
 from enum import Enum, auto
 from typing import Dict, List, Optional, Any
 
+class StrategyType(Enum):
+    """Strategy type enumeration."""
+    SIMPLE = auto()
+    FLASH_LOAN = auto()
+    MULTI_PATH = auto()
+    CUSTOM = auto()
+
 class TransactionStatus(Enum):
     """Transaction status enumeration."""
     PENDING = auto()
@@ -161,4 +168,39 @@ class ExecutionResult:
             self.actual_profit_usd / self.expected_profit_usd
             if self.expected_profit_usd > 0
             else 0
+        )
+
+@dataclass
+class TokenAmount:
+    """
+    Represents an amount of a specific token.
+    
+    This class is used to represent token amounts throughout the system,
+    including input and output amounts for trades.
+    """
+    
+    token_address: str  # Address of the token
+    amount_wei: int  # Amount in wei
+    decimals: int = 18  # Token decimals
+    
+    @property
+    def amount_human(self) -> float:
+        """Get the amount in human-readable form."""
+        return self.amount_wei / (10 ** self.decimals)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "token_address": self.token_address,
+            "amount_wei": self.amount_wei,
+            "decimals": self.decimals
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TokenAmount':
+        """Create from dictionary."""
+        return cls(
+            token_address=data["token_address"],
+            amount_wei=data["amount_wei"],
+            decimals=data.get("decimals", 18)
         )

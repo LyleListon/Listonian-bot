@@ -107,7 +107,7 @@ class SimulationManager:
                                 if simulation_results['profitable']:
                                     logger.info(
                                         f"Bundle simulation successful with profit "
-                                        f"{simulation_results['profit']} ETH"
+                                        f"{simulation_results['profit']:.6f} ETH"
                                     )
                                     return True, simulation_results
                                 else:
@@ -116,7 +116,7 @@ class SimulationManager:
                                         f"{simulation_results['profit']} ETH"
                                     )
                             else:
-                                logger.warning(
+                                logger.error(
                                     f"Bundle simulation failed: {result.get('error')}"
                                 )
                             
@@ -157,7 +157,7 @@ class SimulationManager:
             # Extract key metrics
             gas_used = sum(tx['gasUsed'] for tx in result['results'])
             gas_price = bundle['gas_price']
-            total_cost = Decimal(str(gas_used)) * Decimal(str(gas_price)) / Decimal('1e9')
+            total_cost = Decimal(str(gas_used)) * Decimal(str(gas_price)) / Decimal('1e18')  # Convert to ETH
             
             # Calculate state changes
             state_changes = await self._analyze_state_changes(result['stateDiff'])
@@ -251,7 +251,7 @@ class SimulationManager:
         """
         try:
             profit = Decimal('0')
-            
+
             # Calculate profit from balance changes
             for address, change in state_changes['balance_changes'].items():
                 if address == self.flashbots.account.address:
@@ -259,7 +259,7 @@ class SimulationManager:
                     balance_diff = Decimal(str(change['diff'])) / Decimal('1e18')
                     profit += balance_diff
             
-            # Subtract costs
+            # Subtract transaction costs
             net_profit = profit - total_cost
             
             return net_profit
@@ -267,3 +267,99 @@ class SimulationManager:
         except Exception as e:
             logger.error(f"Failed to calculate actual profit: {e}")
             raise
+
+    async def verify_bundle_profitability(
+        self,
+        bundle: Dict[str, Any],
+        min_profit_threshold: Decimal
+    ) -> Tuple[bool, Decimal]:
+        """
+        Verify if a bundle is profitable based on simulation.
+        
+        Args:
+            bundle: Bundle to verify
+            min_profit_threshold: Minimum profit threshold in ETH
+            
+        Returns:
+            Tuple[bool, Decimal]: (is_profitable, expected_profit)
+        """
+        try:
+            # Simulate bundle
+            success, simulation_results = await self.simulate_bundle(bundle)
+            
+            if not success:
+                logger.warning("Bundle simulation failed during profitability check")
+                return False, Decimal('0')
+            
+            # Extract profit from simulation results
+            profit = simulation_results.get('profit', Decimal('0'))
+            
+            # Check if profit meets threshold
+            is_profitable = profit >= min_profit_threshold
+            
+            if is_profitable:
+                logger.info(
+                    f"Bundle is profitable: {profit:.6f} ETH >= {min_profit_threshold:.6f} ETH"
+                )
+            else:
+                logger.warning(
+                    f"Bundle is not profitable enough: {profit:.6f} ETH < {min_profit_threshold:.6f} ETH"
+                )
+            
+            return is_profitable, profit
+            
+        except Exception as e:
+            logger.error(f"Failed to verify bundle profitability: {e}")
+            return False, Decimal('0')
+
+    async def optimize_bundle_gas(
+        self,
+        bundle: Dict[str, Any],
+        base_fee: int,
+        priority_multiplier: float = 1.1
+    ) -> Dict[str, Any]:
+        """
+        Optimize bundle gas settings for better inclusion probability.
+        
+        Args:
+            bundle: Bundle to optimize
+            base_fee: Current base fee
+            priority_multiplier: Priority fee multiplier
+            
+        Returns:
+            Dict[str, Any]: Optimized bundle
+        """
+        try:
+            # Make a copy of the bundle to avoid modifying the original
+            optimized_bundle = bundle.copy()
+            transactions = optimized_bundle.get('transactions', [])
+            
+            # Calculate optimal gas settings
+            gas_price = int(base_fee * 1.1)  # 10% buffer
+            priority_fee = int(1e9 * priority_multiplier)  # Base priority fee with multiplier
+            
+            # Update transactions with optimized gas settings
+            updated_txs = []
+            for tx in transactions:
+                # Create a copy of the transaction
+                updated_tx = tx.copy()
+                
+                # Update gas parameters
+                updated_tx.update({
+                    'gasPrice': gas_price,
+                    'maxPriorityFeePerGas': priority_fee,
+                    'maxFeePerGas': gas_price + priority_fee
+                })
+                
+                updated_txs.append(updated_tx)
+            
+            # Update bundle with optimized transactions
+            optimized_bundle['transactions'] = updated_txs
+            optimized_bundle['gas_price'] = gas_price
+            optimized_bundle['priority_fee'] = priority_fee
+            
+            return optimized_bundle
+            
+        except Exception as e:
+            logger.error(f"Failed to optimize bundle gas: {e}")
+            return bundle  # Return original bundle if optimization fails

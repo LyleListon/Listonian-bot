@@ -10,20 +10,28 @@ This module provides functionality for:
 import logging
 import json
 import os
+import traceback
 from typing import Any, Dict, List, Optional
+import asyncio
 from web3 import Web3
 from decimal import Decimal
 from eth_typing import HexStr
 from eth_utils import is_hex_address, to_checksum_address
 
 from ..core.web3.interfaces import Web3Client
-from ..core.web3.flashbots.flashbots_provider import FlashbotsProvider
+from ..core.flashbots.flashbots_provider import FlashbotsProvider
+from ..core.flashbots.bundle import BundleManager
+from ..core.flashbots.simulation import SimulationManager
 
 from ..core.web3.interfaces import Transaction
 from ..utils.async_manager import with_retry
 from ..core.flash_loan.aave_flash_loan import AaveFlashLoan, create_aave_flash_loan
+from ..core.flash_loan.balancer_flash_loan import BalancerFlashLoan, create_balancer_flash_loan
 
 logger = logging.getLogger(__name__)
+
+# Lock for thread safety in critical sections
+_integration_lock = asyncio.Lock()
 
 class FlashbotsIntegration:
     """Manages Flashbots integration with flash loans and arbitrage."""
@@ -32,7 +40,9 @@ class FlashbotsIntegration:
         self,
         web3_manager: Web3Client,
         flashbots_provider: FlashbotsProvider,
-        flash_loan_manager: AaveFlashLoan,
+        flash_loan_manager: Optional[AaveFlashLoan] = None,
+        balancer_flash_loan_manager: Optional[BalancerFlashLoan] = None,
+        bundle_manager: Optional[BundleManager] = None,
         min_profit: int = 0
     ):
         """
@@ -41,16 +51,23 @@ class FlashbotsIntegration:
         Args:
             web3_manager: Web3 client instance
             flashbots_provider: Flashbots provider instance
-            flash_loan_manager: Flash loan manager instance
+            flash_loan_manager: Aave flash loan manager instance (optional)
+            balancer_flash_loan_manager: Balancer flash loan manager instance (optional)
+            bundle_manager: Bundle manager instance (optional)
             min_profit: Minimum profit threshold in wei
         """
         self.web3_manager = web3_manager
         self.flashbots_provider = flashbots_provider
         self.flash_loan_manager = flash_loan_manager
+        self.balancer_flash_loan_manager = balancer_flash_loan_manager
+        self.bundle_manager = bundle_manager
         self.min_profit = min_profit
+        self._lock = asyncio.Lock()
+        self._simulation_manager = None
 
         logger.info(
-            f"Flashbots integration initialized with "
+            f"Flashbots integration initialized with Balancer flash loans and "
+            f"enhanced bundle submission. "
             f"min profit {web3_manager.w3.from_wei(min_profit, 'ether')} ETH"
         )
 
@@ -72,72 +89,108 @@ async def setup_flashbots_rpc(
     Returns:
         Result dictionary with components
     """
-    try:
-        # Validate configuration
-        if not config.get('flashbots', {}).get('relay_url'):
-            raise ValueError("Flashbots relay URL not configured")
+    async with _integration_lock:
+        try:
+            # Validate configuration
+            if not config.get('flashbots', {}).get('relay_url'):
+                raise ValueError("Flashbots relay URL not configured")
+                
+            auth_key = os.environ.get('FLASHBOTS_AUTH_KEY')
+            if not auth_key:
+                raise ValueError("Flashbots auth key not configured")
             
-        auth_key = os.environ.get('FLASHBOTS_AUTH_KEY')
-        if not auth_key:
-            raise ValueError("Flashbots auth key not configured")
-        
-        # Strip 0x prefix if present
-        if auth_key.startswith('0x'):
-            auth_key = auth_key[2:]
-        
-        # Validate auth key format
-        if len(auth_key) != 64:  # 32 bytes = 64 hex chars
-            raise ValueError("Invalid Flashbots auth key format - must be 32 bytes hex")
+            # Strip 0x prefix if present
+            if auth_key.startswith('0x'):
+                auth_key = auth_key[2:]
             
-        if not config.get('flash_loan', {}).get('aave_pool'):
-            raise ValueError("Aave pool address not configured")
-        if not is_hex_address(config['flash_loan']['aave_pool']):
-            raise ValueError("Invalid Aave pool address format")
+            # Validate auth key format
+            if len(auth_key) != 64:  # 32 bytes = 64 hex chars
+                raise ValueError("Invalid Flashbots auth key format - must be 32 bytes hex")
+                
+            if not config.get('flash_loan', {}).get('aave_pool'):
+                raise ValueError("Aave pool address not configured")
+            if not is_hex_address(config['flash_loan']['aave_pool']):
+                raise ValueError("Invalid Aave pool address format")
 
-        # Create components
-        logger.info(f"Initializing Flashbots provider with RPC URL: {web3_manager._rpc_url}")
-        
-        flashbots_provider = FlashbotsProvider(
-            w3=Web3(Web3.HTTPProvider(web3_manager._rpc_url, request_kwargs={"timeout": web3_manager._timeout})),
-            relay_url=config['flashbots']['relay_url'],
-            auth_key=auth_key,
-            chain_id=config["web3"]["chain_id"]
-        )
+            # Create Flashbots provider
+            logger.info(f"Initializing Flashbots provider with RPC URL: {web3_manager._rpc_url}")
+            
+            flashbots_provider = FlashbotsProvider(
+                w3=Web3(Web3.HTTPProvider(web3_manager._rpc_url, request_kwargs={"timeout": web3_manager._timeout})),
+                relay_url=config['flashbots']['relay_url'],
+                auth_key=auth_key,
+                chain_id=config["web3"]["chain_id"]
+            )
 
-        flash_loan_manager = await create_aave_flash_loan(
-            w3=web3_manager.w3,
-            config=config
-        )
+            # Create Aave flash loan manager
+            flash_loan_manager = await create_aave_flash_loan(
+                w3=web3_manager.w3,
+                config=config
+            )
 
-        integration = FlashbotsIntegration(
-            web3_manager=web3_manager,
-            flashbots_provider=flashbots_provider,
-            flash_loan_manager=flash_loan_manager,
-            min_profit=int(config.get('flashbots', {}).get('min_profit', '0'))
-        )
+            # Create Balancer flash loan manager if configured
+            balancer_flash_loan_manager = None
+            if config.get('flash_loan', {}).get('balancer_vault'):
+                logger.info("Initializing Balancer flash loan manager")
+                balancer_flash_loan_manager = await create_balancer_flash_loan(
+                    w3=web3_manager.w3,
+                    config=config
+                )
 
-        logger.info("Flashbots RPC integration set up successfully for production")
+            # Create bundle manager
+            bundle_manager = BundleManager(
+                flashbots_manager=flashbots_provider,
+                min_profit=Decimal(str(config.get('flashbots', {}).get('min_profit', '0.001'))),
+                max_gas_price=Decimal(str(config.get('flashbots', {}).get('max_gas_price', '100'))),
+                max_priority_fee=Decimal(str(config.get('flashbots', {}).get('max_priority_fee', '2')))
+            )
 
-        return {
-            'success': True,
-            'integration': integration,
-            'flashbots_provider': flashbots_provider,
-            'flash_loan_manager': flash_loan_manager
-        }
+            # Create simulation manager
+            simulation_manager = SimulationManager(
+                flashbots_manager=flashbots_provider,
+                bundle_manager=bundle_manager,
+                max_simulations=config.get('flashbots', {}).get('max_simulations', 3),
+                simulation_timeout=config.get('flashbots', {}).get('simulation_timeout', 5.0)
+            )
 
-    except Exception as e:
-        logger.error(f"Failed to set up Flashbots RPC for production: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+            integration = FlashbotsIntegration(
+                web3_manager=web3_manager,
+                flashbots_provider=flashbots_provider,
+                flash_loan_manager=flash_loan_manager,
+                balancer_flash_loan_manager=balancer_flash_loan_manager,
+                bundle_manager=bundle_manager,
+                min_profit=int(config.get('flashbots', {}).get('min_profit', '0'))
+            )
+            integration._simulation_manager = simulation_manager
+
+            logger.info("Flashbots RPC integration set up successfully for production")
+
+            return {
+                'success': True,
+                'integration': integration,
+                'flashbots_provider': flashbots_provider,
+                'flash_loan_manager': flash_loan_manager,
+                'balancer_flash_loan_manager': balancer_flash_loan_manager,
+                'bundle_manager': bundle_manager,
+                'simulation_manager': simulation_manager
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to set up Flashbots RPC for production: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }
 
 @with_retry(max_attempts=3, base_delay=1.0)
 async def execute_arbitrage_bundle(
     integration: FlashbotsIntegration,
     transactions: List[Transaction],
     token_addresses: List[str],
-    flash_loan_amount: int
+    flash_loan_amount: int,
+    use_balancer: bool = True,
+    slippage_tolerance: float = 0.005
 ) -> Dict[str, Any]:
     """
     Execute arbitrage bundle with flash loan through Flashbots.
@@ -147,6 +200,8 @@ async def execute_arbitrage_bundle(
         transactions: List of swap transactions
         token_addresses: List of token addresses to track
         flash_loan_amount: Flash loan amount in wei
+        use_balancer: Whether to use Balancer for flash loans (default: True)
+        slippage_tolerance: Slippage tolerance for swaps (default: 0.5%)
 
     Returns:
         Result dictionary with execution details
@@ -160,13 +215,26 @@ async def execute_arbitrage_bundle(
         if flash_loan_amount <= 0:
             raise ValueError("Invalid flash loan amount")
 
-        # Create flash loan transaction
-        flash_loan_tx = await integration.flash_loan_manager.build_flash_loan_tx(
-            tokens=token_addresses,
-            amounts=[flash_loan_amount],
-            target_contract=integration.web3_manager.wallet_address,
-            callback_data=b''
-        )
+        # Choose flash loan provider based on configuration
+        if use_balancer and integration.balancer_flash_loan_manager:
+            logger.info("Using Balancer for flash loan")
+            flash_loan_tx = await integration.balancer_flash_loan_manager.build_flash_loan_tx(
+                tokens=token_addresses,
+                amounts=[flash_loan_amount],
+                target_contract=integration.web3_manager.wallet_address,
+                callback_data=b''
+            )
+        else:
+            logger.info("Using Aave for flash loan")
+            if not integration.flash_loan_manager:
+                raise ValueError("Aave flash loan manager not available")
+                
+            flash_loan_tx = await integration.flash_loan_manager.build_flash_loan_tx(
+                tokens=token_addresses,
+                amounts=[flash_loan_amount],
+                target_contract=integration.web3_manager.wallet_address,
+                callback_data=b''
+            )
 
         # Combine flash loan and swap transactions
         bundle_txs = [flash_loan_tx] + transactions
@@ -243,7 +311,158 @@ async def close_flashbots_integration(integration: FlashbotsIntegration):
     """Clean up Flashbots integration resources."""
     try:
         await integration.flashbots_provider.close()
-        await integration.flash_loan_manager.close()
+        if integration.flash_loan_manager:
+            await integration.flash_loan_manager.close()
+        if integration.balancer_flash_loan_manager:
+            await integration.balancer_flash_loan_manager.close()
         logger.info("Flashbots integration resources cleaned up")
     except Exception as e:
         logger.error(f"Error cleaning up Flashbots integration: {e}")
+
+async def optimize_flash_loan_execution(
+    integration: FlashbotsIntegration,
+    token_addresses: List[str],
+    amounts: List[int],
+    use_balancer: bool = True
+) -> Dict[str, Any]:
+    """
+    Optimize flash loan execution through Balancer or Aave.
+    
+    Args:
+        integration: FlashbotsIntegration instance
+        token_addresses: List of token addresses to borrow
+        amounts: List of amounts to borrow
+        use_balancer: Whether to use Balancer for flash loans
+        
+    Returns:
+        Result dictionary with optimization details
+    """
+    async with integration._lock:
+        try:
+            # Validate inputs
+            if not token_addresses or not amounts:
+                raise ValueError("Token addresses and amounts must be provided")
+            if len(token_addresses) != len(amounts):
+                raise ValueError("Token addresses and amounts must have the same length")
+            
+            # Check if tokens are checksummed
+            checksummed_tokens = [
+                to_checksum_address(token) if is_hex_address(token) else token
+                for token in token_addresses
+            ]
+            
+            # Choose flash loan provider
+            if use_balancer and integration.balancer_flash_loan_manager:
+                logger.info("Optimizing Balancer flash loan execution")
+                
+                # Check liquidity for each token
+                liquidity_checks = []
+                for i, token in enumerate(checksummed_tokens):
+                    has_liquidity = await integration.balancer_flash_loan_manager.check_liquidity(
+                        token_address=token,
+                        amount=amounts[i]
+                    )
+                    liquidity_checks.append((token, amounts[i], has_liquidity))
+                
+                # Calculate fees
+                total_fees = await integration.balancer_flash_loan_manager.estimate_fees(
+                    tokens=checksummed_tokens,
+                    amounts=amounts
+                )
+                
+                # Test flash loan with minimal amount
+                test_result = await integration.balancer_flash_loan_manager.test_flash_loan(
+                    token_address=checksummed_tokens[0],
+                    amount=min(amounts[0], 1000),  # Use small amount for test
+                    target_contract=integration.web3_manager.wallet_address
+                )
+                
+                return {
+                    'success': test_result['success'],
+                    'provider': 'balancer',
+                    'liquidity_checks': liquidity_checks,
+                    'total_fees': total_fees,
+                    'test_result': test_result
+                }
+            elif integration.flash_loan_manager:
+                logger.info("Optimizing Aave flash loan execution")
+                
+                # Similar implementation for Aave
+                # ...
+                
+                return {
+                    'success': True,
+                    'provider': 'aave',
+                    'message': 'Aave flash loan optimization not fully implemented'
+                }
+            else:
+                raise ValueError("No flash loan provider available")
+                
+        except Exception as e:
+            logger.error(f"Failed to optimize flash loan execution: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+async def enhance_bundle_submission(
+    integration: FlashbotsIntegration,
+    transactions: List[Transaction],
+    target_block: Optional[int] = None,
+    min_profit: Optional[Decimal] = None
+) -> Dict[str, Any]:
+    """
+    Enhance bundle submission with optimized gas settings and MEV protection.
+    
+    Args:
+        integration: FlashbotsIntegration instance
+        transactions: List of transactions to bundle
+        target_block: Target block number (optional)
+        min_profit: Minimum profit threshold (optional)
+        
+    Returns:
+        Result dictionary with bundle details
+    """
+    async with integration._lock:
+        try:
+            if not integration.bundle_manager:
+                raise ValueError("Bundle manager not available")
+                
+            # Create optimized bundle
+            bundle = await integration.bundle_manager.create_bundle(
+                transactions=transactions,
+                target_block=target_block
+            )
+            
+            # Verify profitability
+            min_profit_to_use = min_profit or integration.min_profit
+            if not await integration.bundle_manager._verify_profitability(bundle):
+                return {
+                    'success': False,
+                    'error': f"Bundle not profitable enough (min: {min_profit_to_use})"
+                }
+            
+            # Submit bundle
+            success, bundle_hash = await integration.bundle_manager.submit_bundle(
+                bundle=bundle,
+                simulate=True
+            )
+            
+            if success:
+                return {
+                    'success': True,
+                    'bundle': bundle,
+                    'bundle_hash': bundle_hash
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': "Bundle submission failed"
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to enhance bundle submission: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }

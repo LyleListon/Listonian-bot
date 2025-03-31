@@ -1,233 +1,321 @@
 """
 Multi-Path Arbitrage Example
 
-This example demonstrates how to use the multi-path arbitrage system to
-discover, optimize, and execute complex arbitrage opportunities across
-multiple DEXs with maximized profits.
+This example demonstrates how to use the multi-path arbitrage components
+to find, optimize, and execute arbitrage opportunities across multiple paths.
 """
 
 import asyncio
 import logging
 import os
+import sys
 from decimal import Decimal
+from typing import Dict, List, Any
 
-from arbitrage_bot.core.web3.providers.eth_client import EthClient
-from arbitrage_bot.core.web3.flashbots.provider import FlashbotsProvider
-from arbitrage_bot.core.dex.manager import DexManager
-from arbitrage_bot.core.price.fetcher import PriceFetcher
-from arbitrage_bot.core.finance.flash_loans.factory import FlashLoanFactory
-from arbitrage_bot.core.arbitrage.path.graph_explorer import NetworkXGraphExplorer
-from arbitrage_bot.core.arbitrage.path.path_finder import MultiPathFinder
-from arbitrage_bot.core.arbitrage.path.path_optimizer import MonteCarloPathOptimizer
-from arbitrage_bot.core.arbitrage.execution.strategies.multi_path_strategy import MultiPathStrategy
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from arbitrage_bot.core.arbitrage.path.advanced_path_finder import AdvancedPathFinder
+from arbitrage_bot.core.arbitrage.path.path_ranker import PathRanker
+from arbitrage_bot.core.arbitrage.path.path_optimizer import PathOptimizer
+from arbitrage_bot.core.arbitrage.capital.capital_allocator import CapitalAllocator
+from arbitrage_bot.core.arbitrage.capital.risk_manager import RiskManager
+from arbitrage_bot.core.arbitrage.capital.portfolio_optimizer import PortfolioOptimizer
+from arbitrage_bot.core.arbitrage.execution.multi_path_executor import MultiPathExecutor
+from arbitrage_bot.core.arbitrage.execution.slippage_manager import SlippageManager
+from arbitrage_bot.core.arbitrage.execution.gas_optimizer import GasOptimizer
+
+from arbitrage_bot.core.web3.interfaces import Web3Client
+from arbitrage_bot.core.flashbots.flashbots_provider import FlashbotsProvider
+from arbitrage_bot.core.flashbots.bundle import BundleManager
+from arbitrage_bot.core.flashbots.simulation import SimulationManager
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
 logger = logging.getLogger(__name__)
 
+# Mock GraphExplorer for demonstration purposes
+class MockGraphExplorer:
+    async def initialize(self):
+        return True
+    
+    async def get_graph(self):
+        return {}
+    
+    async def find_cycles(self, start_token, max_length, max_cycles, filters):
+        # Return mock cycles
+        return []
+    
+    async def close(self):
+        pass
 
 async def main():
-    """Main example function to demonstrate multi-path arbitrage."""
+    """Run the multi-path arbitrage example."""
     try:
-        # Get private key from environment variable
-        private_key = os.environ.get('PRIVATE_KEY')
-        if not private_key:
-            logger.error("PRIVATE_KEY environment variable not set")
-            return
+        logger.info("Starting Multi-Path Arbitrage Example")
         
-        # Remove '0x' prefix if present
-        if private_key.startswith('0x'):
-            private_key = private_key[2:]
-        
-        # Get Ethereum node URL
-        eth_rpc_url = os.environ.get('ETH_RPC_URL', 'https://mainnet.infura.io/v3/YOUR_INFURA_KEY')
-        
-        # Create Web3 client
-        web3_client = EthClient(provider_url=eth_rpc_url, private_key=private_key)
-        await web3_client.connect()
-        
-        # Create DEX manager
-        dex_manager = DexManager(web3_client=web3_client)
-        await dex_manager.initialize()
-        
-        # Create price fetcher
-        price_fetcher = PriceFetcher(web3_client=web3_client)
-        await price_fetcher.initialize()
-        
-        # Create flash loan factory
-        flash_loan_factory = FlashLoanFactory(
-            web3_client=web3_client,
-            config={
-                "preferred_providers": ["balancer", "aave"],
-                "max_fee_rate": "0.005"  # 0.5%
-            }
+        # Initialize Web3 client
+        web3_client = Web3Client(
+            rpc_url="http://localhost:8545",
+            private_key="0x0000000000000000000000000000000000000000000000000000000000000000",
+            chain_id=1
         )
-        await flash_loan_factory.initialize()
         
-        # Create Flashbots provider
+        # Initialize Flashbots components
         flashbots_provider = FlashbotsProvider(
-            web3_client=web3_client,
-            signing_key=private_key,
-            config={
-                "network": "mainnet",
-                "blocks_into_future": 2,
-                "relay_timeout": 30
-            }
+            w3=web3_client.w3,
+            relay_url="https://relay.flashbots.net",
+            auth_key="0000000000000000000000000000000000000000000000000000000000000000",
+            chain_id=1
         )
-        await flashbots_provider.initialize()
         
-        # Create graph explorer
-        graph_explorer = NetworkXGraphExplorer(
-            dex_manager=dex_manager,
-            price_fetcher=price_fetcher,
-            config={
-                "graph_ttl": 60,  # 60 seconds
-                "max_pools_per_dex": 1000,
-                "min_liquidity": "10000",  # $10,000 minimum liquidity
-                "include_stable_tokens": True,
-                "include_wrapped_tokens": True,
-                "max_path_length": 4
-            }
+        bundle_manager = BundleManager(
+            flashbots_manager=flashbots_provider,
+            min_profit=Decimal('0.001'),
+            max_gas_price=Decimal('100'),
+            max_priority_fee=Decimal('2')
         )
-        await graph_explorer.initialize()
         
-        # Create path finder
-        path_finder = MultiPathFinder(
+        simulation_manager = SimulationManager(
+            flashbots_manager=flashbots_provider,
+            bundle_manager=bundle_manager,
+            max_simulations=3,
+            simulation_timeout=5.0
+        )
+        
+        # Initialize path finding components
+        graph_explorer = MockGraphExplorer()
+        path_finder = AdvancedPathFinder(
             graph_explorer=graph_explorer,
-            dex_manager=dex_manager,
-            price_fetcher=price_fetcher,
-            config={
-                "max_path_length": 4,
-                "max_paths": 50,
-                "min_profit_threshold": "0.001",  # Minimum profit in token units
-                "min_profit_percentage": "0.001",  # 0.1% minimum profit
-                "gas_price_buffer": "1.1",
-                "slippage_tolerance": "0.005"  # 0.5%
-            }
+            max_hops=5,
+            max_paths_per_token=20,
+            concurrency_limit=10
         )
+        
+        path_ranker = PathRanker(
+            profit_weight=0.5,
+            risk_weight=0.2,
+            diversity_weight=0.15,
+            history_weight=0.15
+        )
+        
+        path_optimizer = PathOptimizer(
+            web3_client=web3_client,
+            max_slippage=Decimal('0.01'),
+            max_price_impact=Decimal('0.05')
+        )
+        
+        # Initialize capital allocation components
+        capital_allocator = CapitalAllocator(
+            min_allocation_percent=Decimal('0.05'),
+            max_allocation_percent=Decimal('0.5'),
+            kelly_fraction=Decimal('0.5')
+        )
+        
+        risk_manager = RiskManager(
+            max_risk_per_trade=Decimal('0.02'),
+            max_risk_per_token=Decimal('0.05'),
+            max_risk_per_dex=Decimal('0.1')
+        )
+        
+        portfolio_optimizer = PortfolioOptimizer(
+            risk_free_rate=Decimal('0.02'),
+            target_sharpe=Decimal('2.0'),
+            max_correlation=0.7
+        )
+        
+        # Initialize execution components
+        multi_path_executor = MultiPathExecutor(
+            web3_client=web3_client,
+            bundle_manager=bundle_manager,
+            simulation_manager=simulation_manager,
+            max_concurrent_paths=3
+        )
+        
+        slippage_manager = SlippageManager(
+            web3_client=web3_client,
+            base_slippage_tolerance=Decimal('0.005'),
+            max_slippage_tolerance=Decimal('0.03')
+        )
+        
+        gas_optimizer = GasOptimizer(
+            web3_client=web3_client,
+            base_gas_buffer=1.2,
+            max_gas_price=500
+        )
+        
+        # Initialize path finder
         await path_finder.initialize()
         
-        # Create multi-path strategy
-        strategy = MultiPathStrategy(
-            web3_client=web3_client,
-            flashbots_provider=flashbots_provider,
-            flash_loan_factory=flash_loan_factory,
-            config={
-                "slippage_tolerance": "0.005",  # 0.5%
-                "profit_threshold_multiplier": "1.5",
-                "gas_buffer": "1.2",
-                "max_wait_blocks": 5,
-                "use_flash_loans": True
-            }
-        )
-        await strategy.initialize()
+        # Define parameters for arbitrage search
+        start_token = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"  # WETH
+        total_capital = Decimal('10')  # 10 ETH
         
-        # Define starting token (WETH on Ethereum)
-        weth_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-        
-        # Find multi-path opportunities
-        logger.info(f"Finding multi-path opportunities starting from WETH...")
-        opportunities = await path_finder.find_opportunities(
-            start_token=weth_address,
-            max_opportunities=5,
+        # Find arbitrage paths
+        logger.info(f"Finding arbitrage paths for {start_token}")
+        paths = await path_finder.find_paths(
+            start_token=start_token,
+            max_paths=10,
             filters={
-                "min_profit_percentage": 0.002  # 0.2% minimum profit
+                'max_hops': 4,
+                'min_profit': Decimal('0.001')
             }
         )
         
-        if not opportunities:
-            logger.info("No profitable opportunities found")
+        if not paths:
+            logger.info("No arbitrage paths found")
             return
         
-        logger.info(f"Found {len(opportunities)} profitable opportunities")
+        logger.info(f"Found {len(paths)} arbitrage paths")
         
-        # Log the opportunities
-        for i, opportunity in enumerate(opportunities):
-            logger.info(f"Opportunity {i+1}:")
-            logger.info(f"  Paths: {len(opportunity.paths)}")
-            logger.info(f"  Required amount: {opportunity.required_amount}")
-            logger.info(f"  Expected profit: {opportunity.expected_profit}")
-            logger.info(f"  Profit percentage: {opportunity.profit_percentage:.4f}%")
-            logger.info(f"  Confidence level: {opportunity.confidence_level:.2f}")
+        # Rank paths
+        logger.info("Ranking arbitrage paths")
+        ranked_paths = await path_ranker.rank_paths(
+            paths=paths,
+            context={
+                'market_volatility': 0.3,
+                'gas_price': 50  # gwei
+            }
+        )
+        
+        logger.info(f"Ranked {len(ranked_paths)} paths")
+        
+        # Optimize paths
+        logger.info("Optimizing arbitrage paths")
+        optimized_paths = await path_optimizer.optimize_paths(
+            paths=ranked_paths,
+            context={
+                'market_volatility': 0.3,
+                'gas_price': 50  # gwei
+            }
+        )
+        
+        logger.info(f"Optimized {len(optimized_paths)} paths")
+        
+        # Allocate capital
+        logger.info("Allocating capital")
+        allocations, expected_profit = await capital_allocator.allocate_capital(
+            paths=optimized_paths,
+            total_capital=total_capital,
+            context={
+                'market_volatility': 0.3,
+                'risk_profile': 'moderate'
+            }
+        )
+        
+        logger.info(f"Allocated {sum(allocations)} ETH with expected profit {expected_profit} ETH")
+        
+        # Create opportunity
+        logger.info("Creating multi-path opportunity")
+        opportunity = await capital_allocator.create_opportunity(
+            paths=optimized_paths,
+            total_capital=total_capital,
+            context={
+                'market_volatility': 0.3,
+                'risk_profile': 'moderate'
+            }
+        )
+        
+        # Assess risk
+        logger.info("Assessing opportunity risk")
+        risk_assessment = await risk_manager.assess_opportunity_risk(
+            opportunity=opportunity,
+            total_capital=total_capital,
+            context={
+                'market_volatility': 0.3,
+                'gas_price': 50  # gwei
+            }
+        )
+        
+        if not risk_assessment.get('risk_acceptable', False):
+            logger.warning("Opportunity risk is not acceptable")
+            return
+        
+        logger.info("Opportunity risk is acceptable")
+        
+        # Optimize portfolio
+        logger.info("Optimizing portfolio")
+        portfolio_result = await portfolio_optimizer.optimize_portfolio(
+            opportunities=[opportunity],
+            total_capital=total_capital,
+            context={
+                'market_volatility': 0.3,
+                'risk_profile': 'moderate',
+                'optimization_target': 'sharpe'
+            }
+        )
+        
+        logger.info(f"Portfolio optimization result: {portfolio_result['success']}")
+        
+        # Optimize gas
+        logger.info("Optimizing gas")
+        gas_result = await gas_optimizer.optimize_gas(
+            opportunity=opportunity,
+            context={
+                'execution_strategy': 'atomic',
+                'optimization_target': 'balanced'
+            }
+        )
+        
+        logger.info(f"Gas optimization result: {gas_result['success']}")
+        
+        # Simulate execution
+        logger.info("Simulating execution")
+        simulation_result = await multi_path_executor.simulate_execution(
+            opportunity=opportunity,
+            context={
+                'execution_strategy': 'atomic',
+                'gas_price': 50  # gwei
+            }
+        )
+        
+        if not simulation_result.get('success', False):
+            logger.warning(f"Execution simulation failed: {simulation_result.get('error', 'Unknown error')}")
+            return
+        
+        logger.info("Execution simulation successful")
+        
+        # Execute opportunity
+        logger.info("Executing opportunity")
+        execution_result = await multi_path_executor.execute_opportunity(
+            opportunity=opportunity,
+            context={
+                'execution_strategy': 'atomic',
+                'gas_price': 50,  # gwei
+                'priority_fee': 2  # gwei
+            }
+        )
+        
+        if not execution_result.get('success', False):
+            logger.warning(f"Execution failed: {execution_result.get('error', 'Unknown error')}")
+            return
+        
+        logger.info("Execution successful")
+        
+        # Monitor slippage
+        logger.info("Monitoring slippage")
+        for i, (path, allocation) in enumerate(zip(opportunity.paths, opportunity.allocations)):
+            slippage_result = await slippage_manager.monitor_slippage(
+                path=path,
+                amount=allocation,
+                execution_result=execution_result.get('path_results', [])[i] if i < len(execution_result.get('path_results', [])) else {}
+            )
             
-            # Log path details
-            for j, (path, allocation) in enumerate(zip(opportunity.paths, opportunity.allocations)):
-                logger.info(f"  Path {j+1}:")
-                logger.info(f"    Tokens: {' -> '.join(path.tokens)}")
-                logger.info(f"    DEXes: {', '.join(path.dexes)}")
-                logger.info(f"    Allocation: {allocation}")
-                logger.info(f"    Expected yield: {path.path_yield:.4f}")
+            if slippage_result.get('success', False):
+                logger.info(f"Path {i} slippage: {slippage_result.get('actual_slippage', 0):.2%}")
         
-        # Select the best opportunity
-        best_opportunity = opportunities[0]
-        logger.info(f"Selected best opportunity with {len(best_opportunity.paths)} paths")
-        
-        # Check if strategy is applicable
-        is_applicable = await strategy.is_applicable(best_opportunity)
-        logger.info(f"Strategy applicable: {is_applicable}")
-        
-        if not is_applicable:
-            logger.warning("Strategy not applicable to this opportunity")
-            return
-        
-        # Execute the opportunity (simulation only for this example)
-        logger.info("Simulating execution (not actually executing)...")
-        
-        # Uncomment the following to actually execute the opportunity
-        """
-        result = await strategy.execute(
-            opportunity=best_opportunity,
-            execution_params={
-                "min_profit_threshold": 0.001,  # 0.001 ETH
-                "blocks_into_future": 2
-            }
-        )
-        
-        # Log the result
-        if result.status.name == "EXECUTED":
-            logger.info(f"Execution successful!")
-            logger.info(f"Transaction hash: {result.transaction_hash}")
-            logger.info(f"Profit: {result.profit_amount} {result.profit_token}")
-            logger.info(f"Gas used: {result.gas_used}, Gas price: {result.gas_price}")
-        else:
-            logger.warning(f"Execution failed: {result.error_message}")
-        """
-        
+        logger.info("Multi-Path Arbitrage Example completed successfully")
+    
     except Exception as e:
-        logger.error(f"Error in example: {e}", exc_info=True)
+        logger.error(f"Error in Multi-Path Arbitrage Example: {e}")
     
     finally:
         # Clean up resources
-        logger.info("Cleaning up resources...")
-        
-        if 'strategy' in locals():
-            await strategy.close()
-        
-        if 'path_finder' in locals():
-            await path_finder.close()
-        
-        if 'graph_explorer' in locals():
-            await graph_explorer.close()
-        
-        if 'flashbots_provider' in locals():
-            await flashbots_provider.close()
-        
-        if 'flash_loan_factory' in locals():
-            await flash_loan_factory.close()
-        
-        if 'price_fetcher' in locals():
-            await price_fetcher.close()
-        
-        if 'dex_manager' in locals():
-            await dex_manager.close()
-        
-        if 'web3_client' in locals():
-            await web3_client.close()
-
+        await path_finder.close()
 
 if __name__ == "__main__":
-    # Run the example
     asyncio.run(main())

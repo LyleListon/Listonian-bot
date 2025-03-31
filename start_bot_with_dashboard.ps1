@@ -126,17 +126,42 @@ try {
     # Clean up any existing processes first
     Write-Host "Cleaning up any existing processes..."
     
-    # Kill any processes using port 9050
-    $netstat = netstat -ano | Select-String ":9050"
-    if ($netstat) {
-        $processId = $netstat -split ' +' | Select-Object -Last 1
-        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+    # More comprehensive process termination
+    try {
+        # Kill any processes using port 9050
+        $netstat = netstat -ano | Select-String ":9050"
+        if ($netstat) {
+            $processId = $netstat -split ' +' | Select-Object -Last 1
+            Write-Host "Killing process using port 9050 (PID: $processId)..."
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+        }
+        
+        # Kill any uvicorn processes
+        Get-Process | Where-Object { $_.ProcessName -match 'uvicorn|python' -and $_.CommandLine -match 'dashboard|app:app|app:create_app' } | ForEach-Object {
+            Write-Host "Killing dashboard process (PID: $($_.Id))..."
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        }
+        
+        # Kill any bot processes
+        Get-Process | Where-Object { $_.ProcessName -match 'python' -and $_.CommandLine -match 'run_bot|arbitrage' } | ForEach-Object {
+            Write-Host "Killing bot process (PID: $($_.Id))..."
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        }
+        
+        # Kill any existing Python processes as a last resort
+        Get-Process | Where-Object { $_.ProcessName -match 'python' } | ForEach-Object {
+            Write-Host "Killing Python process (PID: $($_.Id))..."
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        Write-Host "Warning: Error during process cleanup: $_" -ForegroundColor Yellow
     }
     
-    # Kill any existing bot or dashboard processes
-    Get-Process | Where-Object { $_.ProcessName -match 'python' } | Stop-Process -Force -ErrorAction SilentlyContinue
-    
-    Start-Sleep -Seconds 2
+    # Wait longer for processes to terminate and file locks to be released
+    Write-Host "Waiting for processes to terminate and file locks to be released..."
+    Start-Sleep -Seconds 5
+    Write-Host "Process cleanup completed."
 
     # Check environment
     Write-Host "Checking environment..."

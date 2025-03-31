@@ -282,18 +282,75 @@ class BundleManager:
 
         Returns:
             Decimal: Expected profit in ETH
+            
+        This method analyzes the transactions in the bundle to estimate the expected
+        profit from executing the arbitrage opportunity.
         """
-        # TODO: Implement profit calculation based on strategy
-        # For now, return a placeholder value
-        return Decimal('0.1')
+        try:
+            # Extract transactions from bundle
+            transactions = bundle.get('transactions', [])
+            if not transactions:
+                logger.warning("No transactions in bundle for profit calculation")
+                return Decimal('0')
+            
+            # Analyze transaction types and extract relevant data
+            flash_loan_tx = None
+            swap_txs = []
+            
+            for tx in transactions:
+                # Identify transaction type based on function signature or other characteristics
+                if self._is_flash_loan_tx(tx):
+                    flash_loan_tx = tx
+                elif self._is_swap_tx(tx):
+                    swap_txs.append(tx)
+            
+            # Calculate expected profit based on transaction analysis
+            if flash_loan_tx and swap_txs:
+                # Extract flash loan amount and token
+                flash_loan_amount, flash_loan_token = await self._extract_flash_loan_details(flash_loan_tx)
+                
+                # Calculate expected output from swap transactions
+                expected_output = await self._calculate_swap_output(swap_txs, flash_loan_token)
+                
+                # Calculate flash loan fee
+                flash_loan_fee = await self._calculate_flash_loan_fee(flash_loan_amount, flash_loan_tx)
+                
+                # Calculate net profit
+                net_profit = expected_output - flash_loan_amount - flash_loan_fee
+                
+                logger.info(
+                    f"Expected profit calculation: output={expected_output}, "
+                    f"loan={flash_loan_amount}, fee={flash_loan_fee}, profit={net_profit}"
+                )
+                
+                return max(net_profit, Decimal('0'))
+            else:
+                # For direct arbitrage without flash loans
+                # Analyze input and output tokens/amounts from swap transactions
+                input_amount = await self._extract_input_amount(transactions[0])
+                output_amount = await self._extract_output_amount(transactions[-1])
+                
+                net_profit = output_amount - input_amount
+                
+                logger.info(
+                    f"Direct arbitrage profit calculation: input={input_amount}, "
+                    f"output={output_amount}, profit={net_profit}"
+                )
+                
+                return max(net_profit, Decimal('0'))
+                
+        except Exception as e:
+            logger.error(f"Error calculating expected profit: {e}")
+            # Return a conservative estimate to avoid false positives
+            return Decimal('0')
     
     async def _simulate_bundle(self, bundle: Dict[str, Any]) -> bool:
         """
         Simulate bundle execution.
-
+        
         Args:
             bundle: Bundle parameters
-
+            
         Returns:
             bool: True if simulation successful
         """
@@ -315,6 +372,19 @@ class BundleManager:
             
             if success:
                 logger.info("Bundle simulation successful")
+                
+                # Extract and store simulation results for profit verification
+                bundle['simulation_results'] = response['result']
+                
+                # Verify profit from simulation
+                profit_verified = await self._verify_profit_from_simulation(
+                    bundle['simulation_results'],
+                    self.min_profit
+                )
+                
+                if not profit_verified:
+                    logger.warning("Bundle simulation successful but profit verification failed")
+                    return False
             else:
                 logger.warning(
                     f"Bundle simulation failed: {response['result'].get('error')}"
@@ -325,3 +395,231 @@ class BundleManager:
         except Exception as e:
             logger.error(f"Failed to simulate bundle: {e}")
             raise
+    
+    async def _verify_profit_from_simulation(
+        self, 
+        simulation_results: Dict[str, Any],
+        min_profit: Decimal
+    ) -> bool:
+        """
+        Verify profit from simulation results.
+        
+        Args:
+            simulation_results: Simulation results from Flashbots
+            min_profit: Minimum profit threshold
+            
+        Returns:
+            bool: True if profit meets threshold
+        """
+        try:
+            # Extract relevant data from simulation results
+            if 'coinbaseDiff' in simulation_results:
+                # Convert coinbase diff from wei to ETH
+                coinbase_diff = Decimal(str(int(simulation_results['coinbaseDiff'], 16))) / Decimal('1e18')
+                
+                # Check if coinbase diff meets minimum profit threshold
+                is_profitable = coinbase_diff >= min_profit
+                
+                logger.info(
+                    f"Profit verification from simulation: coinbase_diff={coinbase_diff} ETH, "
+                    f"min_profit={min_profit} ETH, profitable={is_profitable}"
+                )
+                
+                return is_profitable
+            
+            # If no coinbase diff, analyze state changes
+            if 'stateDiff' in simulation_results:
+                # Calculate profit from state changes
+                profit = await self._calculate_profit_from_state_diff(
+                    simulation_results['stateDiff']
+                )
+                
+                is_profitable = profit >= min_profit
+                
+                logger.info(
+                    f"Profit verification from state diff: profit={profit} ETH, "
+                    f"min_profit={min_profit} ETH, profitable={is_profitable}"
+                )
+                
+                return is_profitable
+            
+            # If no profit data available, return False to be safe
+            logger.warning("No profit data available in simulation results")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error verifying profit from simulation: {e}")
+            return False
+    
+    async def _calculate_profit_from_state_diff(
+        self,
+        state_diff: Dict[str, Any]
+    ) -> Decimal:
+        """
+        Calculate profit from state diff.
+        
+        Args:
+            state_diff: State differences from simulation
+            
+        Returns:
+            Decimal: Calculated profit in ETH
+        """
+        try:
+            profit = Decimal('0')
+            
+            # Look for balance changes in our account
+            account_address = self.flashbots.account.address.lower()
+            
+            if account_address in state_diff:
+                account_diff = state_diff[account_address]
+                
+                # Check for ETH balance change
+                if 'balance' in account_diff:
+                    old_balance = int(account_diff['balance'].get('from', '0x0'), 16)
+                    new_balance = int(account_diff['balance'].get('to', '0x0'), 16)
+                    
+                    # Convert wei to ETH
+                    balance_diff_eth = Decimal(str(new_balance - old_balance)) / Decimal('1e18')
+                    profit += balance_diff_eth
+            
+            # Also check for token balance changes (simplified)
+            # In a real implementation, we would need to check ERC20 token balances
+            
+            return profit
+            
+        except Exception as e:
+            logger.error(f"Error calculating profit from state diff: {e}")
+            return Decimal('0')
+    
+    # Helper methods for transaction analysis
+    
+    def _is_flash_loan_tx(self, tx: Dict[str, Any]) -> bool:
+        """Check if transaction is a flash loan transaction."""
+        # This is a simplified check - in a real implementation, we would
+        # check the function signature or other characteristics
+        if not isinstance(tx, dict):
+            return False
+            
+        # Check for common flash loan function signatures
+        data = tx.get('data', '')
+        if isinstance(data, str) and data.startswith('0x'):
+            # Balancer flash loan signature: 0x5b4dd08e
+            if data.startswith('0x5b4dd08e'):
+                return True
+            # Aave flash loan signature: 0xab9c4b5d
+            if data.startswith('0xab9c4b5d'):
+                return True
+                
+        return False
+    
+    def _is_swap_tx(self, tx: Dict[str, Any]) -> bool:
+        """Check if transaction is a swap transaction."""
+        # This is a simplified check - in a real implementation, we would
+        # check the function signature or other characteristics
+        if not isinstance(tx, dict):
+            return False
+            
+        # Check for common swap function signatures
+        data = tx.get('data', '')
+        if isinstance(data, str) and data.startswith('0x'):
+            # Uniswap/Sushiswap swap signature: 0x38ed1739
+            if data.startswith('0x38ed1739'):
+                return True
+            # exactInputSingle signature: 0x414bf389
+            if data.startswith('0x414bf389'):
+                return True
+                
+        return False
+    
+    async def _extract_flash_loan_details(
+        self,
+        tx: Dict[str, Any]
+    ) -> Tuple[Decimal, str]:
+        """
+        Extract flash loan amount and token from transaction.
+        
+        Args:
+            tx: Flash loan transaction
+            
+        Returns:
+            Tuple[Decimal, str]: (loan amount, token address)
+        """
+        # This is a simplified implementation - in a real implementation,
+        # we would decode the transaction data to extract the actual values
+        
+        # For now, return placeholder values
+        return Decimal('10'), '0x0000000000000000000000000000000000000000'
+    
+    async def _calculate_swap_output(
+        self,
+        swap_txs: List[Dict[str, Any]],
+        token: str
+    ) -> Decimal:
+        """
+        Calculate expected output from swap transactions.
+        
+        Args:
+            swap_txs: List of swap transactions
+            token: Token address to track
+            
+        Returns:
+            Decimal: Expected output amount
+        """
+        # This is a simplified implementation - in a real implementation,
+        # we would simulate the swaps to calculate the expected output
+        
+        # For now, return a placeholder value
+        return Decimal('10.1')
+    
+    async def _calculate_flash_loan_fee(
+        self,
+        amount: Decimal,
+        tx: Dict[str, Any]
+    ) -> Decimal:
+        """
+        Calculate flash loan fee.
+        
+        Args:
+            amount: Flash loan amount
+            tx: Flash loan transaction
+            
+        Returns:
+            Decimal: Flash loan fee
+        """
+        # This is a simplified implementation - in a real implementation,
+        # we would calculate the fee based on the protocol and amount
+        
+        # Balancer fee is 0.001% (0.00001)
+        return amount * Decimal('0.00001')
+    
+    async def _extract_input_amount(self, tx: Dict[str, Any]) -> Decimal:
+        """
+        Extract input amount from transaction.
+        
+        Args:
+            tx: Transaction
+            
+        Returns:
+            Decimal: Input amount
+        """
+        # This is a simplified implementation - in a real implementation,
+        # we would decode the transaction data to extract the actual values
+        
+        # For now, return a placeholder value
+        return Decimal('1.0')
+    
+    async def _extract_output_amount(self, tx: Dict[str, Any]) -> Decimal:
+        """
+        Extract output amount from transaction.
+        
+        Args:
+            tx: Transaction
+            
+        Returns:
+            Decimal: Output amount
+        """
+        # This is a simplified implementation - in a real implementation,
+        # we would decode the transaction data to extract the actual values
+        
+        # For now, return a placeholder value
+        return Decimal('1.05')

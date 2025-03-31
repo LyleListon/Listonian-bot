@@ -10,12 +10,22 @@ echo Creating log directories...
 if not exist "logs" mkdir logs
 
 :: Kill any existing Python processes running the dashboard or bot
-echo Closing existing processes...
-wmic process where "commandline like '%%dashboard.app:create_app%%'" call terminate >nul 2>&1
-wmic process where "commandline like '%%run_bot.py%%'" call terminate >nul 2>&1
+echo Closing existing processes and releasing file locks...
+
+:: More comprehensive process termination
+:: Kill any Python processes that might be related to our application
+wmic process where "commandline like '%%dashboard.app%%'" call terminate >nul 2>&1
+wmic process where "commandline like '%%run_bot%%'" call terminate >nul 2>&1
+wmic process where "commandline like '%%uvicorn%%dashboard%%'" call terminate >nul 2>&1
+wmic process where "commandline like '%%python%%run_bot.py%%'" call terminate >nul 2>&1
+
+:: Kill any cmd.exe processes with our window titles
+wmic process where "commandline like '%%Arbitrage Bot%%'" call terminate >nul 2>&1
+wmic process where "commandline like '%%Dashboard%%'" call terminate >nul 2>&1
 
 :: Wait a moment for processes to close
-timeout /t 2 >nul
+echo Waiting for processes to terminate...
+timeout /t 5 >nul
 
 :: Start the arbitrage bot in a new terminal
 echo Starting arbitrage bot...
