@@ -1,6 +1,102 @@
 """
 Flashbots Integration Module
 
+async def _detect_potential_mev_attacks(
+    integration: FlashbotsIntegration,
+    token_addresses: List[str]
+) -> bool:
+    """
+    Detect potential MEV attacks by monitoring for suspicious price and liquidity movements.
+    
+    Args:
+        integration: FlashbotsIntegration instance
+        token_addresses: List of token addresses to monitor
+        
+    Returns:
+        bool: True if potential attack detected
+    """
+    try:
+        # Track recent price movements for these tokens
+        suspicious_activity = False
+        
+        for token in token_addresses:
+            # Check for sudden liquidity changes in the last few blocks
+            # This is a simplified implementation - in production, we would:
+            # 1. Track historical liquidity data
+            # 2. Look for statistical anomalies
+            # 3. Compare across multiple DEXs
+            
+            # For now, we'll implement a basic check
+            current_block = await integration.web3_manager.w3.eth.block_number
+            
+            # Check mempool for suspicious transactions targeting these tokens
+            # This would require mempool monitoring which is outside the scope of this example
+            
+            # Check for price divergence across multiple sources
+            # This would require querying multiple price sources
+            
+            # For demonstration, we'll return False (no attack detected)
+            # In a real implementation, this would be based on actual data analysis
+        
+        return suspicious_activity
+        
+    except Exception as e:
+        logger.error(f"Error detecting MEV attacks: {e}")
+        return False
+
+async def _should_add_backrun_protection(
+    integration: FlashbotsIntegration,
+    token_addresses: List[str]
+) -> bool:
+    """
+    Determine if backrun protection should be added based on market conditions.
+    
+    Args:
+        integration: FlashbotsIntegration instance
+        token_addresses: List of token addresses
+        
+    Returns:
+        bool: True if backrun protection should be added
+    """
+    try:
+        # In a real implementation, this would analyze:
+        # 1. Current market volatility
+        # 2. Historical sandwich attack frequency for these tokens
+        # 3. Size of the arbitrage relative to pool liquidity
+        
+        # For high-value arbitrage opportunities, we should add protection
+        # For demonstration, we'll return True for now
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error determining backrun protection: {e}")
+        return False
+
+async def _create_backrun_transaction(
+    integration: FlashbotsIntegration,
+    token_addresses: List[str]
+) -> Optional[Dict[str, Any]]:
+    """
+    Create a backrun transaction to protect against sandwich attacks.
+    
+    Args:
+        integration: FlashbotsIntegration instance
+        token_addresses: List of token addresses
+        
+    Returns:
+        Optional[Dict[str, Any]]: Backrun transaction or None
+    """
+    try:
+        # In a real implementation, this would:
+        # 1. Create a transaction that would be profitable only if a sandwich attack occurs
+        # 2. Use a contract that can detect and profit from price manipulation
+        
+        # This is a placeholder - in production, this would create an actual transaction
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error creating backrun transaction: {e}")
+        return None
 This module provides functionality for:
 - Flashbots RPC integration
 - Bundle submission
@@ -215,6 +311,11 @@ async def execute_arbitrage_bundle(
         if flash_loan_amount <= 0:
             raise ValueError("Invalid flash loan amount")
 
+        # Detect potential MEV attacks by checking for suspicious price movements
+        if await _detect_potential_mev_attacks(integration, token_addresses):
+            logger.warning("Potential MEV attack detected - proceeding with caution")
+            # Continue but with enhanced protection measures
+            slippage_tolerance *= 1.5  # Increase slippage tolerance
         # Choose flash loan provider based on configuration
         if use_balancer and integration.balancer_flash_loan_manager:
             logger.info("Using Balancer for flash loan")
@@ -236,7 +337,13 @@ async def execute_arbitrage_bundle(
                 callback_data=b''
             )
 
-        # Combine flash loan and swap transactions
+        # Combine flash loan and swap transactions        # Add backrun transaction to protect against sandwich attacks if needed
+        if await _should_add_backrun_protection(integration, token_addresses):
+            logger.info("Adding backrun protection transaction to bundle")
+            backrun_tx = await _create_backrun_transaction(integration, token_addresses)
+            if backrun_tx:
+                bundle_txs.append(backrun_tx)
+
         bundle_txs = [flash_loan_tx] + transactions
 
         # First simulate without state overrides

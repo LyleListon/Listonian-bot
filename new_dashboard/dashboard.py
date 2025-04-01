@@ -17,12 +17,29 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+# --- Integration Imports ---
+from typing import Optional # Add Optional for global type hint
+from arbitrage_bot.dashboard.metrics_service import MetricsService
+from .core.dependencies import register_services, lifespan # Import registry functions
+from .dashboard.routes import websocket as websocket_router # Import the router
+# --- End Integration Imports ---
+
+
+# --- Register Services BEFORE App Creation ---
+register_services()
+# --- End Register Services ---
+
 from arbitrage_bot.utils.config_loader import load_config, save_config
 from .components import create_production_components
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+
+# --- Include WebSocket Routes ---
+app.include_router(websocket_router.router, prefix="/dashboard") # Add prefix
+# --- End Include WebSocket Routes ---
+
+app = FastAPI(lifespan=lifespan)
 
 # Get the directory containing this file
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -97,7 +114,6 @@ class SystemComponents:
     def __init__(self):
         """Initialize system components."""
         self.web3_manager = None
-        self.flash_loan_manager = None
         self.market_analyzer = None
         self.arbitrage_executor = None
         self.memory_bank = None
@@ -108,30 +124,43 @@ manager = ConnectionManager()
 @app.on_event("startup")
 async def startup_event():
     """Initialize system components on startup."""
+    logger.info("--- Running startup_event ---")
     try:
         # Load configuration
+        logger.info("Loading configuration...")
         config = load_config()
         logger.info("Loaded configuration from file")
-        
+
         # Initialize production components
+        logger.info("Creating production components...")
         components = create_production_components(config)
-        
+        logger.info("Production components created.")
+
         # Set components
+        logger.info("Assigning components...")
         system.web3_manager = components["web3_manager"]
         system.flash_loan_manager = components["flash_loan_manager"]
         system.market_analyzer = components["market_analyzer"]
         system.arbitrage_executor = components["arbitrage_executor"]
         system.memory_bank = components["memory_bank"]
-        
+        logger.info("Components assigned.")
+
         # Initialize components
+        logger.info("Initializing Web3Manager...")
         await system.web3_manager.initialize()
+        logger.info("Web3Manager initialized.")
+        logger.info("Initializing MemoryBank...")
         await system.memory_bank.initialize()
-        
+        logger.info("MemoryBank initialized."
+)
+
         logger.info("System components initialized successfully")
-        
+        logger.info("--- startup_event finished ---")
+
     except Exception as e:
-        logger.error(f"Failed to initialize components: {e}")
-        raise
+        logger.error(f"Failed to initialize components during startup: {e}", exc_info=True)
+        # Optionally re-raise or handle differently depending on desired behavior
+        raise # Re-raise the exception to halt startup on error
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

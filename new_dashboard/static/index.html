@@ -199,10 +199,13 @@
             statusElement.className = 'connection-status connecting';
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            // Connect to the specific metrics endpoint with the correct prefix
+            ws = new WebSocket(`${protocol}//${window.location.host}/dashboard/ws/metrics`); 
+// Added /dashboard prefix
 
             ws.onopen = () => {
                 console.log('WebSocket connected');
+                console.log('ws.onopen triggered'); // Added log
                 statusElement.textContent = 'Connected';
                 statusElement.className = 'connection-status connected';
                 reconnectAttempts = 0;
@@ -211,10 +214,22 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+                console.log('Raw data received:', event.data); // Added log
+                console.log('Parsed data:', data); // Added log
                 
                 if (data.type === 'update') {
                     updateMetricsDisplay(data.metrics);
                     updateStatusDisplay(data.status);
+ // This might need adjustment based on actual data
+                } else if (data.type === 'initial_state') {
+                    console.log('Received initial state:', data.data);
+                    // Assuming initial_state data structure matches combined metrics/status
+                    updateMetricsDisplay(data.data); // Adjust if structure differs
+                    updateStatusDisplay(data.data); // Adjust if structure differs
+                } else if (data.type === 'system_update') { // Handle system metrics updates
+                    console.log('Received system update:', data.data);
+                    updateMetricsDisplay(data.data); // Assuming system_update contains relevant metrics
+                    updateStatusDisplay(data.data); // Assuming system_update contains relevant status
                 } else if (data.type === 'config_update') {
                     updateConfigDisplay(data.config);
                 }
@@ -242,17 +257,33 @@
 
         function updateMetricsDisplay(metrics) {
             document.getElementById('walletBalance').textContent = metrics.walletBalance.toFixed(4) + ' ETH';
-            document.getElementById('totalProfit').textContent = (metrics.totalProfit / 1e18).toFixed(4) + ' ETH';
-            document.getElementById('successRate').textContent = metrics.successRate.toFixed(1) + '%';
-            document.getElementById('averageGas').textContent = metrics.averageGas.toLocaleString();
-            document.getElementById('averageProfit').textContent = (metrics.averageProfit / 1e18).toFixed(4) + ' ETH';
-            document.getElementById('totalExecutions').textContent = metrics.totalExecutions;
+            console.log('updateMetricsDisplay called with:', metrics); // Added log
+            // Adjust keys based on the actual data structure from /ws/metrics
+            // Example: Accessing nested metrics data if needed
+            const perfMetrics = metrics.metrics?.performance || {}; // Use optional chaining and default
+            const systemMetrics = metrics.system || {};
+            
+            document.getElementById('totalProfit').textContent = (perfMetrics.total_profit || 0 / 1e18).toFixed(4) + ' ETH';
+            document.getElementById('successRate').textContent = (perfMetrics.success_rate || 0 * 100).toFixed(1) + '%';
+            document.getElementById('averageGas').textContent = (perfMetrics.average_gas || 0).toLocaleString();
+            document.getElementById('averageProfit').textContent = (perfMetrics.average_profit || 0 / 1e18).toFixed(4) + ' ETH';
+            document.getElementById('totalExecutions').textContent = perfMetrics.total_executions || 0;
+
+            // Update system metrics like CPU/Memory if available in the received data
+            // document.getElementById('cpuUsage').textContent = systemMetrics.cpu_percent?.toFixed(1) + '%'; 
+            // document.getElementById('memoryUsage').textContent = systemMetrics.memory_percent?.toFixed(1) + '%';
         }
 
         function updateStatusDisplay(status) {
-            document.getElementById('status').textContent = status.status;
-            document.getElementById('currentBlock').textContent = status.current_block;
-            document.getElementById('web3Connected').textContent = status.web3_connected ? 'Yes' : 'No';
+            // Adjust keys based on the actual data structure from /ws/metrics
+            console.log('updateStatusDisplay called with:', status); // Added log
+            const systemStatus = status.system_status || {};
+            const web3Status = status.web3_manager || {}; // Assuming web3 status might be nested differently
+
+            document.getElementById('status').textContent = systemStatus.bot_status || 'Unknown';
+            document.getElementById('currentBlock').textContent = systemStatus.current_block || 'N/A'; // Or fetch from web3 status if available
+            document.getElementById('web3Connected').textContent = web3Status.is_connected ? 'Yes' : 'No';
+ // Adjust key if needed
         }
 
         function updateConfigDisplay(config) {

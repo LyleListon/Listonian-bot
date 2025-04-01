@@ -1,0 +1,29 @@
+{
+  "mev_protection": {
+    "min_profit": "0.001",
+    "slippage_tolerance": "0.005",
+    "max_priority_fee_multiplier": 2.0,
+    "detection": {
+      "enabled": true,
+      "blocks_to_check": 10,
+      "liquidity_change_threshold": 0.1,
+      "price_volatility_threshold": 0.05
+    },
+    "backrun_protection": {
+      "enabled": true,
+      "min_transaction_value": "0.01",
+      "high_risk_tokens": []
+    },
+    "bundle_optimization": {
+      "base_priority_fee": "1.0",
+      "medium_risk_multiplier": 1.5,
+      "high_risk_multiplier": 2.0,
+      "max_gas_price": "100.0"
+    },
+    "slippage_adjustment": {
+      "medium_risk_multiplier": 1.5,
+      "high_risk_multiplier": 2.0,
+      "max_slippage": 0.5
+    }
+  }
+}

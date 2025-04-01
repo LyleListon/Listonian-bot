@@ -33,6 +33,7 @@ class ConnectionManager:
     async def connection(self, websocket: WebSocket) -> AsyncIterator[None]:
         """Context manager for WebSocket connections."""
         try:
+            logger.info(f"Accepting new WebSocket connection from {websocket.client}")
             await websocket.accept()
             async with self._lock:
                 self._connections[websocket] = {
@@ -95,10 +96,14 @@ async def handle_updates(
     """Handle updates from a queue and send to websocket."""
     try:
         while connection_active():
+            update = None # Initialize update to None
             try:
+                logger.info(f"Waiting for update from queue")
                 update = await asyncio.wait_for(queue.get(), timeout=1.0)
+                logger.debug(f"Received raw update from queue: {update}") # Log raw update
                 if connection_active():
                     processed_update = process_update(update)
+                    logger.debug(f"Processed update to send: {processed_update}") # Log processed update
                     await websocket.send_json(processed_update)
             except asyncio.TimeoutError:
                 continue
@@ -132,6 +137,8 @@ async def websocket_metrics(
             # Send initial state
             initial_metrics = await metrics_service.get_current_metrics()
             if manager.is_active(websocket):
+                logger.info(f"Sending initial metrics state via /ws/metrics")
+                logger.debug(f"Initial metrics data: {initial_metrics}") # Log initial data
                 await websocket.send_json({
                     "type": "initial_state",
                     "data": initial_metrics,

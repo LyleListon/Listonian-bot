@@ -89,6 +89,7 @@ class MetricsService:
         logger.debug("MetricsService initialized")
 
     async def start(self) -> None:
+        logger.info("--- MetricsService.start() CALLED ---")
         """Start the metrics service."""
         # Start update tasks for all registered collectors
         for metric_type in self._collectors:
@@ -217,6 +218,7 @@ class MetricsService:
             "timestamp": time.time()
         }
         
+        logger.debug(f"[_collect_system_metrics] Collected data: {message}") # Log collected data
         # Send to all subscribers
         count = 0
         for subscriber in list(self._subscribers):
@@ -254,11 +256,13 @@ class MetricsService:
         while True:
             try:
                 # Only update if we have subscribers
+                logger.debug(f"Update loop {metric_type}: Checking subscribers. Count = {len(self._subscribers)}") # Log subscriber count
                 if self._subscribers:
                     # Get fresh metrics
                     metrics = await self.get_metrics(metric_type)
                     
                     # Broadcast to subscribers
+                    logger.info(f"Update loop {metric_type}: Attempting to broadcast metrics...") # Log before broadcast
                     await self.broadcast_metrics(metric_type, metrics)
                     
                 # Wait for the throttle interval
@@ -279,6 +283,7 @@ class MetricsService:
             Dictionary with system metrics
         """
         try:
+            logger.debug("Attempting to collect system metrics in _collect_system_metrics...") # Add log
             # Get CPU and memory usage
             cpu_percent = psutil.cpu_percent(interval=0.1)
             memory = psutil.virtual_memory()
@@ -295,6 +300,9 @@ class MetricsService:
             net_io = psutil.net_io_counters()
             
             return {
+                # ... (rest of the data structure)
+            }
+            data = { # Assign to variable to log before returning
                 "system": {
                     "cpu_percent": cpu_percent,
                     "memory_percent": memory.percent,
@@ -318,6 +326,8 @@ class MetricsService:
                 },
                 "timestamp": time.time()
             }
+            logger.debug(f"[_collect_system_metrics] Returning data: {data}") # Log data before return
+            return data
             
         except Exception as e:
             logger.error(f"Error collecting system metrics: {str(e)}")

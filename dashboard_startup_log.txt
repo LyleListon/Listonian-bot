@@ -1,0 +1,35 @@
+2025-03-31 16:09:41 [DEBUG] Available routes before registration:
+2025-03-31 16:09:41 [DEBUG]   openapi: /openapi.json [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG]   swagger_ui_html: /docs [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG]   swagger_ui_redirect: /docs/oauth2-redirect [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG]   redoc_html: /redoc [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG] Available routes after registration:
+2025-03-31 16:09:41 [DEBUG]   openapi: /openapi.json [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG]   swagger_ui_html: /docs [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG]   swagger_ui_redirect: /docs/oauth2-redirect [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG]   redoc_html: /redoc [{'HEAD', 'GET'}]
+2025-03-31 16:09:41 [DEBUG]   get_current_metrics: /api/metrics/current [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   get_performance_metrics: /api/metrics/performance [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   get_market_data: /api/metrics/market [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   get_system_status: /api/system/status [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   health_check: /api/system/health [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   detailed_health_check: /api/system/health/detailed [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   get_resource_usage: /api/system/resources [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   get_uptime: /api/system/uptime [{'GET'}]
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/metrics
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/profitability
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/dex-performance
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/flash-loans
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/execution
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/token-performance
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/system-performance
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/system
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/trades
+2025-03-31 16:09:41 [DEBUG]   APIWebSocketRoute: /ws/market
+2025-03-31 16:09:41 [INFO] Starting dashboard...
+2025-03-31 16:09:41 [INFO] Logs directory: E:\Arby 2-22-25\Listonian-bot\logs
+2025-03-31 16:09:41 [INFO] Memory bank directory: E:\Arby 2-22-25\Listonian-bot\memory-bank
+2025-03-31 16:09:41 [INFO] Using port: 9050
+2025-03-31 16:09:41 [INFO] Dashboard ready at http://localhost:9050
+2025-03-31 16:09:41 [DEBUG] Using selector: SelectSelector
+ERROR:    Error loading ASGI app. Could not import module "new_dashboard.app".

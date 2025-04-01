@@ -25,19 +25,27 @@ class ServiceRegistry:
 
         async with self._lock:
             if self._initialized:  # Double-check after acquiring lock
-                return
+                 return
 
             self.logger.info("Initializing service registry")
             for name, service in self._services.items():
-                if hasattr(service, 'initialize') and callable(service.initialize):
+                # Look for start() or initialize()
+                init_method_name = None
+                if hasattr(service, 'start') and callable(service.start):
+                    init_method_name = 'start'
+                elif hasattr(service, 'initialize') and callable(service.initialize):
+                    init_method_name = 'initialize'
+
+                if init_method_name:
+                    init_method = getattr(service, init_method_name)
                     try:
-                        if asyncio.iscoroutinefunction(service.initialize):
-                            await service.initialize()
+                        if asyncio.iscoroutinefunction(init_method):
+                            await init_method()
                         else:
-                            service.initialize()
-                        self.logger.info(f"Initialized service: {name}")
+                            init_method()
+                        self.logger.info(f"Called {init_method_name}() on service: {name}")
                     except Exception as e:
-                        self.logger.error(f"Failed to initialize service {name}: {e}")
+                        self.logger.error(f"Failed to call {init_method_name}() on service {name}: {e}", exc_info=True)
                         raise
 
             self._initialized = True
@@ -50,19 +58,27 @@ class ServiceRegistry:
 
         async with self._lock:
             if not self._initialized:  # Double-check after acquiring lock
-                return
+                 return
 
             self.logger.info("Shutting down service registry")
             for name, service in reversed(list(self._services.items())):
-                if hasattr(service, 'shutdown') and callable(service.shutdown):
+                # Look for stop() or shutdown()
+                shutdown_method_name = None
+                if hasattr(service, 'stop') and callable(service.stop):
+                    shutdown_method_name = 'stop'
+                elif hasattr(service, 'shutdown') and callable(service.shutdown):
+                    shutdown_method_name = 'shutdown'
+
+                if shutdown_method_name:
+                    shutdown_method = getattr(service, shutdown_method_name)
                     try:
-                        if asyncio.iscoroutinefunction(service.shutdown):
-                            await service.shutdown()
+                        if asyncio.iscoroutinefunction(shutdown_method):
+                            await shutdown_method()
                         else:
-                            service.shutdown()
-                        self.logger.info(f"Shut down service: {name}")
+                            shutdown_method()
+                        self.logger.info(f"Called {shutdown_method_name}() on service: {name}")
                     except Exception as e:
-                        self.logger.error(f"Error shutting down service {name}: {e}")
+                        self.logger.error(f"Error calling {shutdown_method_name}() on service {name}: {e}", exc_info=True)
 
             self._initialized = False
             self.logger.info("Service registry shutdown complete")
@@ -140,11 +156,27 @@ class RequiresService:
 
 def register_services() -> None:
     """Register all required services."""
+    # logger.info("--- Attempting to register services ---")
+ # Reverted log
     from ..services.memory_service import MemoryService
+    # logger.info("Imported MemoryService")
+ # Reverted log
     from ..services.metrics_service import MetricsService
+    # logger.info("Imported MetricsService")
+ # Reverted log
     from ..services.system_service import SystemService
 
+    # logger.info("Imported SystemService")
+ # Reverted log
+
     # Register core services
+    # logger.info("Registering MemoryService...")
+ # Reverted log
     registry.register("memory_service", MemoryService(registry))
+    # logger.info("Registering MetricsService...")
+ # Reverted log
     registry.register("metrics_service", MetricsService(registry))
+    # logger.info("Registering SystemService...")
+ # Reverted log
     registry.register("system_service", SystemService(registry))
+    # logger.info("--- Finished registering services ---") # Reverted log

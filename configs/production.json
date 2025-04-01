@@ -15,35 +15,47 @@
         "relay_url": "https://relay.flashbots.net",
         "auth_key": "$SECURE:PRIVATE_KEY",
         "profit_recipient": "$SECURE:WALLET_ADDRESS",
-        "min_profit": "0.01",
-        "max_gas_price": 500
+        "min_profit": "0.0025",
+        "max_gas_price": 350
     },
     "trading": {
-        "max_slippage": 0.5,
+        "max_slippage": 0.3,
         "max_liquidity_usage": 30,
-        "min_profit_threshold": 0.01,
-        "max_gas_price": 500
+        "min_profit_threshold": 0.0025,
+        "max_gas_price": 350
     },
     "flash_loan": {
         "enabled": true,
         "use_flashbots": true,
         "balancer": {
             "vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
-            "min_profit": "0.01",
-            "max_slippage": 50
+            "min_profit": "0.0025",
+            "max_slippage": 30
+,
+            "max_pool_usage_percent": 40,
+            "preferred_tokens": [
+                "0x4200000000000000000000000000000000000006",
+                "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            ]
         },
-        "min_profit": "0.01",
-        "aave_pool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD"
+        "min_profit": "0.0025"
     },
     "path_finder": {
         "max_paths_to_check": 5,
-        "max_path_length": 3,
-        "max_parallel_requests": 10
+        "max_path_length": 4,
+        "max_parallel_requests": 15,
+        "preferred_intermediate_tokens": [
+            "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "0x4200000000000000000000000000000000000006"
+        ]
     },
+    
+
     "scan": {
         "interval": 1,
         "amount_wei": "1000000000000000000",
-        "max_paths": 3
+        "max_paths": 4,
+        "path_diversity_weight": 0.3
     },
     "monitoring": {
         "stats_interval": 60,
@@ -59,19 +71,59 @@
             "decimals": 6
         }
     },
+    "dexes": {
+        "baseswap": {
+            "factory": "0x38015D05f4fEC8AFe15D7cc0386a126574e8077B",
+            "router": "0x1B8eea9315bE495187D873DA7773a874545D9D48",
+            "quoter": "0x0C1Ef7cA95C6C2CeF48eDFc51CE1BeB2Aa2D8410",
+            "fee_tiers": [100, 500, 3000, 10000],
+            "enabled": true,
+            "version": "v3"
+        },
+        "pancakeswap_v3": {
+            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
+            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
+            "fee_tiers": [100, 500, 2500, 10000],
+            "enabled": true,
+            "version": "v3"
+        },
+        "aerodrome": {
+            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "fee_tiers": [3000],
+            "enabled": true,
+            "version": "v2"
+        },
+        "sushiswap": {
+            "router": "0x6BdedD42c6Da8FBf0D2BA55B2Fa120C5e0C8D7891",
+            "quoter": "0x7A5f0BD5623fc6EcB3c6632D2295A1f5c2B9dB0F",
+            "fee_tiers": [3000],
+            "enabled": true,
+            "version": "v2"
+        },
+        "aerodrome": {
+            "factory": "0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "fee_tiers": [3000],
+            "enabled": false,
+            "version": "v2",
+            "pools": {"WETH-USDC": "0xab067c01C7F5734da168C699Ae9d23a4512c9FdB"}
+        }
+    },
     "mev_protection": {
         "enabled": true,
         "use_flashbots": true,
         "max_bundle_size": 3,
         "max_blocks_ahead": 2,
-        "min_priority_fee": "0.1",
-        "max_priority_fee": "2.0",
+        "min_priority_fee": "0.5",
+        "max_priority_fee": "1.5",
         "sandwich_detection": true,
         "frontrun_detection": true,
         "backrun_detection": true,
         "time_bandit_detection": true,
-        "profit_threshold": "0.01",
-        "gas_threshold": "500000",
+        "profit_threshold": "0.0025",
+        "gas_threshold": "400000",
         "confidence_threshold": "0.95",
         "adaptive_gas": true
     },
@@ -84,7 +136,10 @@
     },
     "performance": {
         "cache_ttl": 300,
-        "max_concurrent_paths": 10,
+        "max_concurrent_paths": 15,
         "batch_size": 100
+,
+        "path_optimization_level": "aggressive",
+        "path_diversity_weight": 0.3
     }
 }

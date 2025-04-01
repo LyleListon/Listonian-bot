@@ -17,11 +17,12 @@ logging.basicConfig(
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 if __name__ == "__main__":
+    print("\n!!! --- Starting Uvicorn on host 0.0.0.0, port 9050 --- !!!\n")
     uvicorn.run(
-        "new_dashboard:app",
+        "new_dashboard.dashboard:app", # Keep this format for direct execution
         host="0.0.0.0",
         port=9050,
-        reload=True,
+        reload=False,
         log_level="debug",
         access_log=False,
         use_colors=False

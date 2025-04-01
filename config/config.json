@@ -21,8 +21,37 @@
             "enabled": true,
             "version": "v3"
         },
-        "baseswap_v3": null,
-        "aerodrome_v3": null
+        "pancakeswap_v3": {
+            "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+            "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86",
+            "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
+            "fee_tiers": [100, 500, 2500, 10000],
+            "enabled": true,
+            "version": "v3"
+        },
+        "aerodrome": {
+            "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+            "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            "fee_tiers": [3000],
+            "enabled": true,
+            "version": "v2"
+        },
+        "sushiswap": {
+            "router": "0x6BdedD42c6Da8FBf0D2BA55B2Fa120C5e0C8D7891",
+            "quoter": "0x7A5f0BD5623fc6EcB3c6632D2295A1f5c2B9dB0F",
+            "fee_tiers": [3000],
+            "enabled": true,
+            "version": "v2"
+        }
+    },
+    "path_finder": {
+        "max_paths_to_check": 8,
+        "max_path_length": 4,
+        "max_parallel_requests": 15,
+        "preferred_intermediate_tokens": [
+            "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "0x4200000000000000000000000000000000000006"
+        ]
     },
     "tokens": {
         "WETH": {

@@ -130,11 +130,21 @@ class MetricsService:
     async def _load_metrics(self):
         """Load initial metrics state from MemoryService."""
         try:
+            logger.info("Starting to load initial metrics from memory service")
             state = await self.memory_service.get_current_state()
+            logger.info(f"Loaded initial state from memory service: {json.dumps(state)}")
             await self._handle_memory_update(state) # Use the handler to populate initial state
             logger.info("Initial metrics loaded from memory service.")
+            # Log the current metrics structure after processing
+            logger.info(f"Current metrics structure after processing: {json.dumps(self._current_metrics)}")
         except Exception as e:
             logger.error(f"Error loading initial metrics: {e}")
+            # Log the actual structure of the metrics file
+            try:
+                metrics_data = await self.memory_service.file_manager.read_file('metrics')
+                logger.info(f"Raw metrics data from file: {json.dumps(metrics_data)}")
+            except Exception as file_e:
+                logger.error(f"Error reading raw metrics file: {file_e}")
             # Initialize with defaults if loading fails
             async with self._lock:
                  self._current_metrics = self._stats.copy()
@@ -166,16 +176,18 @@ class MetricsService:
     async def _handle_memory_update(self, update: Dict[str, Any]):
         """Handle state updates received from MemoryService."""
         async with self._lock:
-            logger.debug(f"--- Handling Memory Update ---")
-            logger.debug(f"Received update keys: {list(update.keys())}")
+            logger.info(f"--- Handling Memory Update ---")
+            logger.info(f"Received update keys: {list(update.keys())}")
             trade_history_received = update.get('trade_history', [])
-            logger.debug(f"Received trade_history length: {len(trade_history_received)}")
+            logger.info(f"Received trade_history length: {len(trade_history_received)}")
             if trade_history_received:
-                logger.debug(f"First trade record sample: {trade_history_received[0]}")
+                logger.info(f"First trade record sample: {trade_history_received[0]}")
             memory_metrics_received = update.get('metrics', {})
-            logger.debug(f"Received memory_metrics keys: {list(memory_metrics_received.keys())}")
+            logger.info(f"Received memory_metrics keys: {list(memory_metrics_received.keys())}")
 
-            logger.debug(f"Received memory update: {update.get('timestamp')}")
+            logger.info(f"Received memory_metrics content: {json.dumps(memory_metrics_received)}")
+
+            logger.info(f"Received memory update: {update.get('timestamp')}")
             # Update metrics based on the 'metrics' key from MemoryService update
             memory_metrics = update.get('metrics', {})
 
