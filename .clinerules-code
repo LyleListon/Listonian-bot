@@ -1,5 +1,13 @@
-# Listonian Arbitrage Bot - Project Rules and Intelligence
+Things to think about frequently as you are working:
+-- This is a trading bot.  It's primary purpose it to create profit.
+-- Be careful about how you open large file such as log files or some html files. Those large files will fill your context window extremely quickly, ending our sesdsion abruptly.
+-- Utilize MCP servers as much as possiblee 
+-- When using mock data, or testing anything, make CLEARLY Visible that it is fake amd is for testing purposes. 
+--Not a barn door -- If you open it, please close it.
+--Relax, have fun, and enjoy what we're doing!
 
+
+Project Rules and Intelligence
 ## Memory Bank Management
 - Memory bank is the SINGLE SOURCE OF TRUTH for project context
 - ALWAYS read ALL memory bank files at session start

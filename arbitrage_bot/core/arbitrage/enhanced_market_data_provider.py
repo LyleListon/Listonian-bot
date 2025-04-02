@@ -2,7 +2,8 @@
 Enhanced Market Data Provider Implementation
 
 This module provides a concrete implementation of the MarketDataProvider protocol
-with enhanced market data capabilities.
+with enhanced market data capabilities. It integrates with the DEX discovery system
+to dynamically discover and monitor DEXes beyond the hardcoded ones.
 """
 
 import asyncio
@@ -12,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .interfaces import MarketDataProvider as MarketDataProviderABC
+from .discovery.sources.manager import DEXDiscoveryManager, create_dex_discovery_manager
+from .discovery.sources.base import DEXInfo
 from ..market.enhanced_market_analyzer import EnhancedMarketAnalyzer
 from ..web3.web3_manager import Web3Manager
 
@@ -22,7 +25,8 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
     Enhanced implementation of the MarketDataProvider protocol.
     
     This class provides real-time market data with enhanced analytics
-    and price validation capabilities.
+    and price validation capabilities. It integrates with the DEX discovery system 
+    to dynamically discover and monitor DEXes in addition to the configured ones.
     """
     
     def __init__(self, config: Dict[str, Any]):
@@ -39,6 +43,7 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
         self._initialized = False
         
         # Initialize enhanced analyzer and web3
+        self._dex_discovery_manager = None  # Will be initialized in initialize()
         self._analyzer = EnhancedMarketAnalyzer(config)
         # Construct the config dict expected by Web3Manager
         web3_config = {
@@ -73,6 +78,21 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
             await self._analyzer.initialize()
             await self._web3.initialize()
             
+            # Initialize DEX discovery manager for dynamic DEX discovery
+            try:
+                logger.info("Initializing DEX discovery manager")
+                dex_discovery_config = self._config.get("dex_discovery", {})
+                self._dex_discovery_manager = await create_dex_discovery_manager(
+                    web3_manager=self._web3,
+                    config=dex_discovery_config
+                )
+                logger.info("DEX discovery manager initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize DEX discovery manager: {e}", exc_info=True)
+                logger.warning("Continuing without DEX discovery - will use only configured DEXes")
+                # Set to None to indicate it's not available
+                self._dex_discovery_manager = None
+            
             # Initialize caches
             self._last_update = datetime.now()
             self._market_condition = await self._fetch_initial_market_data()
@@ -88,6 +108,15 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
             
             # Clean up analyzer
             await self._analyzer.cleanup()
+            
+            # Clean up DEX discovery manager resources if initialized
+            try:
+                if self._dex_discovery_manager:
+                    await self._dex_discovery_manager.cleanup()
+                    logger.info("DEX discovery manager cleaned up")
+            except Exception as e:
+                logger.error(f"Error cleaning up DEX discovery manager: {e}", exc_info=True)
+                # Continue with cleanup even if this fails
             
             # Cancel and wait for all tasks
             if self._tasks:
@@ -221,7 +250,7 @@ class EnhancedMarketDataProvider(MarketDataProviderABC):
                 await asyncio.sleep(5)  # Wait before retrying
     
     async def _fetch_dex_price(
-self,
+        self,
         dex_name: str,
         factory: str,
         weth_address: str,
@@ -270,7 +299,7 @@ self,
     
     async def _fetch_initial_market_data(self) -> Dict[str, Any]:
         """
-        Fetch initial market data.
+        Fetch initial market data from configured DEXes and discovered DEXes.
         
         Returns:
             Initial market state
@@ -285,6 +314,7 @@ self,
             # Fetch prices from DEXes
             prices = {}
             liquidity = {}
+            discovered_dex_keys = set()  # Track keys from discovered DEXes
             
             dex_configs = {k: v for k, v in self._config["dexes"].items() if v is not None}
             
@@ -341,6 +371,53 @@ self,
                         self._price_cache["aerodrome_v3"] = aerodrome_price
             else:
                  logger.info("Aerodrome V3 is disabled in config, skipping initial fetch.")
+
+            # Add dynamically discovered DEXes from the DEX discovery system
+            if self._dex_discovery_manager:
+                try:
+                    # Discover DEXes using the DEX discovery system
+                    logger.info("Discovering additional DEXes for initial market data...")
+                    discovered_dexes = await self._dex_discovery_manager.discover_dexes()
+                    logger.info(f"Discovered {len(discovered_dexes)} additional DEXes for initial market data")
+
+                    # Filter valid DEXes
+                    valid_dexes = [dex for dex in discovered_dexes if dex.validated]
+                    logger.info(f"Found {len(valid_dexes)} valid additional DEXes for initial market data")
+
+                    # Fetch prices from all discovered DEXes
+                    for dex in valid_dexes:
+                        # Create a normalized key for the DEX
+                        dex_key = f"{dex.name.lower().replace(' ', '_')}_{dex.version.lower()}"
+                        discovered_dex_keys.add(dex_key)
+                        
+                        # Skip if we already have this DEX from hardcoded config
+                        if dex_key in prices:
+                            logger.debug(f"Skipping discovered DEX {dex.name} as it's already processed")
+                            continue
+                        
+                        # Fetch price from DEX
+                        dex_price = await self._fetch_dex_price(
+                            dex.name,
+                            dex.factory_address,
+                            weth_address,
+                            usdc_address,
+                            "1000000000000000000"  # 1 WETH
+                        )
+                        
+                        if dex_price is not None:
+                            prices[dex_key] = dex_price
+                            try:
+                                liquidity[dex_key] = await self._web3.get_pool_liquidity(
+                                    dex.factory_address,
+                                    weth_address,
+                                    usdc_address
+                                )
+                            except Exception as liq_error:
+                                logger.warning(f"Failed to get {dex.name} liquidity: {liq_error}")
+                                liquidity[dex_key] = 0  # Default liquidity if fetch fails
+                            self._price_cache[dex_key] = dex_price
+                except Exception as e:
+                    logger.error(f"Error discovering additional DEXes: {e}", exc_info=True)
             
             # Get initial analysis
             market_data = {"token_pair": (weth_address, usdc_address), "liquidity": liquidity}
@@ -358,7 +435,7 @@ self,
     
     async def _fetch_market_data(self) -> Dict[str, Any]:
         """
-        Fetch current market data.
+        Fetch current market data from configured DEXes and discovered DEXes.
         
         Returns:
             Current market state
@@ -373,6 +450,7 @@ self,
             # Fetch prices from DEXes
             prices = {}
             liquidity = {}
+            discovered_dex_keys = set()  # Track keys from discovered DEXes
             
             dex_configs = {k: v for k, v in self._config["dexes"].items() if v is not None}
             
@@ -394,7 +472,7 @@ self,
                             baseswap_config.get("factory"),
                             weth_address,
                             usdc_address
-                     )   
+                      )   
                     except Exception as liq_error:
                          logger.warning(f"Failed to get BaseSwap V3 liquidity: {liq_error}")
                          liquidity["baseswap_v3"] = 0 # Default liquidity if fetch fails
@@ -428,6 +506,53 @@ self,
                         self._price_cache["aerodrome_v3"] = aerodrome_price
             else:
                  logger.debug("Aerodrome V3 is disabled in config, skipping update fetch.")
+
+            # Add dynamically discovered DEXes from the DEX discovery system
+            if self._dex_discovery_manager:
+                try:
+                    # Get DEXes from repository
+                    logger.debug("Getting additional DEXes from repository for market data update...")
+                    discovered_dexes = await self._dex_discovery_manager.get_dexes()
+                    logger.debug(f"Found {len(discovered_dexes)} additional DEXes in repository for market data update")
+
+                    # Filter valid DEXes
+                    valid_dexes = [dex for dex in discovered_dexes if dex.validated]
+                    logger.debug(f"Found {len(valid_dexes)} valid additional DEXes for market data update")
+
+                    # Fetch prices from all discovered DEXes
+                    for dex in valid_dexes:
+                        # Create a normalized key for the DEX
+                        dex_key = f"{dex.name.lower().replace(' ', '_')}_{dex.version.lower()}"
+                        discovered_dex_keys.add(dex_key)
+                        
+                        # Skip if we already have this DEX from hardcoded config
+                        if dex_key in prices:
+                            logger.debug(f"Skipping discovered DEX {dex.name} as it's already processed")
+                            continue
+                        
+                        # Fetch price from DEX
+                        dex_price = await self._fetch_dex_price(
+                            dex.name,
+                            dex.factory_address,
+                            weth_address,
+                            usdc_address,
+                            "1000000000000000000"  # 1 WETH
+                        )
+                        
+                        if dex_price is not None:
+                            prices[dex_key] = dex_price
+                            try:
+                                liquidity[dex_key] = await self._web3.get_pool_liquidity(
+                                    dex.factory_address,
+                                    weth_address,
+                                    usdc_address
+                                )
+                            except Exception as liq_error:
+                                logger.warning(f"Failed to get {dex.name} liquidity: {liq_error}")
+                                liquidity[dex_key] = 0  # Default liquidity if fetch fails
+                            self._price_cache[dex_key] = dex_price
+                except Exception as e:
+                    logger.error(f"Error getting additional DEXes: {e}", exc_info=True)
             
             # Get updated analysis
             market_data = {"token_pair": (weth_address, usdc_address), "liquidity": liquidity}

@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, List
 from collections import defaultdict
 import decimal # Using decimal for potentially better precision with currency
 import logging
+import statistics
 from pathlib import Path
 import json
 from datetime import datetime
@@ -24,6 +25,9 @@ class MetricsService:
         Args:
             memory_service: Memory service instance
         """
+        logger.info("=== MetricsService.__init__ called ===")
+        logger.info("memory_service type: %s", type(memory_service).__name__)
+        
         self.memory_service = memory_service
         self._subscribers: List[asyncio.Queue] = []
         self._current_metrics: Dict[str, Any] = {}
@@ -66,12 +70,18 @@ class MetricsService:
         self._memory_update_task: Optional[asyncio.Task] = None
         self._memory_update_queue: Optional[asyncio.Queue] = None
         self._initialized = False
+        
+        # Price update tracking
+        self._price_history = defaultdict(list)  # Store price history by DEX
+        self._price_volatility = {}  # Store calculated volatility by DEX
+        self._max_price_history = 100  # Maximum number of price points to keep per DEX
 
     async def initialize(self):
         """Initialize the metrics service."""
         if self._initialized:
             logger.debug("Metrics service already initialized.")
             return
+        logger.info("=== MetricsService.initialize() called ===")
 
         try:
             # Load initial metrics from memory service state
@@ -390,10 +400,110 @@ class MetricsService:
             return json.loads(json.dumps(self._current_metrics))
 
     async def record_price_update(self, data: Dict[str, Any]):
-        """Placeholder for handling price update events."""
-        # TODO: Implement logic if needed (e.g., track price volatility)
-        logger.debug(f"Received price update event (not processed): {data}")
-        pass # Just prevent the AttributeError for now
+        """Process and store price update events.
+        
+        This method:
+        1. Stores price updates in the metrics structure
+        2. Tracks price volatility over time
+        3. Updates the market_data section of the metrics
+        4. Integrates with the memory service
+        
+        Args:
+            data: Dictionary containing price update information with keys:
+                - dex: The DEX identifier (e.g., 'baseswap_v3')
+                - old_price: Previous price value
+                - new_price: New price value
+        """
+        try:
+            logger.info(f"Processing price update: {data}")
+            
+            dex = data.get('dex')
+            old_price = data.get('old_price')
+            new_price = data.get('new_price')
+            
+            if not all([dex, old_price is not None, new_price is not None]):
+                logger.warning(f"Incomplete price update data: {data}")
+                return
+                
+            # Calculate price change percentage
+            if old_price > 0:
+                price_change_pct = ((new_price - old_price) / old_price) * 100
+            else:
+                price_change_pct = 0
+                
+            timestamp = datetime.utcnow().isoformat()
+            
+            # Create price update record
+            price_record = {
+                'timestamp': timestamp,
+                'price': new_price,
+                'change_pct': price_change_pct
+            }
+            
+            async with self._lock:
+                # 1. Store in price history
+                self._price_history[dex].append(price_record)
+                
+                # Limit history size
+                if len(self._price_history[dex]) > self._max_price_history:
+                    self._price_history[dex] = self._price_history[dex][-self._max_price_history:]
+                
+                # 2. Calculate volatility (standard deviation of recent price changes)
+                if len(self._price_history[dex]) >= 5:  # Need at least 5 data points
+                    recent_changes = [record['change_pct'] for record in self._price_history[dex][-10:]]
+                    try:
+                        volatility = statistics.stdev(recent_changes)
+                        self._price_volatility[dex] = volatility
+                    except statistics.StatisticsError as e:
+                        logger.warning(f"Error calculating volatility for {dex}: {e}")
+                        self._price_volatility[dex] = 0
+                
+                # 3. Update market_data section in metrics
+                # Ensure market_data structure exists
+                if 'market_data' not in self._stats:
+                    self._stats['market_data'] = {'prices': {}, 'liquidity': {}, 'spreads': {}, 'analysis': {}}
+                
+                # Update prices
+                if 'prices' not in self._stats['market_data']:
+                    self._stats['market_data']['prices'] = {}
+                self._stats['market_data']['prices'][dex] = new_price
+                
+                # Update analysis with volatility data
+                if 'analysis' not in self._stats['market_data']:
+                    self._stats['market_data']['analysis'] = {}
+                if 'volatility' not in self._stats['market_data']['analysis']:
+                    self._stats['market_data']['analysis']['volatility'] = {}
+                self._stats['market_data']['analysis']['volatility'][dex] = self._price_volatility.get(dex, 0)
+                
+                # Add price update to a history section
+                if 'price_updates' not in self._stats['market_data']:
+                    self._stats['market_data']['price_updates'] = {}
+                if dex not in self._stats['market_data']['price_updates']:
+                    self._stats['market_data']['price_updates'][dex] = []
+                
+                # Keep only the last 20 updates in the metrics
+                self._stats['market_data']['price_updates'][dex].append(price_record)
+                if len(self._stats['market_data']['price_updates'][dex]) > 20:
+                    self._stats['market_data']['price_updates'][dex] = self._stats['market_data']['price_updates'][dex][-20:]
+                
+                # 4. Update the main metrics dictionary
+                self._current_metrics['market_data'] = self._stats['market_data']
+                
+                # 5. Update timestamp
+                self._stats['timestamp'] = timestamp
+                self._current_metrics['timestamp'] = timestamp
+                
+                # 6. Notify subscribers about the update
+                await self._notify_subscribers()
+                
+                # 7. Update memory service with the new market data
+                await self.memory_service.update_state({
+                    'market_data': self._stats['market_data']
+                })
+                
+                logger.info(f"Price update for {dex} processed successfully. New price: {new_price}, Volatility: {self._price_volatility.get(dex, 0):.4f}%")
+        except Exception as e:
+            logger.error(f"Error processing price update: {e}")
 
     async def record_opportunity(self, data: Dict[str, Any]):
         """Placeholder for handling opportunity detection events."""

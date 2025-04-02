@@ -1,8 +1,41 @@
 """
 Flashbots Integration Module
 
+This module provides functionality for:
+- Flashbots RPC integration
+- Bundle submission
+- MEV protection
+"""
+
+import logging
+import json
+import os
+import traceback
+from typing import Any, Dict, List, Optional
+import asyncio
+from web3 import Web3
+from decimal import Decimal
+from eth_typing import HexStr
+from eth_utils import is_hex_address, to_checksum_address
+
+from ..core.web3.interfaces import Web3Client
+from ..core.flashbots.flashbots_provider import FlashbotsProvider
+from ..core.flashbots.bundle import BundleManager
+from ..core.flashbots.simulation import SimulationManager
+
+from ..core.web3.interfaces import Transaction
+from ..utils.async_manager import with_retry
+from ..core.flash_loan.aave_flash_loan import AaveFlashLoan, create_aave_flash_loan
+from ..core.flash_loan.balancer_flash_loan import BalancerFlashLoan, create_balancer_flash_loan
+
+logger = logging.getLogger(__name__)
+
+# Lock for thread safety in critical sections
+_integration_lock = asyncio.Lock()
+
+
 async def _detect_potential_mev_attacks(
-    integration: FlashbotsIntegration,
+    integration: 'FlashbotsIntegration',
     token_addresses: List[str]
 ) -> bool:
     """
@@ -44,8 +77,9 @@ async def _detect_potential_mev_attacks(
         logger.error(f"Error detecting MEV attacks: {e}")
         return False
 
+
 async def _should_add_backrun_protection(
-    integration: FlashbotsIntegration,
+    integration: 'FlashbotsIntegration',
     token_addresses: List[str]
 ) -> bool:
     """
@@ -72,8 +106,9 @@ async def _should_add_backrun_protection(
         logger.error(f"Error determining backrun protection: {e}")
         return False
 
+
 async def _create_backrun_transaction(
-    integration: FlashbotsIntegration,
+    integration: 'FlashbotsIntegration',
     token_addresses: List[str]
 ) -> Optional[Dict[str, Any]]:
     """
@@ -97,37 +132,7 @@ async def _create_backrun_transaction(
     except Exception as e:
         logger.error(f"Error creating backrun transaction: {e}")
         return None
-This module provides functionality for:
-- Flashbots RPC integration
-- Bundle submission
-- MEV protection
-"""
 
-import logging
-import json
-import os
-import traceback
-from typing import Any, Dict, List, Optional
-import asyncio
-from web3 import Web3
-from decimal import Decimal
-from eth_typing import HexStr
-from eth_utils import is_hex_address, to_checksum_address
-
-from ..core.web3.interfaces import Web3Client
-from ..core.flashbots.flashbots_provider import FlashbotsProvider
-from ..core.flashbots.bundle import BundleManager
-from ..core.flashbots.simulation import SimulationManager
-
-from ..core.web3.interfaces import Transaction
-from ..utils.async_manager import with_retry
-from ..core.flash_loan.aave_flash_loan import AaveFlashLoan, create_aave_flash_loan
-from ..core.flash_loan.balancer_flash_loan import BalancerFlashLoan, create_balancer_flash_loan
-
-logger = logging.getLogger(__name__)
-
-# Lock for thread safety in critical sections
-_integration_lock = asyncio.Lock()
 
 class FlashbotsIntegration:
     """Manages Flashbots integration with flash loans and arbitrage."""
@@ -166,6 +171,7 @@ class FlashbotsIntegration:
             f"enhanced bundle submission. "
             f"min profit {web3_manager.w3.from_wei(min_profit, 'ether')} ETH"
         )
+
 
 async def setup_flashbots_rpc(
     web3_manager: Web3Client,
@@ -279,6 +285,7 @@ async def setup_flashbots_rpc(
                 'traceback': traceback.format_exc()
             }
 
+
 @with_retry(max_attempts=3, base_delay=1.0)
 async def execute_arbitrage_bundle(
     integration: FlashbotsIntegration,
@@ -316,6 +323,7 @@ async def execute_arbitrage_bundle(
             logger.warning("Potential MEV attack detected - proceeding with caution")
             # Continue but with enhanced protection measures
             slippage_tolerance *= 1.5  # Increase slippage tolerance
+        
         # Choose flash loan provider based on configuration
         if use_balancer and integration.balancer_flash_loan_manager:
             logger.info("Using Balancer for flash loan")
@@ -337,14 +345,15 @@ async def execute_arbitrage_bundle(
                 callback_data=b''
             )
 
-        # Combine flash loan and swap transactions        # Add backrun transaction to protect against sandwich attacks if needed
+        # Combine flash loan and swap transactions
+        bundle_txs = [flash_loan_tx] + transactions
+        
+        # Add backrun transaction to protect against sandwich attacks if needed
         if await _should_add_backrun_protection(integration, token_addresses):
             logger.info("Adding backrun protection transaction to bundle")
             backrun_tx = await _create_backrun_transaction(integration, token_addresses)
             if backrun_tx:
                 bundle_txs.append(backrun_tx)
-
-        bundle_txs = [flash_loan_tx] + transactions
 
         # First simulate without state overrides
         simulation = await integration.flashbots_provider.simulate_bundle(
@@ -414,6 +423,7 @@ async def execute_arbitrage_bundle(
             'error': str(e)
         }
 
+
 async def close_flashbots_integration(integration: FlashbotsIntegration):
     """Clean up Flashbots integration resources."""
     try:
@@ -425,6 +435,7 @@ async def close_flashbots_integration(integration: FlashbotsIntegration):
         logger.info("Flashbots integration resources cleaned up")
     except Exception as e:
         logger.error(f"Error cleaning up Flashbots integration: {e}")
+
 
 async def optimize_flash_loan_execution(
     integration: FlashbotsIntegration,
@@ -500,76 +511,90 @@ async def optimize_flash_loan_execution(
                 return {
                     'success': True,
                     'provider': 'aave',
-                    'message': 'Aave flash loan optimization not fully implemented'
+                    'message': 'Aave optimization not fully implemented yet'
                 }
             else:
                 raise ValueError("No flash loan provider available")
                 
         except Exception as e:
-            logger.error(f"Failed to optimize flash loan execution: {e}")
+            logger.error(f"Error optimizing flash loan execution: {e}")
             return {
                 'success': False,
                 'error': str(e)
             }
 
+
 async def enhance_bundle_submission(
     integration: FlashbotsIntegration,
     transactions: List[Transaction],
-    target_block: Optional[int] = None,
-    min_profit: Optional[Decimal] = None
+    target_block_number: Optional[int] = None,
+    max_blocks_to_try: int = 5
 ) -> Dict[str, Any]:
     """
-    Enhance bundle submission with optimized gas settings and MEV protection.
+    Enhance bundle submission with multi-block targeting and priority optimization.
     
     Args:
         integration: FlashbotsIntegration instance
-        transactions: List of transactions to bundle
-        target_block: Target block number (optional)
-        min_profit: Minimum profit threshold (optional)
+        transactions: List of transactions to include in the bundle
+        target_block_number: Target block number (default: current block + 1)
+        max_blocks_to_try: Maximum number of blocks to try (default: 5)
         
     Returns:
-        Result dictionary with bundle details
+        Result dictionary with submission details
     """
-    async with integration._lock:
-        try:
-            if not integration.bundle_manager:
-                raise ValueError("Bundle manager not available")
-                
-            # Create optimized bundle
-            bundle = await integration.bundle_manager.create_bundle(
-                transactions=transactions,
-                target_block=target_block
-            )
+    try:
+        # Get current block number if target not specified
+        current_block = await integration.web3_manager.w3.eth.block_number
+        if not target_block_number:
+            target_block_number = current_block + 1
             
-            # Verify profitability
-            min_profit_to_use = min_profit or integration.min_profit
-            if not await integration.bundle_manager._verify_profitability(bundle):
-                return {
-                    'success': False,
-                    'error': f"Bundle not profitable enough (min: {min_profit_to_use})"
-                }
+        logger.info(f"Enhancing bundle submission for block {target_block_number}")
+        
+        # Optimize gas prices based on current network conditions
+        base_fee = await integration.web3_manager.w3.eth.get_block(current_block)
+        if hasattr(base_fee, 'baseFeePerGas'):
+            base_fee = base_fee.baseFeePerGas
+        else:
+            # Fallback for chains without EIP-1559
+            base_fee = await integration.web3_manager.w3.eth.gas_price
+            
+        # Calculate optimal priority fee
+        priority_fee = min(
+            int(base_fee * 0.1),  # 10% of base fee
+            2_000_000_000  # Cap at 2 gwei
+        )
+        
+        # Submit bundle for multiple blocks
+        submission_results = []
+        for block_offset in range(max_blocks_to_try):
+            target_block = target_block_number + block_offset
+            
+            # Adjust priority fee for later blocks
+            adjusted_priority_fee = priority_fee * (1 - block_offset * 0.1)  # Decrease by 10% per block
             
             # Submit bundle
-            success, bundle_hash = await integration.bundle_manager.submit_bundle(
-                bundle=bundle,
-                simulate=True
+            result = await integration.flashbots_provider.send_bundle(
+                transactions=transactions,
+                target_block_number=target_block,
+                priority_fee_per_gas=int(adjusted_priority_fee)
             )
             
-            if success:
-                return {
-                    'success': True,
-                    'bundle': bundle,
-                    'bundle_hash': bundle_hash
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': "Bundle submission failed"
-                }
-                
-        except Exception as e:
-            logger.error(f"Failed to enhance bundle submission: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            submission_results.append({
+                'target_block': target_block,
+                'bundle_hash': result,
+                'priority_fee': int(adjusted_priority_fee)
+            })
+            
+        return {
+            'success': True,
+            'submission_results': submission_results,
+            'base_fee': base_fee,
+            'priority_fee': priority_fee
+        }
+        
+    except Exception as e:
+        logger.error(f"Error enhancing bundle submission: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+ Okaybase-dex-scanner": {
+      "command": "python",
+      "args": ["run_base_dex_scanner_mcp.py"],
+      "env": {
+        "BASE_RPC_URL": "https://mainnet.base.org",
+        "BASESCAN_API_KEY": "YOUR_BASESCAN_API_KEY",
+        "DATABASE_URI": "postgresql://username:password@localhost:5432/dex_scanner",
+        "SCAN_INTERVAL_MINUTES": "60"
+      },
+      "disabled": false,
+      "alwaysAllow": []
+    }
+  }
+}

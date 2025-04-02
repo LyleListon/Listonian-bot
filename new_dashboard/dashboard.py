@@ -25,21 +25,26 @@ from .dashboard.routes import websocket as websocket_router # Import the router
 # --- End Integration Imports ---
 
 
-# --- Register Services BEFORE App Creation ---
+# Initialize logger first
+logger = logging.getLogger(__name__)
+
+logger.info("=== About to register services BEFORE App Creation ===")
 register_services()
 # --- End Register Services ---
 
 from arbitrage_bot.utils.config_loader import load_config, save_config
 from .components import create_production_components
 
-logger = logging.getLogger(__name__)
 
+
+logger.info("=== About to create FastAPI app with lifespan context manager ===")
+logger.info("lifespan type: %s", type(lifespan).__name__)
+
+app = FastAPI(lifespan=lifespan)
 
 # --- Include WebSocket Routes ---
 app.include_router(websocket_router.router, prefix="/dashboard") # Add prefix
 # --- End Include WebSocket Routes ---
-
-app = FastAPI(lifespan=lifespan)
 
 # Get the directory containing this file
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -124,7 +129,7 @@ manager = ConnectionManager()
 @app.on_event("startup")
 async def startup_event():
     """Initialize system components on startup."""
-    logger.info("--- Running startup_event ---")
+    logger.info("=== Running startup_event ===")
     try:
         # Load configuration
         logger.info("Loading configuration...")
@@ -151,11 +156,10 @@ async def startup_event():
         logger.info("Web3Manager initialized.")
         logger.info("Initializing MemoryBank...")
         await system.memory_bank.initialize()
-        logger.info("MemoryBank initialized."
-)
+        logger.info("MemoryBank initialized.")
 
         logger.info("System components initialized successfully")
-        logger.info("--- startup_event finished ---")
+        logger.info("=== startup_event finished ===")
 
     except Exception as e:
         logger.error(f"Failed to initialize components during startup: {e}", exc_info=True)

@@ -21,6 +21,9 @@ class MemoryService:
         Args:
             base_dir: Base directory for memory files (as string)
         """
+        logger.info("=== MemoryService.__init__ called ===")
+        logger.info("base_dir type: %s, value: %s", type(base_dir), base_dir)
+        
         self.base_dir = Path(base_dir)
         self.file_manager = FileManager(self.base_dir)
         self._subscribers: List[asyncio.Queue] = []
@@ -34,7 +37,7 @@ class MemoryService:
             return
             
         try:
-            logger.info(f"Setting storage directory to absolute path: {self.base_dir.absolute()}")
+            logger.info("Setting storage directory to absolute path: %s", self.base_dir.absolute())
             
             # Initialize file manager
             await self.file_manager.initialize()

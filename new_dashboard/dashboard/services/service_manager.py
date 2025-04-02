@@ -42,9 +42,11 @@ class ServiceManager:
                 logger.info(f"Memory bank directory: {memory_bank_dir}")
 
                 # Load configuration
-                config_path = project_root / "config.json"
+                config_path = project_root / "configs" / "config.json"
+                logger.info(f"Loading configuration from: {config_path}")
                 with open(config_path) as f:
                     config = json.loads(f.read())
+                logger.info("Configuration loaded successfully")
 
                 # Create services in dependency order
                 memory_service = MemoryService(str(memory_bank_dir))

@@ -13,6 +13,28 @@ from arbitrage_bot.core.web3.web3_manager import Web3Manager
 
 logger = get_logger("market_data_service")
 
+# Mock Web3Manager for dashboard use when real one can't be initialized
+class MockWeb3Manager:
+    """Mock Web3Manager for dashboard use."""
+    
+    async def initialize(self):
+        """Initialize the mock Web3Manager."""
+        logger.info("Mock Web3Manager initialized")
+        
+    async def cleanup(self):
+        """Clean up the mock Web3Manager."""
+        logger.info("Mock Web3Manager cleaned up")
+        
+    async def get_balance(self, address):
+        """Get mock balance."""
+        return 1000000000000000000  # 1 ETH
+        
+    def from_wei(self, value, unit):
+        """Convert from wei."""
+        if unit == 'ether':
+            return value / 1000000000000000000
+        return value
+
 class MarketDataService:
     """Service for managing market data and analysis."""
     
@@ -36,13 +58,51 @@ class MarketDataService:
         # Create a modified config for EnhancedMarketDataProvider
         # It expects provider_url at the top level, but our config has it under web3.rpc_url
         enhanced_config = config.copy()
+        logger.info(f"Creating enhanced config for market data provider")
+        
+        # Check if web3 config exists, if not create it
+        if "web3" not in config:
+            logger.info("Adding default web3 configuration")
+            config["web3"] = {
+                "rpc_url": "https://mainnet.base.org",
+                "chain_id": 8453
+            }
+        
         if "web3" in config and "rpc_url" in config["web3"]:
             enhanced_config["provider_url"] = config["web3"]["rpc_url"]
             enhanced_config["chain_id"] = config["web3"].get("chain_id")
+            logger.info(f"Added provider_url: {enhanced_config['provider_url']}")
+        
+        # Add market_data configuration if it doesn't exist
+        if "market_data" not in enhanced_config:
+            logger.info("Adding default market_data configuration")
+            enhanced_config["market_data"] = {
+                "update_interval_seconds": 5,
+                "price_cache_ttl": 30,
+                "liquidity_cache_ttl": 60,
+                "max_price_deviation": 5.0,
+                "min_liquidity_threshold": 10000
+            }
+        logger.info(f"Enhanced config created with keys: {list(enhanced_config.keys())}")
         
         # Initialize market data components
-        self._market_data_provider = EnhancedMarketDataProvider(enhanced_config)
-        self._web3 = Web3Manager(config["web3"])
+        try:
+            logger.info("Initializing EnhancedMarketDataProvider")
+            self._market_data_provider = EnhancedMarketDataProvider(enhanced_config)
+            logger.info("EnhancedMarketDataProvider initialized")
+            
+            # Create a mock Web3Manager if we can't initialize the real one
+            try:
+                logger.info("Initializing Web3Manager")
+                self._web3 = Web3Manager(config["web3"])
+                logger.info("Web3Manager initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Web3Manager: {e}")
+                logger.info("Creating mock Web3Manager for dashboard")
+                self._web3 = MockWeb3Manager()
+        except Exception as e:
+            logger.error(f"Error initializing market data components: {e}")
+            raise
         
         # Cache for market data
         self._price_cache = {}

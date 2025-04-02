@@ -24,6 +24,10 @@ class SystemService:
             memory_service: Memory service instance
             metrics_service: Metrics service instance
         """
+        logger.info("=== SystemService.__init__ called ===")
+        logger.info("memory_service type: %s", type(memory_service).__name__)
+        logger.info("metrics_service type: %s", type(metrics_service).__name__)
+        
         self.memory_service = memory_service
         self.metrics_service = metrics_service
         self._status = {
@@ -41,6 +45,7 @@ class SystemService:
         if self._initialized:
             return
             
+        logger.info("=== SystemService.initialize() called ===")
         try:
             # Start status update task
             self._update_task = asyncio.create_task(self._update_status_loop())
