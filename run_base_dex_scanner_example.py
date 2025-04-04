@@ -26,12 +26,25 @@ logger = logging.getLogger(__name__)
 # =====================================================================
 # MOCK DATA CONFIGURATION
 # =====================================================================
-# Set this to False to disable mock data and use real API calls
-# In production, this should be set to False
-USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
+# IMPORTANT: This should ALWAYS be set to False in production environments!
+# Only set to True for development and testing purposes.
+
+# Check if we're in a production environment
+IS_PRODUCTION = os.environ.get("ENVIRONMENT", "").lower() == "production"
+
+# If we're in production, force USE_MOCK_DATA to False regardless of the environment variable
+if IS_PRODUCTION:
+    USE_MOCK_DATA = False
+    if os.environ.get("USE_MOCK_DATA", "").lower() == "true":
+        logger.critical("⚠️ CRITICAL: USE_MOCK_DATA was set to 'true' in a production environment!")
+        logger.critical("⚠️ CRITICAL: This has been overridden to 'false' to prevent using mock data in production.")
+        logger.critical("⚠️ CRITICAL: Please check your environment variables and deployment configuration.")
+else:
+    # In non-production environments, respect the environment variable
+    USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
 
 if USE_MOCK_DATA:
-    logger.warning("!!! USING MOCK DATA FOR TESTING PURPOSES ONLY !!! Set USE_MOCK_DATA=false to use real data")
+    logger.warning("⚠️⚠️⚠️ !!! USING MOCK DATA FOR TESTING PURPOSES ONLY !!! Set USE_MOCK_DATA=false to use real data ⚠️⚠️⚠️")
 
 
 async def main():

@@ -47,8 +47,22 @@ logger = logging.getLogger(__name__)
 # !!!                                                                                              !!!
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-# IMPORTANT: This is set to "false" by default for production use. Set to "true" only for testing.
-USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
+# IMPORTANT: This should ALWAYS be set to False in production environments!
+# Only set to True for development and testing purposes.
+
+# Check if we're in a production environment
+IS_PRODUCTION = os.environ.get("ENVIRONMENT", "").lower() == "production"
+
+# If we're in production, force USE_MOCK_DATA to False regardless of the environment variable
+if IS_PRODUCTION:
+    USE_MOCK_DATA = False
+    if os.environ.get("USE_MOCK_DATA", "").lower() == "true":
+        logger.critical("⚠️ CRITICAL: USE_MOCK_DATA was set to 'true' in a production environment!")
+        logger.critical("⚠️ CRITICAL: This has been overridden to 'false' to prevent using mock data in production.")
+        logger.critical("⚠️ CRITICAL: Please check your environment variables and deployment configuration.")
+else:
+    # In non-production environments, respect the environment variable
+    USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
   # Default to FALSE for production
 # MCP Server configuration
 MCP_SERVER_PORT = 9050  # Use port 9050 as required

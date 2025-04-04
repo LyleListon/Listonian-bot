@@ -16,6 +16,7 @@ from arbitrage_bot.core.unified_flash_loan_manager import EnhancedFlashLoanManag
 from arbitrage_bot.core.market_analyzer import MarketAnalyzer
 from arbitrage_bot.core.arbitrage_executor import ArbitrageExecutor
 from arbitrage_bot.core.memory.memory_bank import MemoryBank
+from .dashboard.services.system_service import SystemService
 
 def create_production_components(config: Dict[str, Any]) -> Dict[str, Any]:
     """Create production system components."""
@@ -47,12 +48,20 @@ def create_production_components(config: Dict[str, Any]) -> Dict[str, Any]:
         # Initialize memory bank
         memory_bank = MemoryBank(storage_dir=config.get("storage", {}).get("memory_bank_dir", "data/memory_bank"))
         
+        # Initialize system service
+        from .dashboard.services.metrics_service import MetricsService
+        from .dashboard.services.memory_service import MemoryService
+        memory_service = MemoryService("data")
+        metrics_service = MetricsService(memory_service)
+        system_service = SystemService(memory_service, metrics_service)
+        
         return {
             "web3_manager": web3_manager,
             "flash_loan_manager": flash_loan_manager,
             "market_analyzer": market_analyzer,
             "arbitrage_executor": arbitrage_executor,
-            "memory_bank": memory_bank
+            "memory_bank": memory_bank,
+            "system_service": system_service
         }
         
     except Exception as e:

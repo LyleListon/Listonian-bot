@@ -18,12 +18,12 @@ logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 if __name__ == "__main__":
     logger = logging.getLogger("dashboard_startup")
-    logger.info("\n!!! --- Starting Uvicorn on host 0.0.0.0, port 9050 --- !!!\n")
+    logger.info("\n!!! --- Starting Uvicorn on host 0.0.0.0, port 9051 --- !!!\n")
     logger.info("Attempting to start dashboard with app path: new_dashboard.dashboard:app")
     uvicorn.run(
         "new_dashboard.dashboard:app", # Keep this format for direct execution
         host="0.0.0.0",
-        port=9050,
+        port=9051,
         reload=False,
         log_level="debug",
         access_log=False,

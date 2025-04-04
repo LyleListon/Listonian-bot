@@ -14,10 +14,13 @@ from ..core.dependencies import (
     get_metrics_service,
     get_memory_service,
     get_market_data_service
+,
+    get_system_service
 )
 from ..services.metrics_service import MetricsService
 from ..services.memory_service import MemoryService
 from ..services.market_data_service import MarketDataService
+from ..services.system_service import SystemService
 
 router = APIRouter()
 logger = get_logger("websocket_routes")
@@ -469,6 +472,55 @@ async def websocket_system(
         finally:
             if metrics_queue:
                 await metrics_service.unsubscribe(metrics_queue)
+
+@router.websocket("/ws/detailed-system")
+async def websocket_detailed_system(
+    websocket: WebSocket,
+    system_service: SystemService = Depends(get_system_service)
+):
+    """WebSocket endpoint for detailed system metrics."""
+    system_queue = None
+    
+    async with manager.connection(websocket):
+        try:
+            logger.info("WebSocket client connected to detailed system metrics endpoint")
+            
+            # Subscribe to system service updates
+            system_queue = await system_service.subscribe()
+            manager.add_queue(websocket, system_queue)
+            
+            # Send initial metrics
+            initial_metrics = await system_service.get_detailed_metrics()
+            if manager.is_active(websocket):
+                await websocket.send_json({
+                    'type': 'detailed_system_metrics',
+                    'data': initial_metrics,
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            
+            def process_update(update):
+                return {
+                    'type': 'detailed_system_metrics',
+                    'data': update,
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+                
+            update_task = asyncio.create_task(handle_updates(
+                websocket,
+                system_queue,
+                process_update,
+                lambda: manager.is_active(websocket)
+            ))
+            
+            manager.add_task(websocket, update_task)
+            await update_task
+            
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected from detailed system metrics endpoint")
+        finally:
+            if system_queue:
+                await system_service.unsubscribe(system_queue)
+
 
 @router.websocket("/ws/trades")
 async def websocket_trades(

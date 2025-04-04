@@ -10,15 +10,18 @@ This module provides advanced flash loan management with:
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Tuple, NamedTuple
+from typing import Dict, List, Optional, Tuple, NamedTuple, Any
 from decimal import Decimal
 from eth_typing import ChecksumAddress
-from web3 import Web3
+from web3 import Web3, exceptions
 
 from ..utils.async_manager import AsyncLock
 from .interfaces import Transaction, TokenPair, LiquidityData
 from .web3.flashbots.flashbots_provider import FlashbotsProvider
 from .memory.memory_bank import MemoryBank
+from .finance.flash_loans.providers.balancer import BalancerFlashLoanProvider
+from .finance.flash_loans.providers.aave import AaveFlashLoanProvider
+from .finance.flash_loans.interfaces import FlashLoanParams, FlashLoanCallback
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,58 @@ class FlashLoanRoute(NamedTuple):
     total_profit: int
     total_gas: int
     success_probability: float
+
+class UnifiedFlashLoanManager:
+    """
+    Unified flash loan manager that integrates multiple providers.
+    
+    This class provides a unified interface for flash loan operations,
+    supporting multiple providers (Balancer, Aave) and handling fallbacks.
+    """
+    
+    def __init__(
+        self,
+        web3_manager,
+        config: Dict[str, Any]
+    ):
+        """Initialize the unified flash loan manager."""
+        self.web3_manager = web3_manager
+        self.config = config
+        self.providers = {}
+        self.arbitrage_contract = None
+        self.arbitrage_abi = None
+        self._initialized = False
+        
+        # Load configuration
+        self.enabled = config.get('flash_loans', {}).get('enabled', True)
+        self.balancer_enabled = config.get('flash_loans', {}).get('balancer_enabled', True)
+        self.aave_enabled = config.get('flash_loans', {}).get('aave_enabled', True)
+        
+        logger.info(f"UnifiedFlashLoanManager initialized with config: balancer={self.balancer_enabled}, aave={self.aave_enabled}")
+    
+    async def initialize(self):
+        """Initialize flash loan providers."""
+        if self._initialized:
+            return True
+            
+        try:
+            # Initialize Balancer provider if enabled
+            if self.balancer_enabled:
+                balancer_provider = BalancerFlashLoanProvider(self.web3_manager, self.config)
+                await balancer_provider.initialize()
+                self.providers['balancer'] = balancer_provider
+                
+            # Initialize Aave provider if enabled
+            if self.aave_enabled:
+                aave_provider = AaveFlashLoanProvider(self.web3_manager, self.config)
+                await aave_provider.initialize()
+                self.providers['aave'] = aave_provider
+                
+            self._initialized = True
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize UnifiedFlashLoanManager: {e}")
+            return False
 
 class EnhancedFlashLoanManager:
     """Enhanced flash loan management with advanced routing and optimization."""
@@ -67,6 +122,9 @@ class EnhancedFlashLoanManager:
         # Cache settings
         self._route_cache: Dict[str, Tuple[FlashLoanRoute, int]] = {}  # (route, timestamp)
         self._cache_ttl = 30  # 30 seconds TTL
+        
+        # Flash loan providers
+        self._balancer_provider = None
 
     async def prepare_flash_loan_bundle(
         self,
@@ -242,8 +300,77 @@ class EnhancedFlashLoanManager:
 
     async def _create_flash_loan_tx(self, amount: int) -> Transaction:
         """Create flash loan initialization transaction."""
-        # Implementation depends on specific flash loan provider
-        raise NotImplementedError
+        try:
+            # Initialize Balancer provider if not already done
+            if self._balancer_provider is None:
+                self._balancer_provider = BalancerFlashLoanProvider(
+                    web3_client=self.web3,
+                    config={
+                        "network": "base",  # Use Base network as specified in config
+                        "vault_address": self.web3.to_checksum_address(
+                            "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # Balancer vault on Base
+                        )
+                    }
+                )
+                await self._balancer_provider.initialize()
+            
+            # Get the token address (WETH is commonly used)
+            weth_address = None
+            for token in await self.memory_bank.get_token_list():
+                if token.get('symbol') == 'WETH':
+                    weth_address = token.get('address')
+                    break
+            
+            if not weth_address:
+                raise ValueError("WETH token address not found")
+            
+            # Create flash loan parameters
+            token_amounts = [{
+                "token_address": weth_address,
+                "amount": Decimal(str(amount)) / Decimal("1e18"),  # Convert to decimal
+                "raw_amount": amount
+            }]
+            
+            # Get the receiver address (arbitrage contract)
+            arbitrage_contract = await self.memory_bank.get_contract_address("ArbitrageContract")
+            if not arbitrage_contract:
+                raise ValueError("Arbitrage contract address not found")
+            
+            # Estimate gas
+            gas_price = await self.web3.eth.gas_price
+            
+            # Build transaction parameters
+            tx_params = {
+                "from": self.web3.eth.default_account,
+                "gas": 500000,  # Estimate
+                "gasPrice": gas_price
+            }
+            
+            # Create flash loan transaction
+            tx = await self._balancer_provider.build_flash_loan_tx(
+                tokens=[weth_address],
+                amounts=[amount],
+                target_contract=arbitrage_contract,
+                callback_data=b''  # Empty for now, will be filled by the contract
+            )
+            
+            # Convert to Transaction object
+            transaction = Transaction(
+                from_address=tx.get('from'),
+                to_address=tx.get('to'),
+                data=tx.get('data'),
+                gas=tx.get('gas'),
+                gas_price=tx.get('gasPrice'),
+                value=tx.get('value', 0),
+                nonce=tx.get('nonce')
+            )
+            
+            logger.info(f"Created flash loan transaction for {amount} wei")
+            return transaction
+            
+        except Exception as e:
+            logger.error(f"Failed to create flash loan transaction: {e}")
+            raise
 
     async def _create_route_transactions(
         self,
@@ -273,9 +400,78 @@ class EnhancedFlashLoanManager:
         amount: int,
         routes: List[FlashLoanRoute]
     ) -> Transaction:
-        """Create flash loan repayment transaction."""
-        # Implementation depends on specific flash loan provider
-        raise NotImplementedError
+        """
+        Create flash loan repayment transaction.
+        
+        This transaction handles the repayment of the flash loan plus any fees,
+        and captures the profit from the arbitrage operation.
+        
+        Args:
+            amount: Original borrowed amount
+            routes: List of routes used for arbitrage
+            
+        Returns:
+            Transaction for repaying the flash loan
+        """
+        try:
+            # Calculate total profit from all routes
+            total_profit = sum(route.total_profit for route in routes)
+            
+            # Get the token address (WETH is commonly used)
+            weth_address = None
+            for token in await self.memory_bank.get_token_list():
+                if token.get('symbol') == 'WETH':
+                    weth_address = token.get('address')
+                    break
+            
+            if not weth_address:
+                raise ValueError("WETH token address not found")
+            
+            # Get the arbitrage contract address
+            arbitrage_contract = await self.memory_bank.get_contract_address("ArbitrageContract")
+            if not arbitrage_contract:
+                raise ValueError("Arbitrage contract address not found")
+            
+            # Load the arbitrage contract ABI
+            arbitrage_abi = await self.memory_bank.load_abi("ArbitrageBot")
+            if not arbitrage_abi:
+                raise ValueError("Arbitrage contract ABI not found")
+            
+            # Create contract instance
+            contract = self.web3.eth.contract(
+                address=arbitrage_contract,
+                abi=arbitrage_abi
+            )
+            
+            # Calculate repayment amount (borrowed amount + fees)
+            # For Balancer, fee is typically 0, but we add a small buffer
+            fee_percentage = Decimal("0.0001")  # 0.01%
+            fee_amount = int(amount * fee_percentage)
+            repayment_amount = amount + fee_amount
+            
+            # Build repayment transaction
+            repay_function = contract.functions.repayFlashLoan(
+                weth_address,
+                repayment_amount,
+                total_profit
+            )
+            
+            # Get current gas price
+            gas_price = await self.web3.eth.gas_price
+            
+            # Create transaction
+            tx = repay_function.build_transaction({
+                'from': self.web3.eth.default_account,
+                'gas': 300000,  # Estimate
+                'gasPrice': gas_price
+            })
+            
+            logger.info(f"Created repayment transaction for {repayment_amount} wei with profit {total_profit} wei")
+            return tx
+            
+        except Exception as e:
+            logger.error(f"Failed to create repayment transaction: {e}")
+            raise
 
     async def _validate_bundle(self, transactions: List[Transaction]) -> bool:
         """Validate the complete transaction bundle."""
@@ -296,3 +492,81 @@ class EnhancedFlashLoanManager:
         except Exception as e:
             logger.error(f"Bundle validation failed: {e}")
             return False
+
+# Factory function to create a flash loan manager
+async def create_flash_loan_manager_async(
+    web3_manager,
+    config: Dict[str, Any] = None
+) -> EnhancedFlashLoanManager:
+    """
+    Create and initialize an EnhancedFlashLoanManager instance.
+    
+    Args:
+        web3_manager: Web3Manager instance
+        config: Configuration dictionary
+        
+    Returns:
+        Initialized EnhancedFlashLoanManager
+    """
+    try:
+        # Create memory bank
+        memory_bank = MemoryBank(
+            storage_dir=config.get("storage", {}).get("memory_bank_dir", "data/memory_bank")
+        )
+        await memory_bank.initialize()
+        
+        # Create flashbots provider
+        flashbots_provider = web3_manager.flashbots_provider
+        
+        # Create flash loan manager
+        manager = EnhancedFlashLoanManager(
+            web3=web3_manager.web3,
+            flashbots_provider=flashbots_provider,
+            memory_bank=memory_bank,
+            min_profit_threshold=Web3.to_wei(
+                config.get("flash_loan", {}).get("min_profit", "0.01"),
+                'ether'
+            ),
+            max_slippage=Decimal(str(
+                config.get("flash_loan", {}).get("max_slippage", "0.005")
+            )),
+            max_paths=config.get("flash_loan", {}).get("max_paths", 3)
+        )
+        
+        logger.info("EnhancedFlashLoanManager created successfully")
+        return manager
+        
+    except Exception as e:
+        logger.error(f"Failed to create EnhancedFlashLoanManager: {e}")
+        raise
+
+# Synchronous wrapper for backward compatibility
+def create_flash_loan_manager_sync(
+    web3_manager,
+    config: Dict[str, Any] = None
+) -> UnifiedFlashLoanManager:
+    """
+    Create a UnifiedFlashLoanManager instance synchronously.
+    
+    This is a wrapper function for backward compatibility with
+    code that expects a synchronous interface.
+    
+    Args:
+        web3_manager: Web3Manager instance
+        config: Configuration dictionary
+        
+    Returns:
+        UnifiedFlashLoanManager instance
+    """
+    try:
+        # Create unified manager
+        manager = UnifiedFlashLoanManager(
+            web3_manager=web3_manager,
+            config=config or {}
+        )
+        
+        return manager
+        
+    except Exception as e:
+        logger.error(f"Failed to create UnifiedFlashLoanManager: {e}")
+        raise

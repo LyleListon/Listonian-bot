@@ -31,12 +31,28 @@ logger = logging.getLogger(__name__)
 # =====================================================================
 # MOCK DATA CONFIGURATION
 # =====================================================================
-# Set this to False to disable mock data and use real API calls
-# In production, this should be set to False
-USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
+# IMPORTANT: This should ALWAYS be set to False in production environments!
+# Only set to True for development and testing purposes.
+
+# Check if we're in a production environment
+IS_PRODUCTION = os.environ.get("ENVIRONMENT", "").lower() == "production"
+
+# If we're in production, force USE_MOCK_DATA to False regardless of the environment variable
+if IS_PRODUCTION:
+    USE_MOCK_DATA = False
+    if os.environ.get("USE_MOCK_DATA", "").lower() == "true":
+        logger.critical("⚠️ CRITICAL: USE_MOCK_DATA was set to 'true' in a production environment!")
+        logger.critical("⚠️ CRITICAL: This has been overridden to 'false' to prevent using mock data in production.")
+        logger.critical("⚠️ CRITICAL: Please check your environment variables and deployment configuration.")
+else:
+    # In non-production environments, respect the environment variable
+    USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
 
 if USE_MOCK_DATA:
+    logger.warning("=" * 80)
+    logger.warning("⚠️⚠️⚠️ MOCK DATA MODE ENABLED ⚠️⚠️⚠️")
     logger.warning("!!! USING MOCK DATA FOR TESTING PURPOSES ONLY !!! Set USE_MOCK_DATA=false to use real data")
+    logger.warning("=" * 80)
 
 
 class BaseDexScannerMCPServer:
@@ -55,7 +71,11 @@ class BaseDexScannerMCPServer:
         
         # Show warning if using mock data
         if USE_MOCK_DATA:
-            logger.warning("!!! BaseDexScannerMCPServer USING MOCK DATA FOR TESTING PURPOSES ONLY !!!")
+            logger.warning("=" * 80)
+            logger.warning("⚠️⚠️⚠️ MOCK DATA MODE ENABLED IN BaseDexScannerMCPServer ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ ALL DATA IS FAKE - NOT REAL BLOCKCHAIN DATA ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ DO NOT USE FOR REAL TRADING DECISIONS ⚠️⚠️⚠️")
+            logger.warning("=" * 80)
 
     def _load_config(self) -> Dict[str, str]:
         """Load configuration from environment variables."""
@@ -93,7 +113,11 @@ class BaseDexScannerMCPServer:
             # =====================================================================
             # !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
             # =====================================================================
-            logger.warning("!!! LOADING MOCK DATA - FOR TESTING PURPOSES ONLY !!!")
+            logger.warning("=" * 80)
+            logger.warning("⚠️⚠️⚠️ LOADING MOCK DATA - FOR TESTING PURPOSES ONLY ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ THESE ARE NOT REAL DEXES OR POOLS ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ DO NOT USE FOR REAL TRADING DECISIONS ⚠️⚠️⚠️")
+            logger.warning("=" * 80)
             
             # Load DEXes
             self.dexes = [
@@ -273,7 +297,11 @@ class BaseDexScannerMCPServer:
                     # =====================================================================
                     # !!! MOCK SCANNING - FOR TESTING PURPOSES ONLY !!!
                     # =====================================================================
-                    logger.warning("!!! MOCK SCANNING - FOR TESTING PURPOSES ONLY !!!")
+                    logger.warning("=" * 80)
+                    logger.warning("⚠️⚠️⚠️ MOCK SCANNING - FOR TESTING PURPOSES ONLY ⚠️⚠️⚠️")
+                    logger.warning("⚠️⚠️⚠️ NO REAL BLOCKCHAIN INTERACTION ⚠️⚠️⚠️")
+                    logger.warning("⚠️⚠️⚠️ DO NOT USE FOR REAL TRADING DECISIONS ⚠️⚠️⚠️")
+                    logger.warning("=" * 80)
                     
                     # In a real implementation, this would scan the blockchain for DEXes and pools
                     # For now, we'll just use the initial data
@@ -349,7 +377,11 @@ class BaseDexScannerMCPServer:
         logger.info(f"Handling tool call: {tool_name}")
         
         if USE_MOCK_DATA:
-            logger.warning(f"!!! USING MOCK DATA FOR TOOL CALL: {tool_name} - FOR TESTING PURPOSES ONLY !!!")
+            logger.warning("=" * 80)
+            logger.warning(f"⚠️⚠️⚠️ USING MOCK DATA FOR TOOL CALL: {tool_name} ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ RESULTS ARE NOT REAL BLOCKCHAIN DATA ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ DO NOT USE FOR REAL TRADING DECISIONS ⚠️⚠️⚠️")
+            logger.warning("=" * 80)
         
         if tool_name == "scan_dexes":
             return await self.scan_dexes()
@@ -455,7 +487,11 @@ class BaseDexScannerMCPServer:
             # =====================================================================
             # !!! MOCK PRICE DATA - FOR TESTING PURPOSES ONLY !!!
             # =====================================================================
-            logger.warning("!!! MOCK POOL PRICE DATA - FOR TESTING PURPOSES ONLY !!!")
+            logger.warning("=" * 80)
+            logger.warning("⚠️⚠️⚠️ MOCK PRICE DATA - FOR TESTING PURPOSES ONLY ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ PRICES ARE NOT REAL MARKET DATA ⚠️⚠️⚠️")
+            logger.warning("⚠️⚠️⚠️ DO NOT USE FOR REAL TRADING DECISIONS ⚠️⚠️⚠️")
+            logger.warning("=" * 80)
             
             # Return mock price data based on the pool address
             if pool_address == "0x7E9DAB607D95C8336BF22E1Bd5a194B2bA262A2C":  # WETH/USDC on BaseSwap
@@ -518,49 +554,57 @@ class BaseDexScannerMCPServer:
                 reserve0 = reserves[0]
                 reserve1 = reserves[1]
                 
-                # Calculate price
+                # Calculate price (token1/token0)
                 token0_decimals = pool_info.get("token0", {}).get("decimals", 18)
                 token1_decimals = pool_info.get("token1", {}).get("decimals", 18)
                 
-                price = (reserve1 / 10**token1_decimals) / (reserve0 / 10**token0_decimals)
+                # Adjust for decimal differences
+                decimal_adjustment = 10 ** (token1_decimals - token0_decimals)
                 
-                logger.info(f"Calculated price for pool {pool_address}: {price}")
+                if reserve0 > 0:
+                    price = (reserve1 / reserve0) * decimal_adjustment
+                else:
+                    price = 0.0
+                
                 return {"price": price}
                 
             except Exception as e:
-                logger.exception(f"Error getting real price data: {str(e)}")
+                logger.exception(f"Error getting pool price: {str(e)}")
                 return {"price": 0.0}
-    
+
     def _load_abi(self, abi_path: str) -> Optional[List[Dict[str, Any]]]:
-        """Load ABI from a JSON file."""
+        """Load ABI from file."""
         try:
             with open(abi_path, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            logger.warning(f"Error loading ABI from {abi_path}: {str(e)}")
+            logger.error(f"Failed to load ABI from {abi_path}: {str(e)}")
             return None
 
 
 async def main():
-    """Main entry point for the script."""
+    """Run the MCP server."""
     try:
-        # Create logs directory if it doesn't exist
-        os.makedirs("logs", exist_ok=True)
-        
-        # Create the server
+        # Create server instance
         server = BaseDexScannerMCPServer()
         
-        # Start the server
+        # Start server
         await server.start()
         
-        # Run forever
+        # Keep running until interrupted
         while True:
-            await asyncio.sleep(3600)  # Sleep for 1 hour
+            await asyncio.sleep(1)
+            
     except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received. Stopping server...")
-        await server.stop()
+        logger.info("Received keyboard interrupt")
+        
     except Exception as e:
-        logger.exception(f"Error running server: {str(e)}")
+        logger.exception(f"Error running MCP server: {str(e)}")
+        
+    finally:
+        # Stop server
+        if 'server' in locals():
+            await server.stop()
 
 
 if __name__ == "__main__":

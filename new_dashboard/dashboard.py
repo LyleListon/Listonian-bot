@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 # --- Integration Imports ---
 from typing import Optional # Add Optional for global type hint
-from arbitrage_bot.dashboard.metrics_service import MetricsService
+# Remove conflicting import from arbitrage_bot.dashboard.metrics_service
 from .core.dependencies import register_services, lifespan # Import registry functions
 from .dashboard.routes import websocket as websocket_router # Import the router
 # --- End Integration Imports ---
@@ -122,6 +122,7 @@ class SystemComponents:
         self.market_analyzer = None
         self.arbitrage_executor = None
         self.memory_bank = None
+        self.system_service = None
 
 system = SystemComponents()
 manager = ConnectionManager()
@@ -147,6 +148,7 @@ async def startup_event():
         system.flash_loan_manager = components["flash_loan_manager"]
         system.market_analyzer = components["market_analyzer"]
         system.arbitrage_executor = components["arbitrage_executor"]
+        system.system_service = components.get("system_service")
         system.memory_bank = components["memory_bank"]
         logger.info("Components assigned.")
 
@@ -308,6 +310,47 @@ async def get_status():
         }
     except Exception as e:
         logger.error(f"Failed to get system status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/system/detailed")
+async def get_detailed_system_metrics():
+    """Get detailed system metrics."""
+    try:
+        # Get detailed metrics from system service
+        detailed_metrics = await system.system_service.get_detailed_metrics()
+        
+        # Get resource usage
+        resource_usage = await system.system_service.get_resource_usage()
+        
+        # Get health check
+        health_check = await system.system_service.get_health_check()
+        
+        return {
+            "detailed_metrics": detailed_metrics,
+            "resource_usage": resource_usage,
+            "health_check": health_check,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get detailed system metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/trades")
+async def get_trades():
+    """Get recent trades."""
+    try:
+        # Get trades from memory bank
+        state = await system.memory_bank.get_current_state()
+        trades = state.get("trade_history", [])
+        
+        return {
+            "trades": trades,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
