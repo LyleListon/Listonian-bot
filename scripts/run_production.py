@@ -14,6 +14,7 @@ import subprocess
 import time
 import signal
 import psutil
+import requests
 from pathlib import Path
 
 # Add project root to path
@@ -127,17 +128,51 @@ def start_mcp_server():
         # Log the process ID
         logger.info(f"MCP server started with PID: {process.pid}")
         
-        # Wait for the server to start
-        time.sleep(5)
-        
-        # Check if the process is still running
-        if process.poll() is None:
-            logger.info("MCP server is running")
+        # Wait for the server to become responsive by polling the root endpoint
+        start_time = time.time()
+        timeout_seconds = 30
+        poll_interval_seconds = 1
+        server_ready = False
+        mcp_url = f"http://{os.environ.get('MCP_SERVER_HOST', 'localhost')}:{os.environ.get('MCP_SERVER_PORT', '9050')}/"
+
+        logger.info(f"Waiting up to {timeout_seconds} seconds for MCP server at {mcp_url} to respond...")
+        while time.time() - start_time < timeout_seconds:
+            # Check if the process terminated prematurely
+            if process.poll() is not None:
+                logger.error("MCP server process terminated unexpectedly during startup.")
+                stdout, _ = process.communicate()
+                logger.error(f"MCP server output: {stdout}")
+                return None
+
+            try:
+                response = requests.get(mcp_url, timeout=poll_interval_seconds)
+                if response.status_code == 200:
+                    logger.info("MCP server responded successfully.")
+                    server_ready = True
+                    break
+                else:
+                    logger.debug(f"MCP server responded with status {response.status_code}, retrying...")
+            except requests.exceptions.ConnectionError:
+                logger.debug("MCP server not yet responding, retrying...")
+            except requests.exceptions.Timeout:
+                logger.debug("MCP server connection timed out, retrying...")
+            except Exception as e:
+                logger.warning(f"Unexpected error polling MCP server: {e}")
+
+            time.sleep(poll_interval_seconds)
+
+        if server_ready:
+            logger.info("MCP server is running and responsive.")
             return process
         else:
-            # Process has terminated
-            stdout, _ = process.communicate()
-            logger.error(f"MCP server failed to start: {stdout}")
+            logger.error(f"MCP server did not become responsive within {timeout_seconds} seconds.")
+            process.terminate()
+            try:
+                stdout, _ = process.communicate(timeout=5)
+                logger.error(f"MCP server output upon termination: {stdout}")
+            except subprocess.TimeoutExpired:
+                logger.error("MCP server did not terminate gracefully, killing.")
+                process.kill()
             return None
     
     except Exception as e:
@@ -207,6 +242,7 @@ def main():
             return 1
         
         # Test MCP server
+        logger.info("Testing MCP server...")
         if not test_mcp_server():
             logger.error("MCP server test failed")
             

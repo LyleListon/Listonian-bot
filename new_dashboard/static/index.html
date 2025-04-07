@@ -270,8 +270,8 @@
             document.getElementById('totalExecutions').textContent = perfMetrics.total_executions || 0;
 
             // Update system metrics like CPU/Memory if available in the received data
-            // document.getElementById('cpuUsage').textContent = systemMetrics.cpu_percent?.toFixed(1) + '%'; 
-            // document.getElementById('memoryUsage').textContent = systemMetrics.memory_percent?.toFixed(1) + '%';
+            document.getElementById('cpuUsage').textContent = systemMetrics.cpu_percent?.toFixed(1) + '%';
+            document.getElementById('memoryUsage').textContent = systemMetrics.memory_percent?.toFixed(1) + '%';
         }
 
         function updateStatusDisplay(status) {

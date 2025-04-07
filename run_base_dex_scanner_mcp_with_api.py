@@ -11,11 +11,16 @@ import json
 import logging
 import os
 import sys
+import concurrent.futures
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Add project root to path for sibling imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from scripts.load_env import load_env # Import the loader
 import aiohttp
 from aiohttp import web
-from web3 import Web3
+from web3 import Web3, exceptions
 from eth_utils import to_checksum_address
 
 # Configure logging
@@ -268,26 +273,38 @@ class BaseDexScannerMCPServer:
                     # Create factory contract
                     factory_contract = web3.eth.contract(address=factory_address, abi=factory_abi)
                     
-                    # Get pool count
+                    # Get pool count - Wrap in try/except to handle errors for individual DEXes
+                    pool_count = 0
+                    loop = asyncio.get_running_loop()
                     try:
-                        # Different DEXes have different methods to get pool count
+                        # Check for known functions to get pool count
                         if hasattr(factory_contract.functions, 'allPairsLength'):
-                            pool_count = factory_contract.functions.allPairsLength().call()
-                        elif hasattr(factory_contract.functions, 'allPoolsLength'):
-                            pool_count = factory_contract.functions.allPoolsLength().call()
+                            pool_count = await loop.run_in_executor(None, factory_contract.functions.allPairsLength().call)
+                            logger.info(f"Found {pool_count} pools for {dex_name} using allPairsLength()")
+                        elif hasattr(factory_contract.functions, 'poolLength'): # Common alternative name
+                             pool_count = await loop.run_in_executor(None, factory_contract.functions.poolLength().call)
+                             logger.info(f"Found {pool_count} pools for {dex_name} using poolLength()")
+                        elif hasattr(factory_contract.functions, 'allPoolsLength'): # Less common but check anyway
+                            pool_count = await loop.run_in_executor(None, factory_contract.functions.allPoolsLength().call)
+                            logger.info(f"Found {pool_count} pools for {dex_name} using allPoolsLength()")
                         else:
-                            logger.warning(f"Unknown factory interface for {dex_name}")
+                            logger.warning(f"Could not find a known function (allPairsLength, poolLength, allPoolsLength) to get pool count for {dex_name}. Assuming 0 pools.")
                             pool_count = 0
-                        
-                        logger.info(f"Found {pool_count} pools for {dex_name}")
-                        
-                        # For now, just initialize an empty list
-                        # In a real implementation, we would fetch pool details
+
+                        # Initialize pool list for this factory
                         self.pools[factory_address] = []
-                        
+                        # TODO: In a real implementation, fetch actual pool details here based on pool_count
+
+                    except exceptions.ContractLogicError as cle:
+                        logger.warning(f"Contract logic error getting pool count for {dex_name} (Factory: {factory_address}): {cle}. Skipping this DEX for initial load.")
+                        self.pools[factory_address] = [] # Ensure entry exists even on error
+                    except exceptions.BadFunctionCallOutput as bfco:
+                         logger.warning(f"Bad function call output getting pool count for {dex_name} (Factory: {factory_address}): {bfco}. Is the ABI correct? Skipping this DEX for initial load.")
+                         self.pools[factory_address] = [] # Ensure entry exists even on error
                     except Exception as e:
-                        logger.exception(f"Error getting pool count for {dex_name}: {str(e)}")
-                        self.pools[factory_address] = []
+                        # Catch other potential errors (RPC issues, etc.)
+                        logger.error(f"Unexpected error getting pool count for {dex_name} (Factory: {factory_address}): {str(e)}. Skipping this DEX for initial load.")
+                        self.pools[factory_address] = [] # Ensure entry exists even on error
                 
                 logger.info(f"Loaded {len(self.dexes)} DEXes with real blockchain data")
                 
@@ -347,16 +364,34 @@ class BaseDexScannerMCPServer:
                             # Create factory contract
                             factory_contract = web3.eth.contract(address=factory_address, abi=factory_abi)
                             
-                            # Get pool count
+                            # Get pool count - Wrap in try/except to handle errors for individual DEXes during scan
+                            pool_count = 0
+                            loop = asyncio.get_running_loop()
                             try:
-                                # Different DEXes have different methods to get pool count
+                                # Check for known functions to get pool count
                                 if hasattr(factory_contract.functions, 'allPairsLength'):
-                                    pool_count = factory_contract.functions.allPairsLength().call()
-                                elif hasattr(factory_contract.functions, 'allPoolsLength'):
-                                    pool_count = factory_contract.functions.allPoolsLength().call()
+                                    pool_count = await loop.run_in_executor(None, factory_contract.functions.allPairsLength().call)
+                                    logger.info(f"Found {pool_count} pools for {dex_name} using allPairsLength()")
+                                elif hasattr(factory_contract.functions, 'poolLength'): # Common alternative name
+                                     pool_count = await loop.run_in_executor(None, factory_contract.functions.poolLength().call)
+                                     logger.info(f"Found {pool_count} pools for {dex_name} using poolLength()")
+                                elif hasattr(factory_contract.functions, 'allPoolsLength'): # Less common but check anyway
+                                    pool_count = await loop.run_in_executor(None, factory_contract.functions.allPoolsLength().call)
+                                    logger.info(f"Found {pool_count} pools for {dex_name} using allPoolsLength()")
                                 else:
-                                    logger.warning(f"Unknown factory interface for {dex_name}")
+                                    logger.warning(f"Could not find a known function (allPairsLength, poolLength, allPoolsLength) to get pool count for {dex_name} during scan.")
                                     pool_count = 0
+
+                                # TODO: In a real implementation, update actual pool details here based on pool_count
+
+                            except exceptions.ContractLogicError as cle:
+                                logger.warning(f"Contract logic error getting pool count for {dex_name} during scan (Factory: {factory_address}): {cle}. Skipping update for this DEX.")
+                            except exceptions.BadFunctionCallOutput as bfco:
+                                 logger.warning(f"Bad function call output getting pool count for {dex_name} during scan (Factory: {factory_address}): {bfco}. Is the ABI correct? Skipping update for this DEX.")
+                            except Exception as e:
+                                # Catch other potential errors (RPC issues, etc.)
+                                logger.error(f"Unexpected error getting pool count for {dex_name} during scan (Factory: {factory_address}): {str(e)}. Skipping update for this DEX.")
+
                                 
                                 logger.info(f"Found {pool_count} pools for {dex_name}")
                                 
@@ -422,12 +457,23 @@ class BaseDexScannerMCPServer:
 
     async def get_factory_pools(self, factory_address: str) -> List[Dict[str, Any]]:
         """Get pools for a DEX factory."""
-        logger.info(f"Getting pools for factory {factory_address}...")
-        
-        if factory_address in self.pools:
-            return self.pools[factory_address]
-        
-        return []
+        logger.info(f"Entering get_factory_pools for factory {factory_address}...")
+        result = []
+        try:
+            # Ensure factory_address is checksummed if needed, though it should be from scan_dexes
+            # factory_address = to_checksum_address(factory_address) # Potentially add if needed
+            if factory_address in self.pools:
+                result = self.pools[factory_address]
+                logger.info(f"Found {len(result)} pools in memory for factory {factory_address}.")
+            else:
+                 logger.warning(f"Factory address {factory_address} not found in self.pools dictionary.")
+                 result = [] # Return empty list if factory key doesn't exist
+        except Exception as e:
+            logger.exception(f"Unexpected error inside get_factory_pools for factory {factory_address}: {e}")
+            result = [] # Return empty list on error
+
+        logger.info(f"Exiting get_factory_pools for factory {factory_address}. Returning {len(result)} pools.")
+        return result
 
     async def check_contract(self, contract_address: str) -> Optional[Dict[str, Any]]:
         """Check if a contract is a DEX component."""
@@ -655,6 +701,10 @@ class MCPHttpServer:
 
 async def main():
     """Main entry point for the script."""
+    # Load environment variables from .env.production first
+    if not load_env(".env.production"):
+        logger.critical("Failed to load .env.production. Exiting.")
+        sys.exit(1)
     try:
         # Create logs directory if it doesn't exist
         os.makedirs("logs", exist_ok=True)

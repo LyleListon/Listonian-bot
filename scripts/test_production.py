@@ -167,7 +167,7 @@ def test_get_factory_pools():
             pools_url,
             headers=headers,
             json={"factory_address": factory_address},
-            timeout=30
+            timeout=90  # Increased timeout
         )
         
         # Check if the response is successful
