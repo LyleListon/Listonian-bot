@@ -1,0 +1,17 @@
+{
+  "bot_status": "running",
+  "web3_connected": true,
+  "current_block": 12345678,
+  "last_update": "2025-04-08T01:00:34Z",
+  "wallet_balance": 1.25,
+  "pending_transactions": 0,
+  "active_strategies": [
+    "cross_dex_arbitrage",
+    "flash_loan_arbitrage"
+  ],
+  "system_resources": {
+    "cpu_usage": 32.5,
+    "memory_usage": 45.8,
+    "disk_usage": 68.2
+  }
+}

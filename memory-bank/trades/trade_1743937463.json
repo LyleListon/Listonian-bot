@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-06T07:04:23.605185",
+  "opportunity": {
+    "token_pair": "WETH-USDC",
+    "dex_1": "swapbased",
+    "dex_2": "baseswap",
+    "potential_profit": 0.04735826819232516,
+    "confidence": 0.9042154728670398
+  },
+  "success": false,
+  "net_profit": -0.04238095024910725,
+  "gas_cost": 0.004977317943217911,
+  "tx_hash": "0x8e50cb0fc7f52b794f4a7a23691fe39a44c78323e09979a5066ac8324ca47a8f",
+  "error": "Slippage exceeded"
+}

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dashboard API Test</h1>
+        
+        <div id="connection-status" class="status info">
+            Click a button to test API endpoints
+        </div>
+        
+        <div>
+            <button onclick="testEndpoint('/api/system/health')">Test Health</button>
+            <button onclick="testEndpoint('/api/metrics/current')">Test Metrics</button>
+            <button onclick="testEndpoint('/api/system/status')">Test Status</button>
+            <button onclick="testWebSocket()">Test WebSocket</button>
+        </div>
+        
+        <h2>Response:</h2>
+        <pre id="data-display">No data received yet</pre>
+    </div>
+
+    <script>
+        const statusElement = document.getElementById('connection-status');
+        const dataDisplay = document.getElementById('data-display');
+        
+        async function testEndpoint(endpoint) {
+            statusElement.className = 'status info';
+            statusElement.textContent = `Testing ${endpoint}...`;
+            dataDisplay.textContent = 'Waiting for response...';
+            
+            try {
+                const response = await fetch(`http://localhost:9050${endpoint}`);
+                const data = await response.json();
+                
+                statusElement.className = 'status success';
+                statusElement.textContent = `Successfully connected to ${endpoint}`;
+                dataDisplay.textContent = JSON.stringify(data, null, 2);
+                console.log('Received data:', data);
+            } catch (e) {
+                statusElement.className = 'status error';
+                statusElement.textContent = `Error connecting to ${endpoint}: ${e.message}`;
+                dataDisplay.textContent = `Error: ${e.message}`;
+                console.error('Error:', e);
+            }
+        }
+        
+        function testWebSocket() {
+            statusElement.className = 'status info';
+            statusElement.textContent = 'Testing WebSocket connection...';
+            dataDisplay.textContent = 'Connecting to WebSocket...';
+            
+            try {
+                const ws = new WebSocket('ws://localhost:9050/ws/metrics');
+                
+                ws.onopen = function() {
+                    statusElement.className = 'status success';
+                    statusElement.textContent = 'Connected to WebSocket successfully!';
+                    dataDisplay.textContent = 'WebSocket connected. Waiting for data...';
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        dataDisplay.textContent = JSON.stringify(data, null, 2);
+                        console.log('Received WebSocket data:', data);
+                    } catch (e) {
+                        console.error('Error parsing WebSocket data:', e);
+                        dataDisplay.textContent = 'Error parsing data: ' + e.message;
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    statusElement.className = 'status error';
+                    statusElement.textContent = 'Error connecting to WebSocket';
+                    dataDisplay.textContent = 'WebSocket error';
+                    console.error('WebSocket error:', error);
+                };
+                
+                ws.onclose = function() {
+                    statusElement.className = 'status error';
+                    statusElement.textContent = 'WebSocket connection closed';
+                    console.log('WebSocket closed');
+                };
+            } catch (e) {
+                statusElement.className = 'status error';
+                statusElement.textContent = 'Error creating WebSocket connection: ' + e.message;
+                dataDisplay.textContent = 'Error: ' + e.message;
+                console.error('Error creating WebSocket:', e);
+            }
+        }
+    </script>
+</body>
+</html>

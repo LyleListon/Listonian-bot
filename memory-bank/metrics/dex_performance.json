@@ -1,0 +1,26 @@
+{
+  "baseswap": {
+    "success_rate": 0.6903760820688618,
+    "total_profit_usd": 262.4329037269706,
+    "total_trades": 42,
+    "avg_profit_per_trade": 3.3220442650637527
+  },
+  "aerodrome": {
+    "success_rate": 0.7565033177335738,
+    "total_profit_usd": 20.993548105735513,
+    "total_trades": 14,
+    "avg_profit_per_trade": 2.6702834942198543
+  },
+  "pancakeswap": {
+    "success_rate": 0.8753794668699275,
+    "total_profit_usd": 202.36443219061252,
+    "total_trades": 34,
+    "avg_profit_per_trade": 1.3506243632296258
+  },
+  "swapbased": {
+    "success_rate": 0.7085884713265189,
+    "total_profit_usd": 114.48827246920148,
+    "total_trades": 31,
+    "avg_profit_per_trade": 2.1914624535981186
+  }
+}

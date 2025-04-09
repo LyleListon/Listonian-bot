@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-03T12:40:30.605185",
+  "opportunity": {
+    "token_pair": "WETH-USDbC",
+    "dex_1": "swapbased",
+    "dex_2": "aerodrome",
+    "potential_profit": 0.07434525140691428,
+    "confidence": 0.8984139870154781
+  },
+  "success": true,
+  "net_profit": 0.07271263940713645,
+  "gas_cost": 0.001632611999777843,
+  "tx_hash": "0xf22b40acc032dbc237630e0d37e15af65eef76fe2ea08772031fd854bb251b4a",
+  "error": null
+}

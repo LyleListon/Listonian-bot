@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-01T05:51:03.525739",
+  "opportunity": {
+    "token_pair": "WETH-USDC",
+    "dex_1": "pancakeswap",
+    "dex_2": "swapbased",
+    "potential_profit": 0.08745614043244238,
+    "confidence": 0.7254158109722406
+  },
+  "success": true,
+  "net_profit": 0.08370111272504753,
+  "gas_cost": 0.0037550277073948517,
+  "tx_hash": "0xf3d2330edb9b172f02cc73d8f94b1c27ae2fd632553933511a265fdebe41faf7",
+  "error": null
+}

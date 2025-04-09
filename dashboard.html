@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Bot Dashboard</title>
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            color: #333;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .card-header h2 {
+            margin: 0;
+            color: #444;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .metric {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .metric h3 {
+            margin-top: 0;
+            color: #555;
+            font-size: 14px;
+        }
+        .metric p {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-online {
+            background-color: #4CAF50;
+        }
+        .status-offline {
+            background-color: #f44336;
+        }
+        .last-updated {
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+            margin-top: 5px;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+        .error {
+            color: #f44336;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+        .trades {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .trades th, .trades td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .trades th {
+            background-color: #f2f2f2;
+        }
+        .trades tr:hover {
+            background-color: #f9f9f9;
+        }
+        .success {
+            color: green;
+        }
+        .failure {
+            color: red;
+        }
+        .warning {
+            color: orange;
+        }
+        .subsection-title {
+            margin: 15px 0 10px 0;
+            color: #555;
+            font-size: 16px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th, .data-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .data-table th {
+            background-color: #f2f2f2;
+        }
+        .data-table tr:hover {
+            background-color: #f9f9f9;
+        }
+        .loading-cell {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+        .progress {
+            height: 100%;
+            border-radius: 5px;
+            background-color: #28a745;
+        }
+        .trend {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .section-container {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Arbitrage Bot Dashboard</h1>
+            <button id="refreshAllBtn" class="refresh-btn">Refresh All</button>
+        </div>
+
+        <div class="last-updated">
+            Last updated: <span id="lastUpdated">Never</span>
+        </div>
+
+        <div id="errorContainer" class="error">
+            Error connecting to data sources. Check console for details.
+        </div>
+
+        <!-- Debug section -->
+        <div id="debugSection" style="background-color: #f8f9fa; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
+            <h3>Debug Information</h3>
+            <div id="debugInfo" style="font-family: monospace; white-space: pre-wrap;">Loading debug info...</div>
+            <button id="testApiBtn" style="margin-top: 10px;">Test API Connection</button>
+        </div>
+
+        <!-- Dashboard content -->
+        <div id="dashboardContent">
+            <div class="loading">Loading dashboard data...</div>
+        </div>
+
+        <!-- Explicitly define sections to ensure they appear -->
+        <div id="blockchainSection" class="section-container"></div>
+        <div id="marketDataSection" class="section-container"></div>
+        <div id="botMetricsSection" class="section-container"></div>
+        <div id="financialSection" class="section-container"></div>
+        <div id="infrastructureSection" class="section-container"></div>
+        <div id="tokensSection" class="section-container"></div>
+        <div id="dexesSection" class="section-container"></div>
+        <div id="performanceSection" class="section-container"></div>
+        <div id="tradesSection" class="section-container"></div>
+    </div>
+
+    <!-- Dashboard section scripts -->
+    <script src="dashboard_section_blockchain.js"></script>
+    <script src="dashboard_section_tokens.js"></script>
+    <script src="dashboard_section_dexes.js"></script>
+    <script src="dashboard_section_performance.js"></script>
+    <script src="dashboard_section_trades.js"></script>
+    <script src="dashboard_section_market_data.js"></script>
+    <script src="dashboard_section_bot_metrics.js"></script>
+    <script src="dashboard_section_financial.js"></script>
+    <script src="dashboard_section_infrastructure.js"></script>
+
+    <!-- Main dashboard script -->
+    <script src="dashboard_main.js"></script>
+</body>
+</html>

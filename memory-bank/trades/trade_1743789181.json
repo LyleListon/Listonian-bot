@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-04T13:53:01.525739",
+  "opportunity": {
+    "token_pair": "WETH-wstETH",
+    "dex_1": "aerodrome",
+    "dex_2": "pancakeswap",
+    "potential_profit": 0.16817447037532202,
+    "confidence": 0.9317769089391903
+  },
+  "success": true,
+  "net_profit": 0.16179960145614813,
+  "gas_cost": 0.0063748689191738895,
+  "tx_hash": "0x070d3163703d5d92cd8cf35def76ef1b19b306d60e5ab04bf178898228ba9e92",
+  "error": null
+}

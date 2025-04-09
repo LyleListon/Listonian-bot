@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "base-dex-scanner": {
+      "command": "python",
+      "args": ["run_base_dex_scanner_mcp_with_api.py"],
+      "env": {
+        "BASE_RPC_URL": "${BASE_RPC_URL}",
+        "BASESCAN_API_KEY": "${BASESCAN_API_KEY}",
+        "DATABASE_URI": "${DATABASE_URI}",
+        "SCAN_INTERVAL_MINUTES": "60",
+        "BASE_DEX_SCANNER_API_KEY": "${BASE_DEX_SCANNER_API_KEY}"
+      },
+      "description": "Monitors the Base blockchain for DEXes and pools"
+    },
+    "crypto-price": {
+      "command": "python",
+      "args": ["run_crypto_price_mcp.py"],
+      "env": {
+        "ALCHEMY_API_KEY": "${ALCHEMY_API_KEY}"
+      },
+      "description": "Provides cryptocurrency price data and market information"
+    },
+    "market-analysis": {
+      "command": "python",
+      "args": ["run_market_analysis_mcp.py"],
+      "env": {
+        "ALCHEMY_API_KEY": "${ALCHEMY_API_KEY}"
+      },
+      "description": "Analyzes market conditions and trends for trading decisions"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "opportunities": [],
   "market_condition": {
-    "timestamp": "2025-04-04T17:50:39.387092",
+    "timestamp": "2025-04-08T00:21:23.416295",
     "analysis": {
       "is_valid": true,
       "analysis": {
@@ -20,11 +20,11 @@
       ]
     },
     "prices": {
-      "baseswap_v3": 1594.226703
+      "baseswap_v3": 1401.246482
     },
     "liquidity": {
       "baseswap_v3": 1000000.0
     }
   },
-  "timestamp": "2025-04-04T21:50:48.707378+00:00"
+  "timestamp": "2025-04-08T04:22:14.865857+00:00"
 }

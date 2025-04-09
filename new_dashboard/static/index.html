@@ -113,7 +113,7 @@
 </head>
 <body>
     <div id="connectionStatus" class="connection-status disconnected">Disconnected</div>
-    
+
     <div class="container">
         <div class="card">
             <h2>System Status</h2>
@@ -129,6 +129,14 @@
                 <div class="metric">
                     <h3>Web3 Connected</h3>
                     <p id="web3Connected">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>CPU Usage</h3>
+                    <p id="cpuUsage">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Memory Usage</h3>
+                    <p id="memoryUsage">Loading...</p>
                 </div>
             </div>
         </div>
@@ -199,9 +207,8 @@
             statusElement.className = 'connection-status connecting';
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // Connect to the specific metrics endpoint with the correct prefix
-            ws = new WebSocket(`${protocol}//${window.location.host}/dashboard/ws/metrics`); 
-// Added /dashboard prefix
+            // Connect to the specific metrics endpoint
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/metrics`);
 
             ws.onopen = () => {
                 console.log('WebSocket connected');
@@ -216,7 +223,7 @@
                 const data = JSON.parse(event.data);
                 console.log('Raw data received:', event.data); // Added log
                 console.log('Parsed data:', data); // Added log
-                
+
                 if (data.type === 'update') {
                     updateMetricsDisplay(data.metrics);
                     updateStatusDisplay(data.status);
@@ -239,7 +246,7 @@
                 console.log('WebSocket disconnected');
                 statusElement.textContent = 'Disconnected';
                 statusElement.className = 'connection-status disconnected';
-                
+
                 // Attempt to reconnect with exponential backoff
                 if (reconnectAttempts < maxReconnectAttempts) {
                     const delay = reconnectDelay * Math.pow(2, reconnectAttempts);
@@ -256,34 +263,65 @@
         }
 
         function updateMetricsDisplay(metrics) {
-            document.getElementById('walletBalance').textContent = metrics.walletBalance.toFixed(4) + ' ETH';
             console.log('updateMetricsDisplay called with:', metrics); // Added log
-            // Adjust keys based on the actual data structure from /ws/metrics
-            // Example: Accessing nested metrics data if needed
-            const perfMetrics = metrics.metrics?.performance || {}; // Use optional chaining and default
-            const systemMetrics = metrics.system || {};
-            
-            document.getElementById('totalProfit').textContent = (perfMetrics.total_profit || 0 / 1e18).toFixed(4) + ' ETH';
-            document.getElementById('successRate').textContent = (perfMetrics.success_rate || 0 * 100).toFixed(1) + '%';
-            document.getElementById('averageGas').textContent = (perfMetrics.average_gas || 0).toLocaleString();
-            document.getElementById('averageProfit').textContent = (perfMetrics.average_profit || 0 / 1e18).toFixed(4) + ' ETH';
-            document.getElementById('totalExecutions').textContent = perfMetrics.total_executions || 0;
 
-            // Update system metrics like CPU/Memory if available in the received data
-            document.getElementById('cpuUsage').textContent = systemMetrics.cpu_percent?.toFixed(1) + '%';
-            document.getElementById('memoryUsage').textContent = systemMetrics.memory_percent?.toFixed(1) + '%';
+            try {
+                // Safely access wallet balance with fallback
+                const walletBalance = metrics.walletBalance || 0;
+                document.getElementById('walletBalance').textContent =
+                    (typeof walletBalance === 'number' ? walletBalance.toFixed(4) : '0.0000') + ' ETH';
+
+                // Safely access nested metrics data
+                const perfMetrics = metrics.metrics || {};
+                const systemMetrics = metrics.system || {};
+
+                // Update performance metrics with proper error handling
+                document.getElementById('totalProfit').textContent =
+                    ((perfMetrics.total_profit_eth || 0)).toFixed(4) + ' ETH';
+
+                document.getElementById('successRate').textContent =
+                    ((perfMetrics.success_rate || 0) * 100).toFixed(1) + '%';
+
+                document.getElementById('averageGas').textContent =
+                    (perfMetrics.average_gas || 0).toLocaleString();
+
+                document.getElementById('averageProfit').textContent =
+                    ((perfMetrics.average_profit || 0)).toFixed(4) + ' ETH';
+
+                document.getElementById('totalExecutions').textContent =
+                    perfMetrics.total_trades || 0;
+
+                // Update system metrics
+                document.getElementById('cpuUsage').textContent =
+                    (systemMetrics.cpu_usage || 0).toFixed(1) + '%';
+
+                document.getElementById('memoryUsage').textContent =
+                    (systemMetrics.memory_usage || 0).toFixed(1) + '%';
+            } catch (error) {
+                console.error('Error updating metrics display:', error);
+            }
         }
 
         function updateStatusDisplay(status) {
             // Adjust keys based on the actual data structure from /ws/metrics
             console.log('updateStatusDisplay called with:', status); // Added log
-            const systemStatus = status.system_status || {};
-            const web3Status = status.web3_manager || {}; // Assuming web3 status might be nested differently
 
-            document.getElementById('status').textContent = systemStatus.bot_status || 'Unknown';
-            document.getElementById('currentBlock').textContent = systemStatus.current_block || 'N/A'; // Or fetch from web3 status if available
-            document.getElementById('web3Connected').textContent = web3Status.is_connected ? 'Yes' : 'No';
- // Adjust key if needed
+            try {
+                const systemStatus = status.system_status || {};
+                const networkStatus = status.network || {};
+
+                // Update status elements with proper error handling
+                document.getElementById('status').textContent =
+                    systemStatus.bot_status || status.status || 'Unknown';
+
+                document.getElementById('currentBlock').textContent =
+                    networkStatus.block_number || systemStatus.current_block || 'N/A';
+
+                document.getElementById('web3Connected').textContent =
+                    (networkStatus.connected || systemStatus.web3_connected) ? 'Yes' : 'No';
+            } catch (error) {
+                console.error('Error updating status display:', error);
+            }
         }
 
         function updateConfigDisplay(config) {
@@ -292,7 +330,7 @@
             document.getElementById('minProfit').value = config.minProfit;
             document.getElementById('maxGasPrice').value = config.maxGasPrice;
         }
-        
+
         async function loadConfig() {
             try {
                 const response = await fetch('/api/config');
@@ -302,17 +340,17 @@
                 console.error('Failed to load configuration:', error);
             }
         }
-        
+
         document.getElementById('configForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const config = {
                 slippage: parseFloat(document.getElementById('slippage').value),
                 maxLiquidity: parseInt(document.getElementById('maxLiquidity').value),
                 minProfit: parseFloat(document.getElementById('minProfit').value),
                 maxGasPrice: parseInt(document.getElementById('maxGasPrice').value)
             };
-            
+
             try {
                 const response = await fetch('/api/config', {
                     method: 'POST',
@@ -321,13 +359,13 @@
                     },
                     body: JSON.stringify(config)
                 });
-                
+
                 if (response.ok) {
                     alert('Configuration updated successfully');
                 } else {
                     alert('Failed to update configuration');
                 }
-                
+
             } catch (error) {
                 console.error('Failed to update configuration:', error);
                 alert('Failed to update configuration');

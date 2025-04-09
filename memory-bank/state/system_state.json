@@ -1,0 +1,31 @@
+{
+  "timestamp": "2025-04-08T00:21:08.586585",
+  "status": "running",
+  "uptime": 78568,
+  "version": "1.0.0",
+  "network": {
+    "chain_id": 8453,
+    "gas_price": 0.8653509253988807,
+    "block_number": 5278753,
+    "connected": true
+  },
+  "performance": {
+    "cpu_usage": 18.08465391090482,
+    "memory_usage": 291.57210153017695,
+    "disk_usage": 22.623615571799327
+  },
+  "components": {
+    "arbitrage_bot": {
+      "status": "running",
+      "last_update": "2025-04-08T00:05:08.586592"
+    },
+    "dashboard": {
+      "status": "running",
+      "last_update": "2025-04-08T00:11:08.586596"
+    },
+    "memory_bank": {
+      "status": "healthy",
+      "last_update": "2025-04-08T00:08:08.586598"
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "project": {
+    "name": "Listonian Arbitrage Bot",
+    "description": "A sophisticated cryptocurrency arbitrage system for the Base network"
+  },
+  "components": {
+    "arbitrage_bot": {
+      "path": "arbitrage_bot",
+      "description": "Core arbitrage bot functionality",
+      "entry_point": "run_bot.py"
+    },
+    "dashboard": {
+      "path": "new_dashboard",
+      "description": "Web dashboard for monitoring the bot",
+      "entry_point": "run_dashboard.py"
+    },
+    "mcp_servers": {
+      "path": ".augment/mcp_helper.py",
+      "description": "MCP servers for data and analysis",
+      "config_file": ".augment/mcp_config.json"
+    }
+  },
+  "commands": {
+    "start_bot": {
+      "command": "python run_bot.py",
+      "description": "Start the arbitrage bot"
+    },
+    "start_dashboard": {
+      "command": "python run_dashboard.py",
+      "description": "Start the dashboard"
+    },
+    "start_all": {
+      "command": "scripts/start_bot_with_dashboard.ps1",
+      "description": "Start both the bot and dashboard"
+    },
+    "start_mcp": {
+      "command": "python .augment/mcp_helper.py",
+      "description": "Manage MCP servers"
+    }
+  },
+  "environment": {
+    "required_vars": [
+      "BASE_RPC_URL",
+      "PRIVATE_KEY",
+      "WALLET_ADDRESS",
+      "PROFIT_RECIPIENT",
+      "FLASHBOTS_AUTH_KEY",
+      "ALCHEMY_API_KEY"
+    ],
+    "optional_vars": [
+      "LOG_LEVEL",
+      "DASHBOARD_ENABLED",
+      "DASHBOARD_PORT",
+      "MEMORY_BANK_PATH",
+      "BASESCAN_API_KEY",
+      "DATABASE_URI",
+      "BASE_DEX_SCANNER_API_KEY"
+    ]
+  }
+}

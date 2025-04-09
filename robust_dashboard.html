@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Bot Dashboard</title>
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            color: #333;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .card-header h2 {
+            margin: 0;
+            color: #444;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .metric {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .metric h3 {
+            margin-top: 0;
+            color: #555;
+            font-size: 14px;
+        }
+        .metric p {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-online {
+            background-color: #4CAF50;
+        }
+        .status-offline {
+            background-color: #f44336;
+        }
+        .last-updated {
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+            margin-top: 5px;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+        .error {
+            color: #f44336;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .hidden {
+            display: none;
+        }
+        .trades {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .trades th, .trades td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .trades th {
+            background-color: #f2f2f2;
+        }
+        .trades tr:hover {
+            background-color: #f9f9f9;
+        }
+        .success {
+            color: green;
+        }
+        .failure {
+            color: red;
+        }
+        .warning {
+            color: orange;
+        }
+        .status-card {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            border-left: 5px solid #4CAF50;
+        }
+        .status-card.error {
+            border-left-color: #f44336;
+            color: #333;
+            text-align: left;
+        }
+        .status-card.warning {
+            border-left-color: #ff9800;
+        }
+        .status-icon {
+            font-size: 24px;
+            margin-right: 15px;
+        }
+        .status-content {
+            flex: 1;
+        }
+        .status-content h3 {
+            margin: 0 0 5px 0;
+            color: #333;
+        }
+        .status-content p {
+            margin: 0;
+            color: #666;
+        }
+        .status-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #f1f1f1;
+            color: #333;
+        }
+        .btn-danger {
+            background-color: #f44336;
+            color: white;
+        }
+        .debug-panel {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .debug-panel h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 10px;
+        }
+        .debug-content {
+            font-family: monospace;
+            background-color: #f1f1f1;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .debug-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .connection-status {
+            display: flex;
+            align-items: center;
+            margin-left: 20px;
+        }
+        .connection-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .connection-dot.connected {
+            background-color: #4CAF50;
+        }
+        .connection-dot.connecting {
+            background-color: #ff9800;
+        }
+        .connection-dot.disconnected {
+            background-color: #f44336;
+        }
+        .connection-text {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .connection-text.connected {
+            color: #4CAF50;
+        }
+        .connection-text.connecting {
+            color: #ff9800;
+        }
+        .connection-text.disconnected {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Arbitrage Bot Dashboard</h1>
+            <div class="connection-status">
+                <div id="connectionDot" class="connection-dot disconnected"></div>
+                <span id="connectionText" class="connection-text disconnected">Disconnected</span>
+            </div>
+            <button id="refreshAllBtn" class="refresh-btn">Refresh All</button>
+        </div>
+
+        <div class="last-updated">
+            Last updated: <span id="lastUpdated">Never</span>
+        </div>
+
+        <!-- API Status Card -->
+        <div id="apiStatusCard" class="status-card error">
+            <div class="status-icon">⚠️</div>
+            <div class="status-content">
+                <h3>API Connection Status</h3>
+                <p id="apiStatusMessage">Checking connection to API server...</p>
+            </div>
+            <div class="status-actions">
+                <button id="reconnectBtn" class="btn btn-primary">Reconnect</button>
+                <button id="showDebugBtn" class="btn btn-secondary">Debug Info</button>
+            </div>
+        </div>
+
+        <!-- Debug Panel (hidden by default) -->
+        <div id="debugPanel" class="debug-panel hidden">
+            <h3>Debug Information</h3>
+            <div id="debugContent" class="debug-content">Loading debug information...</div>
+            <div class="debug-actions">
+                <button id="testApiBtn" class="btn btn-primary">Test API</button>
+                <button id="viewRawDataBtn" class="btn btn-secondary">View Raw Data</button>
+                <button id="hideDebugBtn" class="btn btn-secondary">Hide</button>
+            </div>
+        </div>
+
+        <!-- Raw Data Panel (hidden by default) -->
+        <div id="rawDataPanel" class="debug-panel hidden">
+            <h3>Raw API Data</h3>
+            <div id="rawDataContent" class="debug-content">Loading raw data...</div>
+            <div class="debug-actions">
+                <button id="hideRawDataBtn" class="btn btn-secondary">Hide</button>
+            </div>
+        </div>
+
+        <!-- Trades Section -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Recent Trades</h2>
+                <button id="refreshTradesBtn" class="refresh-btn">Refresh</button>
+            </div>
+            <div id="tradesLoading" class="loading">Loading trades...</div>
+            <div id="tradesError" class="error hidden">Error loading trades</div>
+            <table id="tradesTable" class="trades hidden">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Token Pair</th>
+                        <th>DEX 1</th>
+                        <th>DEX 2</th>
+                        <th>Amount</th>
+                        <th>Profit</th>
+                        <th>Gas Cost</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tradesTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_URL = "http://localhost:8081";
+        const REFRESH_INTERVAL = 10000; // 10 seconds
+        const MAX_RETRY_ATTEMPTS = 5;
+        const RETRY_DELAY = 3000; // 3 seconds
+
+        // State
+        let connectionState = "disconnected"; // disconnected, connecting, connected
+        let retryCount = 0;
+        let refreshTimer = null;
+        let lastSuccessfulFetch = null;
+
+        // Initialize dashboard when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Initializing dashboard...');
+            
+            // Set up event listeners
+            document.getElementById('refreshAllBtn').addEventListener('click', refreshAll);
+            document.getElementById('refreshTradesBtn').addEventListener('click', fetchTrades);
+            document.getElementById('reconnectBtn').addEventListener('click', reconnectToApi);
+            document.getElementById('showDebugBtn').addEventListener('click', showDebugPanel);
+            document.getElementById('hideDebugBtn').addEventListener('click', hideDebugPanel);
+            document.getElementById('testApiBtn').addEventListener('click', testApiConnection);
+            document.getElementById('viewRawDataBtn').addEventListener('click', viewRawData);
+            document.getElementById('hideRawDataBtn').addEventListener('click', hideRawData);
+            
+            // Initial connection
+            connectToApi();
+            
+            // Update debug info
+            updateDebugInfo();
+        });
+
+        // Connect to API
+        function connectToApi() {
+            updateConnectionState("connecting");
+            checkApiConnection()
+                .then(connected => {
+                    if (connected) {
+                        updateConnectionState("connected");
+                        retryCount = 0;
+                        fetchTrades();
+                        startAutoRefresh();
+                    } else {
+                        handleConnectionFailure();
+                    }
+                })
+                .catch(error => {
+                    console.error("Error connecting to API:", error);
+                    handleConnectionFailure();
+                });
+        }
+
+        // Reconnect to API
+        function reconnectToApi() {
+            stopAutoRefresh();
+            retryCount = 0;
+            connectToApi();
+        }
+
+        // Handle connection failure
+        function handleConnectionFailure() {
+            updateConnectionState("disconnected");
+            retryCount++;
+            
+            if (retryCount <= MAX_RETRY_ATTEMPTS) {
+                const message = `Connection failed. Retrying in ${RETRY_DELAY/1000} seconds... (Attempt ${retryCount}/${MAX_RETRY_ATTEMPTS})`;
+                updateApiStatus("error", message);
+                
+                setTimeout(connectToApi, RETRY_DELAY);
+            } else {
+                const message = "Failed to connect to API server after multiple attempts. Please check if the server is running.";
+                updateApiStatus("error", message);
+            }
+        }
+
+        // Update connection state
+        function updateConnectionState(state) {
+            connectionState = state;
+            const dot = document.getElementById('connectionDot');
+            const text = document.getElementById('connectionText');
+            
+            // Remove all classes
+            dot.classList.remove('connected', 'connecting', 'disconnected');
+            text.classList.remove('connected', 'connecting', 'disconnected');
+            
+            // Add appropriate class
+            dot.classList.add(state);
+            text.classList.add(state);
+            
+            // Update text
+            text.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+            
+            // Update API status card
+            if (state === "connected") {
+                updateApiStatus("success", "Connected to API server");
+            } else if (state === "connecting") {
+                updateApiStatus("warning", "Connecting to API server...");
+            } else {
+                updateApiStatus("error", "Disconnected from API server");
+            }
+        }
+
+        // Update API status card
+        function updateApiStatus(status, message) {
+            const card = document.getElementById('apiStatusCard');
+            const messageEl = document.getElementById('apiStatusMessage');
+            const icon = card.querySelector('.status-icon');
+            
+            // Remove all classes
+            card.classList.remove('error', 'warning', 'success');
+            
+            // Add appropriate class and icon
+            if (status === "error") {
+                card.classList.add('error');
+                icon.textContent = "⚠️";
+            } else if (status === "warning") {
+                card.classList.add('warning');
+                icon.textContent = "⚙️";
+            } else {
+                card.classList.add('success');
+                icon.textContent = "✅";
+            }
+            
+            // Update message
+            messageEl.textContent = message;
+        }
+
+        // Start auto-refresh
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            refreshTimer = setInterval(fetchTrades, REFRESH_INTERVAL);
+            console.log(`Auto-refresh started (every ${REFRESH_INTERVAL/1000} seconds)`);
+        }
+
+        // Stop auto-refresh
+        function stopAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = null;
+                console.log("Auto-refresh stopped");
+            }
+        }
+
+        // Check API connection
+        async function checkApiConnection() {
+            try {
+                console.log("Checking API connection...");
+                const response = await fetch(`${API_URL}/api/health`, { timeout: 5000 });
+                
+                if (response.ok) {
+                    console.log("API connection successful");
+                    return true;
+                } else {
+                    console.warn(`API returned status: ${response.status}`);
+                    return false;
+                }
+            } catch (error) {
+                console.error("API connection failed:", error);
+                return false;
+            }
+        }
+
+        // Test API connection
+        async function testApiConnection() {
+            const debugContent = document.getElementById('debugContent');
+            debugContent.textContent = "Testing API connection...";
+            
+            try {
+                const startTime = performance.now();
+                const response = await fetch(`${API_URL}/api/health`);
+                const endTime = performance.now();
+                const responseTime = (endTime - startTime).toFixed(2);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    debugContent.textContent = `API Connection: Success
+Response Time: ${responseTime}ms
+Status: ${response.status} ${response.statusText}
+Server Time: ${data.time}
+Uptime: ${(data.uptime / 60).toFixed(2)} minutes
+Memory Bank: ${data.memory_bank ? "Available" : "Not Found"}`;
+                } else {
+                    debugContent.textContent = `API Connection: Failed
+Response Time: ${responseTime}ms
+Status: ${response.status} ${response.statusText}`;
+                }
+            } catch (error) {
+                debugContent.textContent = `API Connection: Error
+Error: ${error.message}`;
+            }
+        }
+
+        // Fetch trades data
+        async function fetchTrades() {
+            if (connectionState !== "connected") {
+                console.warn("Not fetching trades: not connected to API");
+                return;
+            }
+            
+            const tradesLoading = document.getElementById('tradesLoading');
+            const tradesError = document.getElementById('tradesError');
+            const tradesTable = document.getElementById('tradesTable');
+            
+            // Show loading, hide error and table
+            tradesLoading.style.display = "block";
+            tradesError.classList.add("hidden");
+            tradesTable.classList.add("hidden");
+            
+            try {
+                console.log("Fetching trades data...");
+                const response = await fetch(`${API_URL}/api/trades`);
+                
+                if (!response.ok) {
+                    throw new Error(`API returned status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log(`Received ${Array.isArray(data) ? data.length : 0} trades`);
+                
+                // Update last successful fetch time
+                lastSuccessfulFetch = new Date();
+                updateLastUpdated();
+                
+                // Update trades table
+                updateTradesTable(data);
+            } catch (error) {
+                console.error("Error fetching trades:", error);
+                tradesLoading.style.display = "none";
+                tradesError.textContent = `Error: ${error.message}`;
+                tradesError.classList.remove("hidden");
+                
+                // Check if we need to reconnect
+                if (lastSuccessfulFetch && (new Date() - lastSuccessfulFetch) > REFRESH_INTERVAL * 3) {
+                    console.warn("Connection may be lost, attempting to reconnect...");
+                    reconnectToApi();
+                }
+            }
+        }
+
+        // Update trades table
+        function updateTradesTable(trades) {
+            const tableBody = document.getElementById('tradesTableBody');
+            const tradesTable = document.getElementById('tradesTable');
+            const tradesLoading = document.getElementById('tradesLoading');
+            const tradesError = document.getElementById('tradesError');
+            
+            // Clear existing rows
+            tableBody.innerHTML = '';
+            
+            // Handle case where API returns an array directly or nested in an object
+            let tradesArray = Array.isArray(trades) ? trades : (trades.trades || []);
+            
+            if (!tradesArray || tradesArray.length === 0) {
+                tradesLoading.textContent = 'No trades found';
+                tradesLoading.style.display = "block";
+                tradesTable.classList.add("hidden");
+                return;
+            }
+            
+            // Add new rows
+            for (const trade of tradesArray) {
+                const row = document.createElement('tr');
+                
+                // Extract trade data
+                const tradeTime = new Date(trade.timestamp);
+                const timeFormatted = tradeTime.toLocaleString();
+                
+                // Extract token pair and DEXes
+                let tokenPair, dex1, dex2;
+                
+                if (trade.opportunity) {
+                    // Format with opportunity object
+                    tokenPair = trade.opportunity.token_pair || 'Unknown';
+                    dex1 = trade.opportunity.dex_1 || 'Unknown';
+                    dex2 = trade.opportunity.dex_2 || 'Unknown';
+                } else {
+                    // Direct format
+                    tokenPair = trade.token_pair || 'Unknown';
+                    dex1 = trade.dex_1 || 'Unknown';
+                    dex2 = trade.dex_2 || 'Unknown';
+                }
+                
+                // Extract other fields
+                const amount = trade.amount || 0;
+                const profit = trade.profit || 0;
+                const gasCost = trade.gas_cost || 0;
+                const success = trade.success !== undefined ? trade.success : true;
+                
+                // Create row content
+                row.innerHTML = `
+                    <td>${timeFormatted}</td>
+                    <td>${tokenPair}</td>
+                    <td>${dex1}</td>
+                    <td>${dex2}</td>
+                    <td>${typeof amount === 'number' ? amount.toFixed(2) : amount} ETH</td>
+                    <td>${typeof profit === 'number' ? profit.toFixed(4) : profit} ETH</td>
+                    <td>${typeof gasCost === 'number' ? gasCost.toFixed(4) : gasCost} ETH</td>
+                    <td class="${success ? 'success' : 'failure'}">${success ? 'Success' : 'Failed'}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            }
+            
+            // Show table, hide loading and error
+            tradesTable.classList.remove("hidden");
+            tradesLoading.style.display = "none";
+            tradesError.classList.add("hidden");
+            
+            console.log(`Successfully displayed ${tradesArray.length} trades`);
+        }
+
+        // View raw data
+        async function viewRawData() {
+            const rawDataPanel = document.getElementById('rawDataPanel');
+            const rawDataContent = document.getElementById('rawDataContent');
+            
+            rawDataPanel.classList.remove("hidden");
+            rawDataContent.textContent = "Loading raw data...";
+            
+            try {
+                const response = await fetch(`${API_URL}/api/trades`);
+                
+                if (!response.ok) {
+                    throw new Error(`API returned status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                rawDataContent.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                rawDataContent.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Hide raw data panel
+        function hideRawData() {
+            document.getElementById('rawDataPanel').classList.add("hidden");
+        }
+
+        // Show debug panel
+        function showDebugPanel() {
+            document.getElementById('debugPanel').classList.remove("hidden");
+            updateDebugInfo();
+        }
+
+        // Hide debug panel
+        function hideDebugPanel() {
+            document.getElementById('debugPanel').classList.add("hidden");
+        }
+
+        // Update debug info
+        function updateDebugInfo() {
+            const debugContent = document.getElementById('debugContent');
+            
+            const info = {
+                "Browser": navigator.userAgent,
+                "API URL": API_URL,
+                "Connection State": connectionState,
+                "Retry Count": retryCount,
+                "Auto-Refresh": refreshTimer ? "Active" : "Inactive",
+                "Refresh Interval": `${REFRESH_INTERVAL/1000} seconds`,
+                "Last Successful Fetch": lastSuccessfulFetch ? lastSuccessfulFetch.toLocaleString() : "Never",
+                "Current Time": new Date().toLocaleString()
+            };
+            
+            let debugText = "";
+            for (const [key, value] of Object.entries(info)) {
+                debugText += `${key}: ${value}\n`;
+            }
+            
+            debugContent.textContent = debugText;
+        }
+
+        // Refresh all data
+        function refreshAll() {
+            updateDebugInfo();
+            fetchTrades();
+        }
+
+        // Update last updated time
+        function updateLastUpdated() {
+            document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+        }
+    </script>
+</body>
+</html>

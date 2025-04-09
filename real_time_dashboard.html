@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Arbitrage Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .metric {
+            text-align: center;
+        }
+        .metric h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .metric p {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .trades {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .trades th, .trades td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .trades th {
+            background-color: #f2f2f2;
+        }
+        .trades tr:hover {
+            background-color: #f9f9f9;
+        }
+        .success {
+            color: green;
+        }
+        .failure {
+            color: red;
+        }
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h2 {
+            margin: 0;
+        }
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-online {
+            background-color: #4CAF50;
+        }
+        .status-offline {
+            background-color: #f44336;
+        }
+        .last-updated {
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+            margin-top: 5px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background-color: #f2f2f2;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            margin-right: 5px;
+            border-radius: 4px 4px 0 0;
+        }
+        .tab.active {
+            background-color: white;
+            border-bottom: 1px solid white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Real-Time Arbitrage Bot Dashboard</h1>
+            <button id="refreshBtn" class="refresh-btn">Refresh Data</button>
+        </div>
+
+        <div id="errorContainer" class="error" style="display: none;">
+            Error connecting to data bridge. Make sure the direct_data_bridge.py script is running.
+        </div>
+
+        <div class="last-updated">
+            Last updated: <span id="lastUpdated">Never</span>
+        </div>
+
+        <div class="card">
+            <div class="header">
+                <h2>System Status</h2>
+                <div>
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span id="statusText">Unknown</span>
+                </div>
+            </div>
+            <div class="metrics">
+                <div class="metric">
+                    <h3>Bot Status</h3>
+                    <p id="botStatus">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Current Block</h3>
+                    <p id="currentBlock">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Web3 Connected</h3>
+                    <p id="web3Connected">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>CPU Usage</h3>
+                    <p id="cpuUsage">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Memory Usage</h3>
+                    <p id="memoryUsage">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Performance Metrics</h2>
+            <div class="metrics">
+                <div class="metric">
+                    <h3>Wallet Balance</h3>
+                    <p id="walletBalance">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Total Profit</h3>
+                    <p id="totalProfit">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Success Rate</h3>
+                    <p id="successRate">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Average Gas</h3>
+                    <p id="averageGas">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Average Profit</h3>
+                    <p id="averageProfit">Loading...</p>
+                </div>
+                <div class="metric">
+                    <h3>Total Executions</h3>
+                    <p id="totalExecutions">Loading...</p>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="profitChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Token Prices</h2>
+            <div class="metrics" id="tokenPricesContainer">
+                <div class="loading">Loading token prices...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>DEX Statistics</h2>
+            <div class="metrics" id="dexStatsContainer">
+                <div class="loading">Loading DEX statistics...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Recent Trades</h2>
+            <div id="tradesLoading" class="loading">Loading trades...</div>
+            <table class="trades" id="tradesTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Token Pair</th>
+                        <th>DEX 1</th>
+                        <th>DEX 2</th>
+                        <th>Profit</th>
+                        <th>Gas Cost</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tradesTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // API endpoint
+        const API_URL = 'http://localhost:8081';
+
+        // Chart instance
+        let profitChart = null;
+
+        // Data cache to store data between updates
+        let data_cache = {
+            state: {},
+            metrics: {},
+            token_prices: {},
+            dex_stats: {},
+            performance: {},
+            market_state: {},
+            trades: [],
+            last_updated: null
+        };
+
+        // Function to format date
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+
+        // Function to load data from the API
+        async function loadData() {
+            try {
+                // Hide error message
+                document.getElementById('errorContainer').style.display = 'none';
+
+                // Fetch all data
+                const response = await fetch(`${API_URL}/api/data`);
+                const data = await response.json();
+
+                // Update data cache
+                data_cache = {
+                    ...data_cache,
+                    ...data
+                };
+
+                // Update last updated time
+                document.getElementById('lastUpdated').textContent = formatDate(data_cache.last_updated);
+
+                // Update UI with data
+                updateSystemStatus(data_cache.state);
+                updatePerformanceMetrics(data_cache.performance, data_cache.state);
+                updateTokenPrices(data_cache.token_prices);
+                updateDexStats(data_cache.dex_stats);
+                updateTradesTable(data_cache.trades);
+
+                console.log('Data loaded successfully');
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('errorContainer').style.display = 'block';
+            }
+        }
+
+        // Function to update system status
+        function updateSystemStatus(stateData) {
+            if (!stateData || Object.keys(stateData).length === 0) {
+                return;
+            }
+
+            const botStatus = stateData.bot_status || 'Unknown';
+            document.getElementById('botStatus').textContent = botStatus;
+            document.getElementById('currentBlock').textContent = stateData.current_block || 'Unknown';
+            document.getElementById('web3Connected').textContent = stateData.web3_connected ? 'Yes' : 'No';
+
+            const cpuUsage = stateData.system_resources?.cpu_usage || 0;
+            const memoryUsage = stateData.system_resources?.memory_usage || 0;
+
+            document.getElementById('cpuUsage').textContent = `${cpuUsage.toFixed(1)}%`;
+            document.getElementById('memoryUsage').textContent = `${memoryUsage.toFixed(1)}%`;
+
+            // Update status indicator
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+
+            if (botStatus === 'running') {
+                statusIndicator.className = 'status-indicator status-online';
+                statusText.textContent = 'Online';
+            } else {
+                statusIndicator.className = 'status-indicator status-offline';
+                statusText.textContent = 'Offline';
+            }
+        }
+
+        // Function to update performance metrics
+        function updatePerformanceMetrics(performanceData, stateData) {
+            // Use wallet balance from state data
+            const walletBalance = stateData?.wallet_balance || 0;
+            document.getElementById('walletBalance').textContent = `${walletBalance.toFixed(4)} ETH`;
+
+            // Check if we have performance data
+            if (!performanceData || Object.keys(performanceData).length === 0) {
+                // Try to get performance data from metrics
+                const metricsData = data_cache.metrics || {};
+                if (metricsData.performance) {
+                    performanceData = metricsData.performance;
+                } else {
+                    return;
+                }
+            }
+
+            // Use performance metrics
+            const totalProfit = performanceData.total_profit || 0;
+            const successRate = performanceData.success_rate || 0;
+            const averageGas = performanceData.average_gas_cost || 0;
+            const averageProfit = performanceData.average_profit || 0;
+            const totalExecutions = performanceData.total_trades || 0;
+
+            document.getElementById('totalProfit').textContent = `${totalProfit.toFixed(4)} ETH`;
+            document.getElementById('successRate').textContent = `${(successRate * 100).toFixed(1)}%`;
+            document.getElementById('averageGas').textContent = `${averageGas.toFixed(4)} ETH`;
+            document.getElementById('averageProfit').textContent = `${averageProfit.toFixed(4)} ETH`;
+            document.getElementById('totalExecutions').textContent = totalExecutions;
+
+            // Update profit chart if we have profit trend data
+            if (performanceData.profit_trend && performanceData.profit_trend.length > 0) {
+                updateProfitChart(performanceData.profit_trend);
+            } else if (data_cache.trades && data_cache.trades.length > 0) {
+                // Generate profit trend from trades if not available
+                const profitTrend = generateProfitTrendData(data_cache.trades);
+                if (profitTrend.length > 0) {
+                    updateProfitChart(profitTrend);
+                }
+            }
+        }
+
+        // Function to update token prices
+        function updateTokenPrices(tokenPricesData) {
+            const container = document.getElementById('tokenPricesContainer');
+
+            // Check if we have token price data
+            if (!tokenPricesData || Object.keys(tokenPricesData).length === 0) {
+                // Try to get token prices from metrics or market state
+                const metricsData = data_cache.metrics || {};
+                const marketState = data_cache.market_state || {};
+
+                if (metricsData.market_data && metricsData.market_data.tokens) {
+                    tokenPricesData = metricsData.market_data.tokens;
+                } else if (marketState.tokens) {
+                    tokenPricesData = marketState.tokens;
+                } else {
+                    container.innerHTML = '<div class="loading">No token price data available</div>';
+                    return;
+                }
+            }
+
+            let html = '';
+
+            // Process each token
+            for (const [token, data] of Object.entries(tokenPricesData)) {
+                const price = data.price || 0;
+                const change = data.change_24h || 0;
+                const changeColor = change >= 0 ? 'green' : 'red';
+                const changeSign = change >= 0 ? '+' : '';
+
+                html += `
+                    <div class="metric">
+                        <h3>${token}</h3>
+                        <p>$${price.toFixed(2)}</p>
+                        <p style="color: ${changeColor}; font-size: 16px;">${changeSign}${change.toFixed(2)}%</p>
+                    </div>
+                `;
+            }
+
+            // If no tokens were found
+            if (html === '') {
+                container.innerHTML = '<div class="loading">No token price data available</div>';
+            } else {
+                container.innerHTML = html;
+            }
+        }
+
+        // Function to update DEX statistics
+        function updateDexStats(dexStatsData) {
+            const container = document.getElementById('dexStatsContainer');
+
+            // Check if we have DEX stats data
+            if (!dexStatsData || Object.keys(dexStatsData).length === 0) {
+                // Try to get DEX stats from metrics or market state
+                const metricsData = data_cache.metrics || {};
+                const marketState = data_cache.market_state || {};
+
+                if (metricsData.market_data && metricsData.market_data.dexes) {
+                    dexStatsData = metricsData.market_data.dexes;
+                } else if (marketState.dexes) {
+                    dexStatsData = marketState.dexes;
+                } else {
+                    container.innerHTML = '<div class="loading">No DEX statistics available</div>';
+                    return;
+                }
+            }
+
+            let html = '';
+
+            // Process each DEX
+            for (const [dex, data] of Object.entries(dexStatsData)) {
+                const volume = data.volume_24h || 0;
+                const tvl = data.tvl || 0;
+                const fee = data.fee || 0;
+
+                html += `
+                    <div class="metric">
+                        <h3>${dex.charAt(0).toUpperCase() + dex.slice(1)}</h3>
+                        <p>$${(volume / 1000000).toFixed(1)}M</p>
+                        <p style="font-size: 16px;">TVL: $${(tvl / 1000000).toFixed(1)}M</p>
+                        <p style="font-size: 14px;">Fee: ${(fee * 100).toFixed(2)}%</p>
+                    </div>
+                `;
+            }
+
+            // If no DEXes were found
+            if (html === '') {
+                container.innerHTML = '<div class="loading">No DEX statistics available</div>';
+            } else {
+                container.innerHTML = html;
+            }
+        }
+
+        // Function to update trades table
+        function updateTradesTable(tradesData) {
+            const tableBody = document.getElementById('tradesTableBody');
+            const tradesTable = document.getElementById('tradesTable');
+            const tradesLoading = document.getElementById('tradesLoading');
+
+            if (!tradesData || tradesData.length === 0) {
+                tradesLoading.textContent = 'No trades found';
+                tradesTable.style.display = 'none';
+                tradesLoading.style.display = 'block';
+                return;
+            }
+
+            let tableHtml = '';
+
+            // Display up to 10 most recent trades
+            const recentTrades = tradesData.slice(0, 10);
+
+            for (const trade of recentTrades) {
+                // Handle different trade data formats
+                let timestamp, tokenPair, dex1, dex2, profit, gasCost, success;
+
+                // Format 1: Individual trade files
+                if (trade.timestamp) {
+                    timestamp = formatDate(trade.timestamp);
+                    tokenPair = trade.opportunity?.token_pair || trade.token_pair || 'Unknown';
+                    dex1 = trade.opportunity?.dex_1 || trade.dex_1 || 'Unknown';
+                    dex2 = trade.opportunity?.dex_2 || trade.dex_2 || 'Unknown';
+                    profit = trade.net_profit || trade.profit || 0;
+                    gasCost = trade.gas_cost || 0;
+                    success = trade.success !== undefined ? trade.success : true;
+                }
+                // Format 2: Consolidated trades file
+                else if (trade.timestamp) {
+                    timestamp = formatDate(trade.timestamp);
+                    tokenPair = trade.token_pair || 'Unknown';
+                    dex1 = trade.dex_1 || 'Unknown';
+                    dex2 = trade.dex_2 || 'Unknown';
+                    profit = trade.profit || 0;
+                    gasCost = trade.gas_cost || 0;
+                    success = trade.success !== undefined ? trade.success : true;
+                }
+                // Unknown format
+                else {
+                    continue; // Skip this trade
+                }
+
+                tableHtml += `
+                    <tr>
+                        <td>${timestamp}</td>
+                        <td>${tokenPair}</td>
+                        <td>${dex1}</td>
+                        <td>${dex2}</td>
+                        <td>${profit.toFixed(4)} ETH</td>
+                        <td>${gasCost.toFixed(4)} ETH</td>
+                        <td class="${success ? 'success' : 'failure'}">${success ? 'Success' : 'Failed'}</td>
+                    </tr>
+                `;
+            }
+
+            if (tableHtml === '') {
+                tradesLoading.textContent = 'No valid trades found';
+                tradesTable.style.display = 'none';
+                tradesLoading.style.display = 'block';
+                return;
+            }
+
+            tableBody.innerHTML = tableHtml;
+            tradesTable.style.display = 'table';
+            tradesLoading.style.display = 'none';
+        }
+
+        // Function to update profit chart
+        function updateProfitChart(profitTrend) {
+            if (!profitTrend || profitTrend.length === 0) {
+                return;
+            }
+
+            const labels = profitTrend.map(item => {
+                const date = new Date(item.timestamp);
+                return date.toLocaleTimeString();
+            });
+
+            const data = profitTrend.map(item => item.profit);
+
+            const ctx = document.getElementById('profitChart').getContext('2d');
+
+            if (profitChart) {
+                profitChart.destroy();
+            }
+
+            profitChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Profit (ETH)',
+                        data: data,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Profit (ETH)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Function to generate profit trend data if none exists
+        function generateProfitTrendData(trades) {
+            if (!trades || trades.length === 0) {
+                return [];
+            }
+
+            // Sort trades by timestamp
+            const sortedTrades = [...trades].sort((a, b) => {
+                return new Date(a.timestamp) - new Date(b.timestamp);
+            });
+
+            // Group trades by hour
+            const hourlyProfits = {};
+
+            for (const trade of sortedTrades) {
+                if (!trade.success) continue;
+
+                const date = new Date(trade.timestamp);
+                const hourKey = new Date(
+                    date.getFullYear(),
+                    date.getMonth(),
+                    date.getDate(),
+                    date.getHours()
+                ).toISOString();
+
+                if (!hourlyProfits[hourKey]) {
+                    hourlyProfits[hourKey] = 0;
+                }
+
+                hourlyProfits[hourKey] += trade.net_profit || 0;
+            }
+
+            // Convert to array format
+            const profitTrend = Object.entries(hourlyProfits).map(([timestamp, profit]) => {
+                return {
+                    timestamp,
+                    profit
+                };
+            });
+
+            return profitTrend;
+        }
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', loadData);
+
+        // Refresh data when refresh button is clicked
+        document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+        // Auto-refresh data every 5 seconds
+        setInterval(loadData, 5000);
+    </script>
+</body>
+</html>

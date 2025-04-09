@@ -1,0 +1,4 @@
+@echo off
+echo Starting dashboard...
+python run_dashboard.py
+pause

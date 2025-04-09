@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-02T23:28:41.100831",
+  "opportunity": {
+    "token_pair": "WETH-wstETH",
+    "dex_1": "pancakeswap",
+    "dex_2": "swapbased",
+    "potential_profit": 0.04409870197133449,
+    "confidence": 0.7012395498878741
+  },
+  "success": true,
+  "net_profit": 0.03952797835482193,
+  "gas_cost": 0.0045707236165125585,
+  "tx_hash": "0xb63475455905f725b06376c9ec03598f0bb0882a82478addf21e8fbb39da1029",
+  "error": null
+}

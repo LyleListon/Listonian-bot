@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standalone Arbitrage Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .metric {
+            text-align: center;
+        }
+        .metric h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .metric p {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .trades {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .trades th, .trades td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .trades th {
+            background-color: #f2f2f2;
+        }
+        .trades tr:hover {
+            background-color: #f9f9f9;
+        }
+        .success {
+            color: green;
+        }
+        .failure {
+            color: red;
+        }
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h2 {
+            margin: 0;
+        }
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-online {
+            background-color: #4CAF50;
+        }
+        .status-offline {
+            background-color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Arbitrage Bot Dashboard</h1>
+            <button id="refreshBtn" class="refresh-btn">Refresh Data</button>
+        </div>
+        
+        <div class="card">
+            <div class="header">
+                <h2>System Status</h2>
+                <div>
+                    <span class="status-indicator status-online" id="statusIndicator"></span>
+                    <span id="statusText">Online</span>
+                </div>
+            </div>
+            <div class="metrics">
+                <div class="metric">
+                    <h3>Bot Status</h3>
+                    <p id="botStatus">Running</p>
+                </div>
+                <div class="metric">
+                    <h3>Current Block</h3>
+                    <p id="currentBlock">12345678</p>
+                </div>
+                <div class="metric">
+                    <h3>Web3 Connected</h3>
+                    <p id="web3Connected">Yes</p>
+                </div>
+                <div class="metric">
+                    <h3>CPU Usage</h3>
+                    <p id="cpuUsage">32.5%</p>
+                </div>
+                <div class="metric">
+                    <h3>Memory Usage</h3>
+                    <p id="memoryUsage">45.8%</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Performance Metrics</h2>
+            <div class="metrics">
+                <div class="metric">
+                    <h3>Wallet Balance</h3>
+                    <p id="walletBalance">1.2500 ETH</p>
+                </div>
+                <div class="metric">
+                    <h3>Total Profit</h3>
+                    <p id="totalProfit">0.8500 ETH</p>
+                </div>
+                <div class="metric">
+                    <h3>Success Rate</h3>
+                    <p id="successRate">92.0%</p>
+                </div>
+                <div class="metric">
+                    <h3>Average Gas</h3>
+                    <p id="averageGas">0.0150 ETH</p>
+                </div>
+                <div class="metric">
+                    <h3>Average Profit</h3>
+                    <p id="averageProfit">0.1200 ETH</p>
+                </div>
+                <div class="metric">
+                    <h3>Total Executions</h3>
+                    <p id="totalExecutions">28</p>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="profitChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Token Prices</h2>
+            <div class="metrics">
+                <div class="metric">
+                    <h3>WETH</h3>
+                    <p id="wethPrice">$3450.75</p>
+                    <p id="wethChange" style="color: green;">+2.50%</p>
+                </div>
+                <div class="metric">
+                    <h3>USDC</h3>
+                    <p id="usdcPrice">$1.0000</p>
+                    <p id="usdcChange" style="color: green;">+0.01%</p>
+                </div>
+                <div class="metric">
+                    <h3>USDbC</h3>
+                    <p id="usdbcPrice">$1.0000</p>
+                    <p id="usdcChange" style="color: black;">0.00%</p>
+                </div>
+                <div class="metric">
+                    <h3>DAI</h3>
+                    <p id="daiPrice">$0.9980</p>
+                    <p id="daiChange" style="color: red;">-0.20%</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Recent Trades</h2>
+            <table class="trades">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Token Pair</th>
+                        <th>DEX 1</th>
+                        <th>DEX 2</th>
+                        <th>Amount</th>
+                        <th>Profit</th>
+                        <th>Gas Cost</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tradesTableBody">
+                    <tr>
+                        <td>2025-04-08 00:30:00</td>
+                        <td>WETH-USDC</td>
+                        <td>baseswap</td>
+                        <td>aerodrome</td>
+                        <td>2.50 ETH</td>
+                        <td>0.1200 ETH</td>
+                        <td>0.0150 ETH</td>
+                        <td class="success">Success</td>
+                    </tr>
+                    <tr>
+                        <td>2025-04-08 00:20:00</td>
+                        <td>WETH-USDbC</td>
+                        <td>pancakeswap</td>
+                        <td>baseswap</td>
+                        <td>1.75 ETH</td>
+                        <td>0.0850 ETH</td>
+                        <td>0.0120 ETH</td>
+                        <td class="success">Success</td>
+                    </tr>
+                    <tr>
+                        <td>2025-04-08 00:10:00</td>
+                        <td>USDC-USDbC</td>
+                        <td>aerodrome</td>
+                        <td>swapbased</td>
+                        <td>3.20 ETH</td>
+                        <td>0.0000 ETH</td>
+                        <td>0.0180 ETH</td>
+                        <td class="failure">Failed</td>
+                    </tr>
+                    <tr>
+                        <td>2025-04-08 00:00:00</td>
+                        <td>WETH-DAI</td>
+                        <td>baseswap</td>
+                        <td>pancakeswap</td>
+                        <td>1.50 ETH</td>
+                        <td>0.0950 ETH</td>
+                        <td>0.0130 ETH</td>
+                        <td class="success">Success</td>
+                    </tr>
+                    <tr>
+                        <td>2025-04-07 23:50:00</td>
+                        <td>DAI-USDC</td>
+                        <td>swapbased</td>
+                        <td>aerodrome</td>
+                        <td>2.10 ETH</td>
+                        <td>0.0750 ETH</td>
+                        <td>0.0140 ETH</td>
+                        <td class="success">Success</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Initialize profit chart with sample data
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('profitChart').getContext('2d');
+            
+            const profitChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'],
+                    datasets: [{
+                        label: 'Profit (ETH)',
+                        data: [0.03, 0.05, 0.08, 0.12, 0.15, 0.18, 0.24],
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Profit (ETH)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Add refresh button functionality
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                alert('Data refreshed successfully!');
+            });
+        });
+    </script>
+</body>
+</html>

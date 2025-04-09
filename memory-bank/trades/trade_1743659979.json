@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-03T01:59:39.525739",
+  "opportunity": {
+    "token_pair": "USDC-USDbC",
+    "dex_1": "baseswap",
+    "dex_2": "aerodrome",
+    "potential_profit": 0.059117945971137294,
+    "confidence": 0.7778608906249252
+  },
+  "success": true,
+  "net_profit": 0.056045821083317224,
+  "gas_cost": 0.0030721248878200678,
+  "tx_hash": "0xb5b1f6f42c58141316783d81f7a91793c0b3dde420159bf79a02faab07de8fb1",
+  "error": null
+}

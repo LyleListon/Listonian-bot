@@ -10,7 +10,7 @@ This package provides functionality for:
 from .base_dex import BaseDEX
 from .base_dex_v2 import BaseDEXV2
 from .base_dex_v3 import BaseDEXV3
-from .swapbased import SwapBased
+from .swapbased import SwapBasedDEX as SwapBased
 from .sushiswap import SushiswapDEX
 
 __all__ = [

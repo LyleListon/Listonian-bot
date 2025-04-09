@@ -1,7 +1,7 @@
 {
     "provider_url": "https://mainnet.base.org",
     "chain_id": 8453,
-    "private_key": "",
+    "private_key": "${PRIVATE_KEY}",
     "tokens": {
         "WETH": {
             "address": "0x4200000000000000000000000000000000000006",
@@ -28,7 +28,7 @@
         "aerodrome": {
             "factory": "0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A",
             "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
- 
+
             "fee_tiers": [3000],
             "enabled": false,
             "version": "v2",
@@ -65,7 +65,7 @@
     },
     "flashbots": {
         "relay_url": "https://relay.flashbots.net",
-        "auth_signer_key": ""
+        "auth_signer_key": "${FLASHBOTS_AUTH_KEY}"
     },
     "flash_loan": {
         "balancer_vault": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
@@ -77,7 +77,7 @@
         "max_paths_to_check": 8,
         "max_path_length": 4,
         "max_parallel_requests": 15,
-        "preferred_intermediate_tokens": ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 
+        "preferred_intermediate_tokens": ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
                                          "0x4200000000000000000000000000000000000006"]
     },
     "gas": {

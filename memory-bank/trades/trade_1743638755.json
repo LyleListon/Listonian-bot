@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-02T20:05:55.605185",
+  "opportunity": {
+    "token_pair": "WETH-USDC",
+    "dex_1": "aerodrome",
+    "dex_2": "pancakeswap",
+    "potential_profit": 0.019891147548811442,
+    "confidence": 0.5898385736474954
+  },
+  "success": false,
+  "net_profit": -0.011508856379348356,
+  "gas_cost": 0.008382291169463086,
+  "tx_hash": "0xcbfaeedd4890e69e5784d3606a3f7cc989f7a16bcf94862dd8aa82584e85bf9d",
+  "error": "Slippage exceeded"
+}

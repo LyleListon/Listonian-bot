@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Dashboard</h1>
+        
+        <div id="marketDataTest" class="card">
+            <h2>Market Data Test</h2>
+            <p>Testing if market data section works...</p>
+            <div id="marketDataContent"></div>
+        </div>
+        
+        <div id="botMetricsTest" class="card">
+            <h2>Bot Metrics Test</h2>
+            <p>Testing if bot metrics section works...</p>
+            <div id="botMetricsContent"></div>
+        </div>
+        
+        <div id="financialTest" class="card">
+            <h2>Financial Test</h2>
+            <p>Testing if financial section works...</p>
+            <div id="financialContent"></div>
+        </div>
+        
+        <div id="infrastructureTest" class="card">
+            <h2>Infrastructure Test</h2>
+            <p>Testing if infrastructure section works...</p>
+            <div id="infrastructureContent"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Test function for market data
+        function testMarketData() {
+            try {
+                console.log("Testing market data section...");
+                if (typeof createMarketDataSection === 'function') {
+                    const section = createMarketDataSection();
+                    document.getElementById('marketDataContent').appendChild(section);
+                    console.log("Market data section created successfully");
+                    
+                    if (typeof fetchMarketData === 'function') {
+                        fetchMarketData();
+                        console.log("Market data fetched successfully");
+                    } else {
+                        console.error("fetchMarketData function not found");
+                    }
+                } else {
+                    console.error("createMarketDataSection function not found");
+                }
+            } catch (error) {
+                console.error("Error testing market data section:", error);
+            }
+        }
+        
+        // Test function for bot metrics
+        function testBotMetrics() {
+            try {
+                console.log("Testing bot metrics section...");
+                if (typeof createBotMetricsSection === 'function') {
+                    const section = createBotMetricsSection();
+                    document.getElementById('botMetricsContent').appendChild(section);
+                    console.log("Bot metrics section created successfully");
+                    
+                    if (typeof fetchBotMetrics === 'function') {
+                        fetchBotMetrics();
+                        console.log("Bot metrics fetched successfully");
+                    } else {
+                        console.error("fetchBotMetrics function not found");
+                    }
+                } else {
+                    console.error("createBotMetricsSection function not found");
+                }
+            } catch (error) {
+                console.error("Error testing bot metrics section:", error);
+            }
+        }
+        
+        // Test function for financial
+        function testFinancial() {
+            try {
+                console.log("Testing financial section...");
+                if (typeof createFinancialSection === 'function') {
+                    const section = createFinancialSection();
+                    document.getElementById('financialContent').appendChild(section);
+                    console.log("Financial section created successfully");
+                    
+                    if (typeof fetchFinancialData === 'function') {
+                        fetchFinancialData();
+                        console.log("Financial data fetched successfully");
+                    } else {
+                        console.error("fetchFinancialData function not found");
+                    }
+                } else {
+                    console.error("createFinancialSection function not found");
+                }
+            } catch (error) {
+                console.error("Error testing financial section:", error);
+            }
+        }
+        
+        // Test function for infrastructure
+        function testInfrastructure() {
+            try {
+                console.log("Testing infrastructure section...");
+                if (typeof createInfrastructureSection === 'function') {
+                    const section = createInfrastructureSection();
+                    document.getElementById('infrastructureContent').appendChild(section);
+                    console.log("Infrastructure section created successfully");
+                    
+                    if (typeof fetchInfrastructureData === 'function') {
+                        fetchInfrastructureData();
+                        console.log("Infrastructure data fetched successfully");
+                    } else {
+                        console.error("fetchInfrastructureData function not found");
+                    }
+                } else {
+                    console.error("createInfrastructureSection function not found");
+                }
+            } catch (error) {
+                console.error("Error testing infrastructure section:", error);
+            }
+        }
+        
+        // Run tests when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Running tests...");
+            
+            // Load scripts dynamically
+            function loadScript(src, callback) {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = callback;
+                script.onerror = function() {
+                    console.error("Error loading script:", src);
+                };
+                document.head.appendChild(script);
+            }
+            
+            // Load scripts in sequence
+            loadScript('dashboard_section_market_data.js', function() {
+                console.log("Market data script loaded");
+                testMarketData();
+                
+                loadScript('dashboard_section_bot_metrics.js', function() {
+                    console.log("Bot metrics script loaded");
+                    testBotMetrics();
+                    
+                    loadScript('dashboard_section_financial.js', function() {
+                        console.log("Financial script loaded");
+                        testFinancial();
+                        
+                        loadScript('dashboard_section_infrastructure.js', function() {
+                            console.log("Infrastructure script loaded");
+                            testInfrastructure();
+                        });
+                    });
+                });
+            });
+        });
+    </script>
+</body>
+</html>

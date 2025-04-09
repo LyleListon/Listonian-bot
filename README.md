@@ -1,81 +1,166 @@
 # Listonian Arbitrage Bot
 
-A high-performance arbitrage bot for Base mainnet that uses:
-- Balancer for flash loans
-- Flashbots for MEV protection
-- Multi-path arbitrage optimization
-- Real-time monitoring
+A sophisticated cryptocurrency arbitrage system designed to identify and execute profitable trading opportunities across decentralized exchanges (DEXes) on the Base network.
 
-## Quick Start
+## Project Overview
 
-1. Double-click `start_arbitrage_bot.bat` to begin. The script will:
-   - Check Python installation (requires Python 3.12+)
-   - Create .env.production from template if needed
-   - Initialize secure storage for sensitive data
-   - Start the bot with automatic restart on crashes
-   - Open a log viewer window
+The Listonian Arbitrage Bot is a comprehensive system that:
 
-## Configuration
+- Monitors multiple DEXes on the Base network for price discrepancies
+- Identifies profitable arbitrage opportunities
+- Executes trades using flash loans for capital efficiency
+- Provides real-time monitoring through a web dashboard
+- Uses MCP (Master Control Program) servers for data and analysis
 
-### Required Environment Variables
-Copy `.env.production.template` to `.env.production` and fill in:
+## Project Structure
 
-```bash
-# Get from https://www.alchemy.com/
-ALCHEMY_API_KEY=your-api-key
+The project is organized into the following main components:
 
-# Your wallet's private key (with 0x prefix)
-PRIVATE_KEY=0xyour-private-key
-
-# Your wallet addresses
-WALLET_ADDRESS=0xYour-Wallet-Address
-PROFIT_RECIPIENT=0xProfit-Recipient-Address
-
-# Flashbots Configuration
-# Keep this as $SECURE:PRIVATE_KEY
-FLASHBOTS_AUTH_KEY=$SECURE:PRIVATE_KEY
-
-# This tells the bot to use your wallet's private key for Flashbots
- authentication
+```
+Listonian-bot/
+├── arbitrage_bot/         # Core arbitrage bot package
+├── new_dashboard/         # Dashboard implementation
+├── configs/               # Configuration files
+├── scripts/               # Helper scripts
+├── memory-bank/           # Shared data storage
+├── secure/                # Secure storage for sensitive data
+├── .augment/              # Augment extension configuration
+├── docs/                  # Documentation
+├── tests/                 # Tests
+├── logs/                  # Log files
+└── mcp_servers/           # MCP server implementations
 ```
 
-### Production Settings
-The bot is configured in `configs/production.json` with:
-- Base mainnet RPC endpoints
-- Flashbots integration
-- Balancer flash loan settings
-- Token addresses (WETH, USDC)
-- Gas and profit thresholds
+For more details on the project structure, see [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
 
-## Features
+## Setup
 
-- **Flash Loans**: Uses Balancer as primary provider with Aave as fallback
-- **MEV Protection**: Integrates with Flashbots for private transaction routing
-- **Multi-Path Arbitrage**: Optimizes across multiple DEX paths
-- **Real-time Monitoring**: Automatic log viewer window
-- **Auto-Recovery**: Restarts automatically after crashes
-- **Secure Storage**: Encrypts sensitive data like private keys
+### Prerequisites
 
-## Monitoring
+- Python 3.12+
+- Node.js 18+ (for some scripts)
+- Git
 
-The bot creates two windows:
-1. Main bot window showing startup progress
-2. Log viewer window showing real-time operation
+### Installation
 
-Monitor `logs/arbitrage.log` for detailed operation information.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/LyleListon/Listonian-bot.git
+   cd Listonian-bot
+   ```
+
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   venv\Scripts\activate  # Windows
+   source venv/bin/activate  # Linux/Mac
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Create a `.env` file with your API keys and settings (optional):
+   ```bash
+   cp .env.production.template .env
+   # Edit .env with your API keys and settings
+   ```
+   If you don't have a `.env` file, the bot will use default values for some settings.
+
+### Configuration
+
+The bot uses a layered configuration approach:
+1. Default configuration from `configs/default.json`
+2. User configuration from `config.json`
+3. Environment variables from `.env`
+
+Required environment variables:
+```
+BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/your-api-key
+PRIVATE_KEY=your-private-key
+WALLET_ADDRESS=your-wallet-address
+PROFIT_RECIPIENT=profit-recipient-address
+FLASHBOTS_AUTH_KEY=your-flashbots-auth-key
+ALCHEMY_API_KEY=your-alchemy-api-key
+```
+
+## Usage
+
+### Starting the Bot
+
+```bash
+python run_bot.py
+```
+
+### Starting the Dashboard
+
+```bash
+python run_dashboard.py
+```
+
+### Starting Both Bot and Dashboard
+
+```bash
+# Windows
+scripts\start_bot_with_dashboard.bat
+
+# PowerShell
+.\scripts\start_bot_with_dashboard.ps1
+```
+
+### Starting MCP Servers
+
+```bash
+python scripts\manage_mcp_servers.py start-all
+```
+
+## Dashboard
+
+The dashboard provides a web interface to monitor the bot's performance and manage its operations.
+- URL: http://localhost:9050
+- Features:
+  - Real-time monitoring
+  - Trade history
+  - Performance metrics
+  - System status
+
+## MCP Servers
+
+The MCP (Master Control Program) servers provide data and analysis for the arbitrage bot:
+- Base DEX Scanner: Monitors the Base blockchain for DEXes and pools
+- Crypto Price: Provides cryptocurrency price data
+- Market Analysis: Analyzes market conditions and trends
+
+For more information on MCP integration, see [docs/MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md).
+
+## Project Maintenance
+
+### Cleaning Up the Project
+
+To identify unused files and clean up the project:
+
+```bash
+python scripts\cleanup_project.py
+```
+
+### Reorganizing the Project
+
+To reorganize the project according to the ideal structure:
+
+```bash
+python scripts\reorganize_project.py
+```
 
 ## Troubleshooting
 
-If the bot fails to start:
-1. Ensure Python 3.12+ is installed and in PATH
-2. Verify all environment variables are set correctly
-3. Check log files for detailed error messages
-4. Ensure you have sufficient funds for gas
-5. Verify RPC endpoints are accessible
+If you encounter issues:
 
-## Security Notes
+1. Check the log files in the `logs/` directory
+2. Verify your API keys and environment variables
+3. Ensure all required directories exist
+4. Check the memory bank for data integrity
 
-- Private keys are stored encrypted in the `secure` directory
-- Use a dedicated wallet for the bot
-- Monitor gas usage and profit thresholds
-- Test with small amounts first
+## License
+
+Proprietary - All rights reserved

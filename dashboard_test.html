@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dashboard Connection Test</h1>
+        
+        <div id="connection-status" class="status info">
+            Connecting to dashboard...
+        </div>
+        
+        <h2>Latest Data:</h2>
+        <pre id="data-display">No data received yet</pre>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const statusElement = document.getElementById('connection-status');
+            const dataDisplay = document.getElementById('data-display');
+            
+            // Try to connect to the dashboard WebSocket
+            try {
+                const ws = new WebSocket('ws://localhost:9050/ws/metrics');
+                
+                ws.onopen = function() {
+                    statusElement.className = 'status success';
+                    statusElement.textContent = 'Connected to dashboard successfully!';
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        dataDisplay.textContent = JSON.stringify(data, null, 2);
+                        console.log('Received data:', data);
+                    } catch (e) {
+                        console.error('Error parsing data:', e);
+                        dataDisplay.textContent = 'Error parsing data: ' + e.message;
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    statusElement.className = 'status error';
+                    statusElement.textContent = 'Error connecting to dashboard: ' + error.message;
+                    console.error('WebSocket error:', error);
+                };
+                
+                ws.onclose = function() {
+                    statusElement.className = 'status error';
+                    statusElement.textContent = 'Connection to dashboard closed';
+                };
+            } catch (e) {
+                statusElement.className = 'status error';
+                statusElement.textContent = 'Error creating WebSocket connection: ' + e.message;
+                console.error('Error creating WebSocket:', e);
+            }
+        });
+    </script>
+</body>
+</html>

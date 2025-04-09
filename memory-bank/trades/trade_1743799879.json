@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-04T16:51:19.605185",
+  "opportunity": {
+    "token_pair": "USDC-USDbC",
+    "dex_1": "baseswap",
+    "dex_2": "pancakeswap",
+    "potential_profit": 0.03829859133909103,
+    "confidence": 0.9380126067477617
+  },
+  "success": false,
+  "net_profit": -0.03471910509474273,
+  "gas_cost": 0.003579486244348305,
+  "tx_hash": "0x2f71152a19ec428fb753fffb750606b90adc6ca8bd4d323eb1b86daaaaac23ab",
+  "error": "Slippage exceeded"
+}

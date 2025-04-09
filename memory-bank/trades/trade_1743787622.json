@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-04T13:27:02.565225",
+  "opportunity": {
+    "token_pair": "WETH-cbETH",
+    "dex_1": "baseswap",
+    "dex_2": "swapbased",
+    "potential_profit": 0.16145421460381745,
+    "confidence": 0.9488785408003755
+  },
+  "success": true,
+  "net_profit": 0.1541409262833311,
+  "gas_cost": 0.007313288320486355,
+  "tx_hash": "0x56c72795e05531856462d7f3bffa32dbf1d66c164b5fdb22808647f04adfd281",
+  "error": null
+}

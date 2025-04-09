@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-04T13:30:44.525739",
+  "opportunity": {
+    "token_pair": "WETH-USDbC",
+    "dex_1": "swapbased",
+    "dex_2": "baseswap",
+    "potential_profit": 0.05122152990165531,
+    "confidence": 0.7626094150062983
+  },
+  "success": true,
+  "net_profit": 0.049151983683537084,
+  "gas_cost": 0.0020695462181182216,
+  "tx_hash": "0x2b3a1068164b9f96ab7f5421906c00546f6aa1b26046bcc9112c7490d642b704",
+  "error": null
+}

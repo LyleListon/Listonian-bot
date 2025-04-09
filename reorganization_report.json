@@ -1,0 +1,17 @@
+{
+  "backup_directory": "backup",
+  "moved_files": {
+    "pancakeswap.py": "arbitrage_bot\\core\\dex\\pancakeswap.py",
+    "rocketswap.py": "arbitrage_bot\\core\\dex\\rocketswap.py",
+    "swapbased.py": "arbitrage_bot\\core\\dex\\swapbased.py",
+    "uniswap_v3.py": "arbitrage_bot\\core\\dex\\uniswap_v3.py",
+    "run_base_dex_scanner_example.py": "mcp_servers\\run_base_dex_scanner_example.py",
+    "run_base_dex_scanner_mcp.py": "mcp_servers\\run_base_dex_scanner_mcp.py",
+    "run_base_dex_scanner_mcp_with_api.py": "mcp_servers\\run_base_dex_scanner_mcp_with_api.py",
+    "run_base_dex_scanner_mcp_wrapper.py": "mcp_servers\\run_base_dex_scanner_mcp_wrapper.py"
+  },
+  "created_directories": [
+    "E:\\Arby 2-22-25\\Listonian-bot\\arbitrage_bot\\core\\dex",
+    "E:\\Arby 2-22-25\\Listonian-bot\\mcp_servers"
+  ]
+}

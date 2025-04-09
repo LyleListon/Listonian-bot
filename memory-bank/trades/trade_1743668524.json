@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-03T04:22:04.100831",
+  "opportunity": {
+    "token_pair": "WETH-cbETH",
+    "dex_1": "baseswap",
+    "dex_2": "aerodrome",
+    "potential_profit": 0.049041623195927045,
+    "confidence": 0.6637808459256223
+  },
+  "success": true,
+  "net_profit": 0.046019736045234697,
+  "gas_cost": 0.003021887150692348,
+  "tx_hash": "0xcef53d3e6c9b03309de04e047c734442002aba032d2d2727e3b2d03b36d6188b",
+  "error": null
+}
