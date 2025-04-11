@@ -12,8 +12,4 @@ from .memory_bank import MemoryBank
 from .memory_manager import MemoryManager
 from .file_manager import FileManager
 
-__all__ = [
-    'MemoryBank',
-    'MemoryManager',
-    'FileManager'
-]
+__all__ = ["MemoryBank", "MemoryManager", "FileManager"]

@@ -17,5 +17,5 @@ __all__ = [
     "DefiLlamaSource",
     "DefiPulseSource",
     "DexScreenerSource",
-    "DEXRepository"
+    "DEXRepository",
 ]

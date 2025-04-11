@@ -7,6 +7,4 @@ including standard strategies, flash loan strategies, and custom execution flows
 
 from .standard_strategy import StandardExecutionStrategy
 
-__all__ = [
-    "StandardExecutionStrategy"
-]
+__all__ = ["StandardExecutionStrategy"]

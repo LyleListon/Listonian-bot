@@ -13,10 +13,4 @@ from .base_dex_v3 import BaseDEXV3
 from .swapbased import SwapBasedDEX as SwapBased
 from .sushiswap import SushiswapDEX
 
-__all__ = [
-    'BaseDEX',
-    'BaseDEXV2',
-    'BaseDEXV3',
-    'SwapBased',
-    'SushiswapDEX'
-]
+__all__ = ["BaseDEX", "BaseDEXV2", "BaseDEXV3", "SwapBased", "SushiswapDEX"]

@@ -20,17 +20,21 @@ from .logging import get_logger
 
 logger = get_logger(__name__)
 
+
 class ProcessState(Enum):
     """Process lifecycle states."""
+
     STOPPED = auto()
     STARTING = auto()
     RUNNING = auto()
     ERROR = auto()
     STOPPING = auto()
 
+
 @dataclass
 class ProcessInfo:
     """Information about a managed process."""
+
     name: str
     command: List[str]
     state: ProcessState
@@ -40,6 +44,7 @@ class ProcessInfo:
     restart_count: int = 0
     max_restarts: int = 3
     backoff_factor: float = 1.5
+
 
 class ProcessManager:
     """Manages process lifecycle and monitoring."""
@@ -67,9 +72,7 @@ class ProcessManager:
                 self._setup_signal_handlers()
 
                 # Start monitoring task
-                self._monitor_task = asyncio.create_task(
-                    self._monitoring_loop()
-                )
+                self._monitor_task = asyncio.create_task(self._monitoring_loop())
 
                 self._initialized = True
                 self._logger.info("Process manager initialized successfully")
@@ -82,6 +85,7 @@ class ProcessManager:
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
+
         def handle_shutdown(signum, frame):
             if self._cleanup_on_exit:
                 asyncio.create_task(self.cleanup())
@@ -90,10 +94,7 @@ class ProcessManager:
         signal.signal(signal.SIGTERM, handle_shutdown)
 
     async def register_process(
-        self,
-        name: str,
-        command: List[str],
-        max_restarts: int = 3
+        self, name: str, command: List[str], max_restarts: int = 3
     ) -> None:
         """Register a process for management.
 
@@ -110,7 +111,7 @@ class ProcessManager:
                 name=name,
                 command=command,
                 state=ProcessState.STOPPED,
-                max_restarts=max_restarts
+                max_restarts=max_restarts,
             )
             self._logger.info(f"Registered process: {name}")
 
@@ -135,7 +136,7 @@ class ProcessManager:
                 process.command,
                 cwd=str(self._base_path),
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
             )
 
             process.pid = proc.pid
@@ -152,14 +153,13 @@ class ProcessManager:
         """Clean up any existing processes matching the command."""
         try:
             # Find processes matching the command
-            for proc in psutil.process_iter(['pid', 'cmdline']):
+            for proc in psutil.process_iter(["pid", "cmdline"]):
                 try:
-                    if proc.info['cmdline'] and all(
-                        cmd in ' '.join(proc.info['cmdline'])
-                        for cmd in command
+                    if proc.info["cmdline"] and all(
+                        cmd in " ".join(proc.info["cmdline"]) for cmd in command
                     ):
                         # Terminate process
-                        proc_obj = psutil.Process(proc.info['pid'])
+                        proc_obj = psutil.Process(proc.info["pid"])
                         proc_obj.terminate()
                         try:
                             proc_obj.wait(timeout=5)
@@ -239,10 +239,7 @@ class ProcessManager:
                 self._logger.info("Monitoring loop cancelled")
                 break
             except Exception as e:
-                self._logger.error(
-                    f"Error in monitoring loop: {e}",
-                    exc_info=True
-                )
+                self._logger.error(f"Error in monitoring loop: {e}", exc_info=True)
                 await asyncio.sleep(self._monitor_interval)
 
     async def _handle_process_failure(self, name: str) -> None:
@@ -251,7 +248,7 @@ class ProcessManager:
         process.state = ProcessState.ERROR
 
         if process.restart_count < process.max_restarts:
-            backoff = process.backoff_factor ** process.restart_count
+            backoff = process.backoff_factor**process.restart_count
             self._logger.info(
                 f"Restarting {name} in {backoff:.1f}s "
                 f"(attempt {process.restart_count + 1})"
@@ -261,10 +258,7 @@ class ProcessManager:
             try:
                 await self.start_process(name)
             except Exception as e:
-                self._logger.error(
-                    f"Failed to restart {name}: {e}",
-                    exc_info=True
-                )
+                self._logger.error(f"Failed to restart {name}: {e}", exc_info=True)
         else:
             self._logger.error(
                 f"Max restarts ({process.max_restarts}) reached for {name}"
@@ -279,12 +273,12 @@ class ProcessManager:
                 "pid": process.pid,
                 "restart_count": process.restart_count,
                 "max_restarts": process.max_restarts,
-                "error": str(process.error) if process.error else None
+                "error": str(process.error) if process.error else None,
             }
             if process.start_time:
-                info["uptime"] = str(
-                    datetime.utcnow() - process.start_time
-                ).split('.')[0]
+                info["uptime"] = str(datetime.utcnow() - process.start_time).split(".")[
+                    0
+                ]
             status[name] = info
         return status
 
@@ -310,8 +304,7 @@ class ProcessManager:
                     await self.stop_process(name)
                 except Exception as e:
                     self._logger.error(
-                        f"Error stopping process {name}: {e}",
-                        exc_info=True
+                        f"Error stopping process {name}: {e}", exc_info=True
                     )
 
             self._initialized = False

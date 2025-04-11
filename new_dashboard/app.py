@@ -1,4 +1,4 @@
-eee
+"""
 Re-export the FastAPI app from dashboard/app.py.
 
 This file exists to provide a consistent import path for Uvicorn.

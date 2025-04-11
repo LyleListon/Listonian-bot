@@ -18,14 +18,12 @@ from .risk_analyzer import RiskAnalyzer
 
 logger = logging.getLogger(__name__)
 
+
 class BundleOptimizer:
     """Optimizes Flashbots bundles for maximum profitability and success rate."""
 
     def __init__(
-        self,
-        web3_manager,
-        risk_analyzer: RiskAnalyzer,
-        config: Dict[str, Any]
+        self, web3_manager, risk_analyzer: RiskAnalyzer, config: Dict[str, Any]
     ):
         """
         Initialize bundle optimizer.
@@ -44,12 +42,12 @@ class BundleOptimizer:
         self._request_lock = AsyncLock()
 
         # Initialize optimization parameters
-        mev_config = config.get('mev_protection', {})
-        self.max_bundle_size = mev_config.get('max_bundle_size', 5)
-        self.max_blocks_ahead = mev_config.get('max_blocks_ahead', 3)
-        self.min_priority_fee = Decimal(mev_config.get('min_priority_fee', '1.5'))
-        self.max_priority_fee = Decimal(mev_config.get('max_priority_fee', '3'))
-        self.adaptive_gas = mev_config.get('adaptive_gas', True)
+        mev_config = config.get("mev_protection", {})
+        self.max_bundle_size = mev_config.get("max_bundle_size", 5)
+        self.max_blocks_ahead = mev_config.get("max_blocks_ahead", 3)
+        self.min_priority_fee = Decimal(mev_config.get("min_priority_fee", "1.5"))
+        self.max_priority_fee = Decimal(mev_config.get("max_priority_fee", "3"))
+        self.adaptive_gas = mev_config.get("adaptive_gas", True)
 
     @with_retry(retries=3, delay=1.0)
     async def optimize_bundle_strategy(
@@ -57,7 +55,7 @@ class BundleOptimizer:
         transactions: List[Dict[str, Any]],
         target_token_addresses: List[str],
         expected_profit: int,
-        priority_level: str = "medium"
+        priority_level: str = "medium",
     ) -> Dict[str, Any]:
         """
         Optimize bundle strategy based on current conditions.
@@ -83,29 +81,24 @@ class BundleOptimizer:
 
                 # Calculate optimal gas settings
                 gas_settings = await self._calculate_gas_settings(
-                    risk_assessment,
-                    priority_level,
-                    expected_profit
+                    risk_assessment, priority_level, expected_profit
                 )
 
                 # Determine target blocks
                 block_targets = await self._determine_block_targets(
-                    current_block,
-                    risk_assessment['risk_level']
+                    current_block, risk_assessment["risk_level"]
                 )
 
                 # Generate recommendation
                 recommendation = self._generate_strategy_recommendation(
-                    risk_assessment,
-                    gas_settings,
-                    expected_profit
+                    risk_assessment, gas_settings, expected_profit
                 )
 
                 return {
-                    'gas_settings': gas_settings,
-                    'block_targets': block_targets,
-                    'mev_risk_assessment': risk_assessment,
-                    'recommendation': recommendation
+                    "gas_settings": gas_settings,
+                    "block_targets": block_targets,
+                    "mev_risk_assessment": risk_assessment,
+                    "recommendation": recommendation,
                 }
 
             except Exception as e:
@@ -116,7 +109,7 @@ class BundleOptimizer:
         self,
         transactions: List[Dict[str, Any]],
         gas_settings: Dict[str, Any],
-        expected_profit: int
+        expected_profit: int,
     ) -> Dict[str, Any]:
         """
         Validate if bundle will be profitable with current settings.
@@ -135,8 +128,8 @@ class BundleOptimizer:
         """
         try:
             # Calculate total gas cost
-            total_gas = sum(tx.get('gas', 0) for tx in transactions)
-            gas_price = gas_settings['max_fee_per_gas']
+            total_gas = sum(tx.get("gas", 0) for tx in transactions)
+            gas_price = gas_settings["max_fee_per_gas"]
             total_gas_cost = total_gas * gas_price
 
             # Calculate net profit
@@ -146,17 +139,16 @@ class BundleOptimizer:
             # Generate recommendation
             if not is_profitable:
                 recommendation = self._generate_optimization_recommendation(
-                    total_gas_cost,
-                    expected_profit
+                    total_gas_cost, expected_profit
                 )
             else:
                 recommendation = "Bundle is profitable with current settings"
 
             return {
-                'is_profitable': is_profitable,
-                'net_profit': net_profit,
-                'gas_cost': total_gas_cost,
-                'recommendation': recommendation
+                "is_profitable": is_profitable,
+                "net_profit": net_profit,
+                "gas_cost": total_gas_cost,
+                "recommendation": recommendation,
             }
 
         except Exception as e:
@@ -164,47 +156,33 @@ class BundleOptimizer:
             raise
 
     async def _calculate_gas_settings(
-        self,
-        risk_assessment: Dict[str, Any],
-        priority_level: str,
-        expected_profit: int
+        self, risk_assessment: Dict[str, Any], priority_level: str, expected_profit: int
     ) -> Dict[str, Any]:
         """Calculate optimal gas settings based on conditions."""
         try:
-            base_fee = risk_assessment['base_fee']
-            
+            base_fee = risk_assessment["base_fee"]
+
             # Calculate priority fee based on risk level and priority
-            priority_multipliers = {
-                'low': 1.0,
-                'medium': 1.5,
-                'high': 2.0
-            }
-            risk_multipliers = {
-                'LOW': 1.0,
-                'MEDIUM': 1.2,
-                'HIGH': 1.5
-            }
-            
-            multiplier = (
-                priority_multipliers.get(priority_level, 1.5) *
-                risk_multipliers.get(risk_assessment['risk_level'], 1.0)
-            )
-            
+            priority_multipliers = {"low": 1.0, "medium": 1.5, "high": 2.0}
+            risk_multipliers = {"LOW": 1.0, "MEDIUM": 1.2, "HIGH": 1.5}
+
+            multiplier = priority_multipliers.get(
+                priority_level, 1.5
+            ) * risk_multipliers.get(risk_assessment["risk_level"], 1.0)
+
             priority_fee = int(
-                self.min_priority_fee *
-                multiplier *
-                10**9  # Convert to Gwei
+                self.min_priority_fee * multiplier * 10**9  # Convert to Gwei
             )
-            
+
             # Ensure priority fee is within bounds
             priority_fee = min(
                 max(priority_fee, int(self.min_priority_fee * 10**9)),
-                int(self.max_priority_fee * 10**9)
+                int(self.max_priority_fee * 10**9),
             )
-            
+
             # Calculate max fee
             max_fee = base_fee + priority_fee
-            
+
             # Adjust based on expected profit if adaptive gas is enabled
             if self.adaptive_gas:
                 max_profit_percentage = 0.1  # Max 10% of profit for gas
@@ -212,8 +190,8 @@ class BundleOptimizer:
                 max_fee = min(max_fee, max_allowed_fee)
 
             return {
-                'max_fee_per_gas': max_fee,
-                'max_priority_fee_per_gas': priority_fee
+                "max_fee_per_gas": max_fee,
+                "max_priority_fee_per_gas": priority_fee,
             }
 
         except Exception as e:
@@ -221,24 +199,19 @@ class BundleOptimizer:
             raise
 
     async def _determine_block_targets(
-        self,
-        current_block: int,
-        risk_level: str
+        self, current_block: int, risk_level: str
     ) -> List[int]:
         """Determine target blocks for bundle submission."""
         try:
-            if risk_level == 'HIGH':
+            if risk_level == "HIGH":
                 # Target fewer blocks when risk is high
                 blocks_ahead = min(2, self.max_blocks_ahead)
-            elif risk_level == 'MEDIUM':
+            elif risk_level == "MEDIUM":
                 blocks_ahead = min(3, self.max_blocks_ahead)
             else:
                 blocks_ahead = self.max_blocks_ahead
 
-            return list(range(
-                current_block + 1,
-                current_block + blocks_ahead + 1
-            ))
+            return list(range(current_block + 1, current_block + blocks_ahead + 1))
 
         except Exception as e:
             logger.error(f"Failed to determine block targets: {e}")
@@ -248,41 +221,43 @@ class BundleOptimizer:
         self,
         risk_assessment: Dict[str, Any],
         gas_settings: Dict[str, Any],
-        expected_profit: int
+        expected_profit: int,
     ) -> str:
         """Generate strategy recommendation based on conditions."""
         try:
             recommendations = []
-            
+
             # Gas price recommendations
-            if risk_assessment['gas_volatility'] > 0.2:
+            if risk_assessment["gas_volatility"] > 0.2:
                 recommendations.append(
                     "High gas volatility detected. Consider increasing priority fee "
                     "or waiting for more stable conditions."
                 )
-            
+
             # Risk level recommendations
-            if risk_assessment['risk_level'] == 'HIGH':
+            if risk_assessment["risk_level"] == "HIGH":
                 recommendations.append(
                     "High MEV risk detected. Using aggressive gas settings and "
                     "targeting fewer blocks for faster inclusion."
                 )
-            elif risk_assessment['risk_level'] == 'MEDIUM':
+            elif risk_assessment["risk_level"] == "MEDIUM":
                 recommendations.append(
                     "Moderate MEV risk. Using balanced gas settings for "
                     "competitive inclusion."
                 )
-            
+
             # Profit recommendations
-            gas_cost = gas_settings['max_fee_per_gas']
+            gas_cost = gas_settings["max_fee_per_gas"]
             if gas_cost > expected_profit * 0.1:
                 recommendations.append(
                     "Gas costs exceed 10% of expected profit. Consider waiting "
                     "for better conditions or optimizing transactions."
                 )
 
-            return " ".join(recommendations) if recommendations else (
-                "Current conditions are favorable for bundle submission."
+            return (
+                " ".join(recommendations)
+                if recommendations
+                else ("Current conditions are favorable for bundle submission.")
             )
 
         except Exception as e:
@@ -290,9 +265,7 @@ class BundleOptimizer:
             return "Failed to generate recommendation"
 
     def _generate_optimization_recommendation(
-        self,
-        gas_cost: int,
-        expected_profit: int
+        self, gas_cost: int, expected_profit: int
     ) -> str:
         """Generate optimization recommendation for unprofitable bundles."""
         try:

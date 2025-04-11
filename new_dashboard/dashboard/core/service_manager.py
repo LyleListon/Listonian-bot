@@ -17,8 +17,10 @@ from .logging import get_logger
 
 logger = get_logger(__name__)
 
+
 class ServiceState(Enum):
     """Service lifecycle states."""
+
     UNINITIALIZED = auto()
     INITIALIZING = auto()
     READY = auto()
@@ -26,14 +28,17 @@ class ServiceState(Enum):
     SHUTTING_DOWN = auto()
     SHUTDOWN = auto()
 
+
 @dataclass
 class ServiceInfo:
     """Information about a service instance."""
+
     name: str
     state: ServiceState
     dependencies: Set[str]
     instance: Optional[object]
     error: Optional[Exception] = None
+
 
 class ServiceManager:
     """Manages service lifecycle and dependencies."""
@@ -50,19 +55,19 @@ class ServiceManager:
             name="memory",
             state=ServiceState.UNINITIALIZED,
             dependencies=set(),
-            instance=None
+            instance=None,
         )
         self._services["metrics"] = ServiceInfo(
             name="metrics",
             state=ServiceState.UNINITIALIZED,
             dependencies={"memory"},
-            instance=None
+            instance=None,
         )
         self._services["system"] = ServiceInfo(
             name="system",
             state=ServiceState.UNINITIALIZED,
             dependencies={"memory", "metrics"},
-            instance=None
+            instance=None,
         )
 
     async def initialize(self) -> None:
@@ -79,13 +84,15 @@ class ServiceManager:
 
                 # Initialize remaining services in dependency order
                 uninitialized = {
-                    name for name, info in self._services.items()
+                    name
+                    for name, info in self._services.items()
                     if info.state == ServiceState.UNINITIALIZED and name != "memory"
                 }
 
                 while uninitialized:
                     ready_to_init = {
-                        name for name in uninitialized
+                        name
+                        for name in uninitialized
                         if all(
                             self._services[dep].state == ServiceState.READY
                             for dep in self._services[name].dependencies
@@ -143,6 +150,7 @@ class ServiceManager:
             if service_name == "metrics":
                 # Initialize metrics service
                 from ..services.metrics import MetricsService
+
                 service.instance = MetricsService(
                     memory_service=self._services["memory"].instance
                 )
@@ -151,9 +159,10 @@ class ServiceManager:
             elif service_name == "system":
                 # Initialize system service
                 from ..services.system import SystemService
+
                 service.instance = SystemService(
                     memory_service=self._services["memory"].instance,
-                    metrics_service=self._services["metrics"].instance
+                    metrics_service=self._services["metrics"].instance,
                 )
                 await service.instance.initialize()
 
@@ -187,7 +196,7 @@ class ServiceManager:
             name: {
                 "state": info.state.name,
                 "error": str(info.error) if info.error else None,
-                "dependencies": list(info.dependencies)
+                "dependencies": list(info.dependencies),
             }
             for name, info in self._services.items()
         }
@@ -208,14 +217,16 @@ class ServiceManager:
                 if service.state in (ServiceState.READY, ServiceState.ERROR):
                     try:
                         service.state = ServiceState.SHUTTING_DOWN
-                        if hasattr(service.instance, 'cleanup'):
+                        if hasattr(service.instance, "cleanup"):
                             await service.instance.cleanup()
                         service.state = ServiceState.SHUTDOWN
-                        self._logger.info(f"{service_name} service cleaned up successfully")
+                        self._logger.info(
+                            f"{service_name} service cleaned up successfully"
+                        )
                     except Exception as e:
                         self._logger.error(
                             f"Error cleaning up {service_name} service: {e}",
-                            exc_info=True
+                            exc_info=True,
                         )
                         service.state = ServiceState.ERROR
                         service.error = e

@@ -16,6 +16,7 @@ from ..core.web3.flashbots.flashbots_provider import FlashbotsProvider
 
 logger = logging.getLogger(__name__)
 
+
 class MevProtectionOptimizer:
     """Optimizes transactions for MEV protection."""
 
@@ -23,7 +24,7 @@ class MevProtectionOptimizer:
         self,
         web3_manager: Web3Client,
         flashbots_provider: FlashbotsProvider,
-        min_profit: int = 0
+        min_profit: int = 0,
     ):
         """
         Initialize MEV protection optimizer.
@@ -40,8 +41,7 @@ class MevProtectionOptimizer:
         logger.info("MevProtectionOptimizer initialized")
 
     async def check_for_mev_attacks(
-        self,
-        transaction: Dict[str, Any]
+        self, transaction: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Check transaction for potential MEV attacks.
@@ -57,49 +57,37 @@ class MevProtectionOptimizer:
         try:
             # Check mempool for similar transactions
             mempool_tx = await self.web3_manager.eth.get_block(
-                'pending',
-                full_transactions=True
+                "pending", full_transactions=True
             )
 
             for tx in mempool_tx.transactions:
-                if tx['to'] == transaction['to']:
+                if tx["to"] == transaction["to"]:
                     warnings.append(
                         f"Similar transaction found in mempool: {tx['hash'].hex()}"
                     )
 
             # Check gas price
             gas_price = await self.web3_manager.eth.gas_price
-            if transaction.get('gasPrice', gas_price) < gas_price:
-                warnings.append(
-                    "Gas price too low, transaction may be front-run"
-                )
+            if transaction.get("gasPrice", gas_price) < gas_price:
+                warnings.append("Gas price too low, transaction may be front-run")
 
             # Simulate transaction
             simulation = await self.flashbots_provider.simulate_bundle(
                 transactions=[transaction]
             )
 
-            if not simulation['success']:
+            if not simulation["success"]:
                 warnings.append(
                     f"Transaction simulation failed: {simulation.get('error')}"
                 )
 
-            return {
-                'safe': len(warnings) == 0,
-                'warnings': warnings
-            }
+            return {"safe": len(warnings) == 0, "warnings": warnings}
 
         except Exception as e:
             logger.error(f"Failed to check for MEV attacks: {e}")
-            return {
-                'safe': False,
-                'warnings': [str(e)]
-            }
+            return {"safe": False, "warnings": [str(e)]}
 
-    async def optimize_transaction(
-        self,
-        transaction: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def optimize_transaction(self, transaction: Dict[str, Any]) -> Dict[str, Any]:
         """
         Optimize transaction for MEV protection.
 
@@ -117,11 +105,11 @@ class MevProtectionOptimizer:
             optimized_gas_price = int(gas_price * 1.1)
 
             # Update transaction
-            transaction['gasPrice'] = optimized_gas_price
+            transaction["gasPrice"] = optimized_gas_price
 
             # Add Flashbots bundle
             if self.flashbots_provider:
-                transaction['flashbots'] = True
+                transaction["flashbots"] = True
 
             return transaction
 
@@ -133,10 +121,11 @@ class MevProtectionOptimizer:
         """Clean up resources."""
         pass
 
+
 async def create_mev_protection_optimizer(
     web3_manager: Web3Client,
     flashbots_provider: FlashbotsProvider,
-    config: Dict[str, Any]
+    config: Dict[str, Any],
 ) -> MevProtectionOptimizer:
     """
     Create a new MEV protection optimizer.
@@ -152,5 +141,5 @@ async def create_mev_protection_optimizer(
     return MevProtectionOptimizer(
         web3_manager=web3_manager,
         flashbots_provider=flashbots_provider,
-        min_profit=int(config.get('min_profit', 0))
+        min_profit=int(config.get("min_profit", 0)),
     )

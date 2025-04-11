@@ -8,6 +8,4 @@ This package provides:
 
 from .eth_client import EthClient
 
-__all__ = [
-    'EthClient'
-]
+__all__ = ["EthClient"]

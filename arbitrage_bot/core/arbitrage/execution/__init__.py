@@ -7,6 +7,4 @@ including execution managers and strategies.
 
 from .default_manager import DefaultExecutionManager
 
-__all__ = [
-    "DefaultExecutionManager"
-]
+__all__ = ["DefaultExecutionManager"]

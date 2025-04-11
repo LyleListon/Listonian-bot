@@ -9,14 +9,14 @@ from .base_system import BaseArbitrageSystem
 from .discovery_manager import DiscoveryManager
 from .execution_manager import EnhancedExecutionManager
 from .analytics_manager import AnalyticsManager
-from .interfaces import ExecutionManager, MarketDataProvider
+from .interfaces import ExecutionManager # Removed MarketDataProvider
 from .market_data_provider import MarketDataProvider
 from .discovery.integration import integrate_dex_discovery, setup_dex_discovery
 from .discovery import (
     DEXDiscoveryManager,
     create_dex_discovery_manager,
     DEXInfo,
-    DEXProtocolType
+    DEXProtocolType,
 )
 
 __all__ = [
@@ -31,5 +31,5 @@ __all__ = [
     "DEXDiscoveryManager",
     "create_dex_discovery_manager",
     "DEXInfo",
-    "DEXProtocolType"
+    "DEXProtocolType",
 ]

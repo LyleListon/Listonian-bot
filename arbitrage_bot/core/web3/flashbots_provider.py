@@ -11,9 +11,12 @@ from web3 import Web3
 
 logger = logging.getLogger(__name__)
 
+
 class FlashbotsError(Exception):
     """Base exception for Flashbots related errors."""
+
     pass
+
 
 class FlashbotsProvider:
     """Provider for Flashbots API interaction."""
@@ -41,12 +44,12 @@ class FlashbotsProvider:
         """Get or create aiohttp session."""
         if self._closed:
             raise FlashbotsError("Cannot use closed Flashbots provider")
-            
+
         async with self._session_lock:
             if not self.session:
                 self.session = aiohttp.ClientSession(
                     timeout=aiohttp.ClientTimeout(total=30),  # 30 second timeout
-                    raise_for_status=True
+                    raise_for_status=True,
                 )
                 logger.debug("Created new aiohttp session for Flashbots provider")
         return self.session
@@ -76,44 +79,39 @@ class FlashbotsProvider:
         signature = self.auth_signer.sign_message(message)
         headers = {
             "X-Flashbots-Signature": "{}:{}".format(
-                self.auth_signer.address,
-                signature.signature.hex()
+                self.auth_signer.address, signature.signature.hex()
             ),
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
         return headers
 
     async def simulate(
-        self,
-        txs: List[Dict[str, Any]],
-        block_tag: str = "latest"
+        self, txs: List[Dict[str, Any]], block_tag: str = "latest"
     ) -> Dict[str, Any]:
         """Simulate a bundle of transactions."""
         if self._closed:
             raise FlashbotsError("Cannot use closed Flashbots provider")
         try:
             session = await self._get_session()
-            
+
             # Prepare simulation params
             params = {
                 "txs": txs,
                 "blockNumber": block_tag,
-                "stateBlockNumber": "latest"
+                "stateBlockNumber": "latest",
             }
-            
+
             # Sign request
             headers = await self._sign_request("/simulate", params)
-            
+
             # Send simulation request
             async with session.post(
-                self.relay_url + "/simulate",
-                headers=headers,
-                json=params
+                self.relay_url + "/simulate", headers=headers, json=params
             ) as response:
                 if response.status != 200:
                     error = await response.text()
                     raise FlashbotsError(f"Simulation failed: {error}")
-                
+
                 result = await response.json()
                 logger.debug("Bundle simulation completed successfully")
                 return result
@@ -122,35 +120,28 @@ class FlashbotsProvider:
             raise
 
     async def send_bundle(
-        self,
-        txs: List[Dict[str, Any]],
-        target_block_number: int
+        self, txs: List[Dict[str, Any]], target_block_number: int
     ) -> Dict[str, Any]:
         """Send a bundle to Flashbots."""
         if self._closed:
             raise FlashbotsError("Cannot use closed Flashbots provider")
         try:
             session = await self._get_session()
-            
+
             # Prepare bundle params
-            params = {
-                "txs": txs,
-                "blockNumber": str(target_block_number)
-            }
-            
+            params = {"txs": txs, "blockNumber": str(target_block_number)}
+
             # Sign request
             headers = await self._sign_request("/bundle", params)
-            
+
             # Send bundle request
             async with session.post(
-                self.relay_url + "/bundle",
-                headers=headers,
-                json=params
+                self.relay_url + "/bundle", headers=headers, json=params
             ) as response:
                 if response.status != 200:
                     error = await response.text()
                     raise FlashbotsError(f"Bundle submission failed: {error}")
-                
+
                 result = await response.json()
                 logger.debug("Bundle submitted successfully to Flashbots relay")
                 return result
@@ -158,34 +149,27 @@ class FlashbotsProvider:
             logger.error("Failed to send bundle: %s", str(e))
             raise
 
-    async def get_bundle_stats(
-        self,
-        bundle_id: str
-    ) -> Dict[str, Any]:
+    async def get_bundle_stats(self, bundle_id: str) -> Dict[str, Any]:
         """Get statistics for a bundle."""
         if self._closed:
             raise FlashbotsError("Cannot use closed Flashbots provider")
         try:
             session = await self._get_session()
-            
+
             # Prepare stats params
-            params = {
-                "bundleId": bundle_id
-            }
-            
+            params = {"bundleId": bundle_id}
+
             # Sign request
             headers = await self._sign_request("/bundle/stats", params)
-            
+
             # Get bundle stats
             async with session.get(
-                self.relay_url + "/bundle/stats",
-                headers=headers,
-                params=params
+                self.relay_url + "/bundle/stats", headers=headers, params=params
             ) as response:
                 if response.status != 200:
                     error = await response.text()
                     raise FlashbotsError(f"Failed to get bundle stats: {error}")
-                
+
                 result = await response.json()
                 logger.debug("Retrieved bundle stats successfully")
                 return result
@@ -199,19 +183,18 @@ class FlashbotsProvider:
             raise FlashbotsError("Cannot use closed Flashbots provider")
         try:
             session = await self._get_session()
-            
+
             # Sign request
             headers = await self._sign_request("/stats", {})
-            
+
             # Get user stats
             async with session.get(
-                self.relay_url + "/stats",
-                headers=headers
+                self.relay_url + "/stats", headers=headers
             ) as response:
                 if response.status != 200:
                     error = await response.text()
                     raise FlashbotsError(f"Failed to get user stats: {error}")
-                
+
                 result = await response.json()
                 logger.debug("Retrieved user stats successfully")
                 return result

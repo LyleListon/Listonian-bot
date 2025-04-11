@@ -3,9 +3,11 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
+
 @dataclass
 class ExecutionConfig:
     """Configuration for execution management."""
+
     max_slippage: Decimal
     gas_limit: int
     max_gas_price: Decimal

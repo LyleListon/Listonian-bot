@@ -3,9 +3,11 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
+
 @dataclass
 class DistributionConfig:
     """Configuration for distribution management."""
+
     max_exposure_per_dex: Decimal
     max_exposure_per_pair: Decimal
     min_liquidity_threshold: Decimal

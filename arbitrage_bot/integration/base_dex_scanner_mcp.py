@@ -35,15 +35,23 @@ IS_PRODUCTION = os.environ.get("ENVIRONMENT", "").lower() == "production"
 if IS_PRODUCTION:
     USE_MOCK_DATA = False
     if os.environ.get("USE_MOCK_DATA", "").lower() == "true":
-        logger.critical("⚠️ CRITICAL: USE_MOCK_DATA was set to 'true' in a production environment!")
-        logger.critical("⚠️ CRITICAL: This has been overridden to 'false' to prevent using mock data in production.")
-        logger.critical("⚠️ CRITICAL: Please check your environment variables and deployment configuration.")
+        logger.critical(
+            "⚠️ CRITICAL: USE_MOCK_DATA was set to 'true' in a production environment!"
+        )
+        logger.critical(
+            "⚠️ CRITICAL: This has been overridden to 'false' to prevent using mock data in production."
+        )
+        logger.critical(
+            "⚠️ CRITICAL: Please check your environment variables and deployment configuration."
+        )
 else:
     # In non-production environments, respect the environment variable
     USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
 
 if USE_MOCK_DATA:
-    logger.warning("⚠️⚠️⚠️ !!! USING MOCK DATA FOR TESTING PURPOSES ONLY !!! Set USE_MOCK_DATA=false to use real data ⚠️⚠️⚠️")
+    logger.warning(
+        "⚠️⚠️⚠️ !!! USING MOCK DATA FOR TESTING PURPOSES ONLY !!! Set USE_MOCK_DATA=false to use real data ⚠️⚠️⚠️"
+    )
 
 
 class BaseDexScannerMCP:
@@ -79,22 +87,27 @@ class BaseDexScannerMCP:
                 # !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
                 # =====================================================================
                 logger.info("Using mock data for tool call: %s", tool_name)
-                
+
                 if tool_name == "scan_dexes":
                     return await self._mock_scan_dexes()
                 elif tool_name == "get_dex_info":
                     return await self._mock_get_dex_info(arguments.get("dex_address"))
                 elif tool_name == "get_factory_pools":
-                    return await self._mock_get_factory_pools(arguments.get("factory_address"))
+                    return await self._mock_get_factory_pools(
+                        arguments.get("factory_address")
+                    )
                 elif tool_name == "check_contract":
-                    return await self._mock_check_contract(arguments.get("contract_address"))
+                    return await self._mock_check_contract(
+                        arguments.get("contract_address")
+                    )
                 elif tool_name == "get_recent_dexes":
                     return await self._mock_get_recent_dexes(
-                        arguments.get("limit", 10),
-                        arguments.get("days", 7)
+                        arguments.get("limit", 10), arguments.get("days", 7)
                     )
                 elif tool_name == "get_pool_price":
-                    return await self._mock_get_pool_price(arguments.get("pool_address"))
+                    return await self._mock_get_pool_price(
+                        arguments.get("pool_address")
+                    )
                 else:
                     logger.warning(f"Unknown mock tool: {tool_name}")
                     return None
@@ -104,26 +117,26 @@ class BaseDexScannerMCP:
                 # =====================================================================
                 try:
                     # Get MCP server URL from environment or use default
-                    mcp_url = os.environ.get("BASE_DEX_SCANNER_MCP_URL", "http://localhost:9050")
+                    mcp_url = os.environ.get(
+                        "BASE_DEX_SCANNER_MCP_URL", "http://localhost:9050"
+                    )
                     api_endpoint = f"{mcp_url}/api/v1/{tool_name}"
-                    
+
                     # Create session if it doesn't exist
                     if self._session is None:
                         self._session = aiohttp.ClientSession(
                             headers={
                                 "Content-Type": "application/json",
-                                "X-API-Key": self._api_key
+                                "X-API-Key": self._api_key,
                             }
                         )
-                    
+
                     # Prepare request payload
-                    payload = {
-                        **arguments
-                    }
-                    
+                    payload = {**arguments}
+
                     # Make the API call with retry logic
                     return await self._make_api_call_with_retry(api_endpoint, payload)
-                    
+
                 except Exception as e:
                     logger.exception(f"Error making API call to {tool_name}: {str(e)}")
                     return None
@@ -135,7 +148,7 @@ class BaseDexScannerMCP:
         backoff.expo,
         (aiohttp.ClientError, asyncio.TimeoutError),
         max_tries=3,
-        max_time=30
+        max_time=30,
     )
     async def _make_api_call_with_retry(self, url: str, payload: Dict[str, Any]) -> Any:
         """Make an API call with retry logic.
@@ -150,11 +163,13 @@ class BaseDexScannerMCP:
         try:
             start_time = time.time()
             logger.info(f"Making API call to {url}")
-            
+
             async with self._session.post(url, json=payload, timeout=30) as response:
                 elapsed_time = time.time() - start_time
-                logger.info(f"API call to {url} completed in {elapsed_time:.2f}s with status {response.status}")
-                
+                logger.info(
+                    f"API call to {url} completed in {elapsed_time:.2f}s with status {response.status}"
+                )
+
                 # Check if the request was successful
                 if response.status == 200:
                     # Parse the response
@@ -171,13 +186,17 @@ class BaseDexScannerMCP:
                 elif response.status == 429:
                     # Rate limited, wait and retry
                     retry_after = int(response.headers.get("Retry-After", "5"))
-                    logger.warning(f"Rate limited. Retrying after {retry_after} seconds")
+                    logger.warning(
+                        f"Rate limited. Retrying after {retry_after} seconds"
+                    )
                     await asyncio.sleep(retry_after)
                     raise aiohttp.ClientError("Rate limited")
                 else:
                     # Other error
                     error_text = await response.text()
-                    logger.error(f"API call failed with status {response.status}: {error_text}")
+                    logger.error(
+                        f"API call failed with status {response.status}: {error_text}"
+                    )
                     return None
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.warning(f"API call to {url} failed: {str(e)}. Retrying...")
@@ -234,7 +253,9 @@ class BaseDexScannerMCP:
                     return self._cache[cache_key]
 
             logger.info(f"Getting DEX info for {dex_address}...")
-            dex_info = await self._call_mcp_tool("get_dex_info", {"dex_address": dex_address})
+            dex_info = await self._call_mcp_tool(
+                "get_dex_info", {"dex_address": dex_address}
+            )
 
             if dex_info:
                 async with self._cache_lock:
@@ -268,7 +289,9 @@ class BaseDexScannerMCP:
                     return self._cache[cache_key]
 
             logger.info(f"Getting pools for factory {factory_address}...")
-            pools = await self._call_mcp_tool("get_factory_pools", {"factory_address": factory_address})
+            pools = await self._call_mcp_tool(
+                "get_factory_pools", {"factory_address": factory_address}
+            )
 
             if pools:
                 async with self._cache_lock:
@@ -303,7 +326,9 @@ class BaseDexScannerMCP:
                     return self._cache[cache_key]
 
             logger.info(f"Checking contract {contract_address}...")
-            contract_info = await self._call_mcp_tool("check_contract", {"contract_address": contract_address})
+            contract_info = await self._call_mcp_tool(
+                "check_contract", {"contract_address": contract_address}
+            )
 
             if contract_info:
                 async with self._cache_lock:
@@ -317,7 +342,9 @@ class BaseDexScannerMCP:
             logger.exception(f"Error checking contract: {str(e)}")
             return None
 
-    async def get_recent_dexes(self, limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
+    async def get_recent_dexes(
+        self, limit: int = 10, days: int = 7
+    ) -> List[Dict[str, Any]]:
         """Get recently discovered DEXes.
 
         Args:
@@ -331,11 +358,15 @@ class BaseDexScannerMCP:
             async with self._cache_lock:
                 cache_key = f"recent_dexes_{limit}_{days}"
                 if cache_key in self._cache:
-                    logger.info(f"Using cached recent DEXes (limit={limit}, days={days})")
+                    logger.info(
+                        f"Using cached recent DEXes (limit={limit}, days={days})"
+                    )
                     return self._cache[cache_key]
 
             logger.info(f"Getting recent DEXes (limit={limit}, days={days})...")
-            dexes = await self._call_mcp_tool("get_recent_dexes", {"limit": limit, "days": days})
+            dexes = await self._call_mcp_tool(
+                "get_recent_dexes", {"limit": limit, "days": days}
+            )
 
             if dexes:
                 async with self._cache_lock:
@@ -365,18 +396,26 @@ class BaseDexScannerMCP:
 
             async with self._cache_lock:
                 cache_key = f"pool_price_{pool_address}"
-                if cache_key in self._cache and (datetime.now() - self._cache[cache_key]["timestamp"]).total_seconds() < 60:
+                if (
+                    cache_key in self._cache
+                    and (
+                        datetime.now() - self._cache[cache_key]["timestamp"]
+                    ).total_seconds()
+                    < 60
+                ):
                     logger.info(f"Using cached pool price for {pool_address}")
                     return self._cache[cache_key]["data"]
 
             logger.info(f"Getting price for pool {pool_address}...")
-            price_info = await self._call_mcp_tool("get_pool_price", {"pool_address": pool_address})
+            price_info = await self._call_mcp_tool(
+                "get_pool_price", {"pool_address": pool_address}
+            )
 
             if price_info:
                 async with self._cache_lock:
                     self._cache[cache_key] = {
                         "data": price_info,
-                        "timestamp": datetime.now()
+                        "timestamp": datetime.now(),
                     }
                 logger.info(f"Found price info for pool {pool_address}")
             else:
@@ -393,52 +432,63 @@ class BaseDexScannerMCP:
 
     async def _mock_scan_dexes(self) -> List[Dict[str, Any]]:
         """Mock scan_dexes method.
-        
+
         !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
         """
-        logger.warning("!!! MOCK DATA: _mock_scan_dexes - FOR TESTING PURPOSES ONLY !!!")
+        logger.warning(
+            "!!! MOCK DATA: _mock_scan_dexes - FOR TESTING PURPOSES ONLY !!!"
+        )
         return [
             {
                 "name": "BaseSwap",
                 "factory_address": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
                 "router_address": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
                 "type": "uniswap_v2",
-                "version": "v2"
+                "version": "v2",
             },
             {
                 "name": "Aerodrome",
                 "factory_address": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
                 "router_address": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
                 "type": "uniswap_v2",
-                "version": "v2"
+                "version": "v2",
             },
             {
                 "name": "SushiSwap",
                 "factory_address": "0x71524B4f93c58fcbF659783284E38825e820E82c",
                 "router_address": "0x6BDED42c6DA8FBf0d2bA55B2fa120C5e0c8D7891",
                 "type": "uniswap_v2",
-                "version": "v2"
-            }
+                "version": "v2",
+            },
         ]
 
     async def _mock_get_dex_info(self, dex_address: str) -> Optional[Dict[str, Any]]:
         """Mock get_dex_info method.
-        
+
         !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
         """
-        logger.warning("!!! MOCK DATA: _mock_get_dex_info - FOR TESTING PURPOSES ONLY !!!")
+        logger.warning(
+            "!!! MOCK DATA: _mock_get_dex_info - FOR TESTING PURPOSES ONLY !!!"
+        )
         dexes = await self._mock_scan_dexes()
         for dex in dexes:
-            if dex["factory_address"] == dex_address or dex["router_address"] == dex_address:
+            if (
+                dex["factory_address"] == dex_address
+                or dex["router_address"] == dex_address
+            ):
                 return dex
         return None
 
-    async def _mock_get_factory_pools(self, factory_address: str) -> List[Dict[str, Any]]:
+    async def _mock_get_factory_pools(
+        self, factory_address: str
+    ) -> List[Dict[str, Any]]:
         """Mock get_factory_pools method.
-        
+
         !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
         """
-        logger.warning("!!! MOCK DATA: _mock_get_factory_pools - FOR TESTING PURPOSES ONLY !!!")
+        logger.warning(
+            "!!! MOCK DATA: _mock_get_factory_pools - FOR TESTING PURPOSES ONLY !!!"
+        )
         if factory_address == "0x33128a8fC17869897dcE68Ed026d694621f6FDfD":  # BaseSwap
             return [
                 {
@@ -446,86 +496,94 @@ class BaseDexScannerMCP:
                     "token0": {
                         "address": "0x4200000000000000000000000000000000000006",
                         "symbol": "WETH",
-                        "decimals": 18
+                        "decimals": 18,
                     },
                     "token1": {
                         "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
                         "symbol": "USDC",
-                        "decimals": 6
+                        "decimals": 6,
                     },
-                    "liquidity_usd": 5000000.0
+                    "liquidity_usd": 5000000.0,
                 },
                 {
                     "address": "0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3",
                     "token0": {
                         "address": "0x4200000000000000000000000000000000000006",
                         "symbol": "WETH",
-                        "decimals": 18
+                        "decimals": 18,
                     },
                     "token1": {
                         "address": "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
                         "symbol": "USDbC",
-                        "decimals": 6
+                        "decimals": 6,
                     },
-                    "liquidity_usd": 3000000.0
-                }
+                    "liquidity_usd": 3000000.0,
+                },
             ]
-        elif factory_address == "0x420DD381b31aEf6683db6B902084cB0FFECe40Da":  # Aerodrome
+        elif (
+            factory_address == "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
+        ):  # Aerodrome
             return [
                 {
                     "address": "0x2223F9FE624F69Da4D8256A7bCc9104FBA7F8f75",
                     "token0": {
                         "address": "0x4200000000000000000000000000000000000006",
                         "symbol": "WETH",
-                        "decimals": 18
+                        "decimals": 18,
                     },
                     "token1": {
                         "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
                         "symbol": "USDC",
-                        "decimals": 6
+                        "decimals": 6,
                     },
-                    "liquidity_usd": 4500000.0
+                    "liquidity_usd": 4500000.0,
                 }
             ]
-        elif factory_address == "0x71524B4f93c58fcbF659783284E38825e820E82c":  # SushiSwap
+        elif (
+            factory_address == "0x71524B4f93c58fcbF659783284E38825e820E82c"
+        ):  # SushiSwap
             return [
                 {
                     "address": "0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3",
                     "token0": {
                         "address": "0x4200000000000000000000000000000000000006",
                         "symbol": "WETH",
-                        "decimals": 18
+                        "decimals": 18,
                     },
                     "token1": {
                         "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
                         "symbol": "USDC",
-                        "decimals": 6
+                        "decimals": 6,
                     },
-                    "liquidity_usd": 2000000.0
+                    "liquidity_usd": 2000000.0,
                 }
             ]
         else:
             return []
 
-    async def _mock_check_contract(self, contract_address: str) -> Optional[Dict[str, Any]]:
+    async def _mock_check_contract(
+        self, contract_address: str
+    ) -> Optional[Dict[str, Any]]:
         """Mock check_contract method.
-        
+
         !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
         """
-        logger.warning("!!! MOCK DATA: _mock_check_contract - FOR TESTING PURPOSES ONLY !!!")
+        logger.warning(
+            "!!! MOCK DATA: _mock_check_contract - FOR TESTING PURPOSES ONLY !!!"
+        )
         if contract_address == "0x33128a8fC17869897dcE68Ed026d694621f6FDfD":
             return {
                 "is_dex": True,
                 "type": "factory",
                 "dex_name": "BaseSwap",
-                "version": "v2"
+                "version": "v2",
             }
         elif contract_address == "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86":
             return {
                 "is_dex": True,
                 "type": "router",
                 "dex_name": "BaseSwap",
-                "version": "v2"
+                "version": "v2",
             }
         elif contract_address == "0x7E9DAB607D95C8336BF22E1Bd5a194B2bA262A2C":
             return {
@@ -534,31 +592,43 @@ class BaseDexScannerMCP:
                 "dex_name": "BaseSwap",
                 "version": "v2",
                 "token0": "0x4200000000000000000000000000000000000006",
-                "token1": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                "token1": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             }
         else:
             return None
 
-    async def _mock_get_recent_dexes(self, limit: int, days: int) -> List[Dict[str, Any]]:
+    async def _mock_get_recent_dexes(
+        self, limit: int, days: int
+    ) -> List[Dict[str, Any]]:
         """Mock get_recent_dexes method.
-        
+
         !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
         """
-        logger.warning("!!! MOCK DATA: _mock_get_recent_dexes - FOR TESTING PURPOSES ONLY !!!")
+        logger.warning(
+            "!!! MOCK DATA: _mock_get_recent_dexes - FOR TESTING PURPOSES ONLY !!!"
+        )
         dexes = await self._mock_scan_dexes()
         return dexes[:limit]
 
     async def _mock_get_pool_price(self, pool_address: str) -> Dict[str, Any]:
         """Mock get_pool_price method.
-        
+
         !!! MOCK DATA - FOR TESTING PURPOSES ONLY !!!
         """
-        logger.warning("!!! MOCK DATA: _mock_get_pool_price - FOR TESTING PURPOSES ONLY !!!")
-        if pool_address == "0x7E9DAB607D95C8336BF22E1Bd5a194B2bA262A2C":  # WETH/USDC on BaseSwap
+        logger.warning(
+            "!!! MOCK DATA: _mock_get_pool_price - FOR TESTING PURPOSES ONLY !!!"
+        )
+        if (
+            pool_address == "0x7E9DAB607D95C8336BF22E1Bd5a194B2bA262A2C"
+        ):  # WETH/USDC on BaseSwap
             return {"price": 3500.0}
-        elif pool_address == "0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3":  # WETH/USDbC on BaseSwap
+        elif (
+            pool_address == "0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3"
+        ):  # WETH/USDbC on BaseSwap
             return {"price": 3450.0}
-        elif pool_address == "0x2223F9FE624F69Da4D8256A7bCc9104FBA7F8f75":  # WETH/USDC on Aerodrome
+        elif (
+            pool_address == "0x2223F9FE624F69Da4D8256A7bCc9104FBA7F8f75"
+        ):  # WETH/USDC on Aerodrome
             return {"price": 3550.0}
         else:
             return {"price": 0.0}
@@ -585,10 +655,12 @@ class BaseDexScannerSource:
         self._dexes = []
         self._pools = {}
         self._lock = asyncio.Lock()
-        
+
         # Show warning if using mock data
         if USE_MOCK_DATA:
-            logger.warning("!!! BaseDexScannerSource USING MOCK DATA FOR TESTING PURPOSES ONLY !!!")
+            logger.warning(
+                "!!! BaseDexScannerSource USING MOCK DATA FOR TESTING PURPOSES ONLY !!!"
+            )
 
     async def initialize(self) -> bool:
         """Initialize the source.
@@ -599,10 +671,10 @@ class BaseDexScannerSource:
         try:
             # Fetch initial DEXes
             dexes = await self.scanner.scan_dexes()
-            
+
             async with self._lock:
                 self._dexes = dexes
-            
+
             logger.info(f"Initialized Base DEX Scanner source with {len(dexes)} DEXes")
             return True
         except Exception as e:
@@ -617,10 +689,10 @@ class BaseDexScannerSource:
         """
         try:
             dexes = await self.scanner.scan_dexes()
-            
+
             async with self._lock:
                 self._dexes = dexes
-            
+
             return dexes
         except Exception as e:
             logger.exception(f"Error fetching DEXes: {str(e)}")
@@ -638,19 +710,23 @@ class BaseDexScannerSource:
         try:
             factory_address = dex.get("factory_address")
             if not factory_address:
-                logger.warning(f"No factory address for DEX {dex.get('name', 'unknown')}")
+                logger.warning(
+                    f"No factory address for DEX {dex.get('name', 'unknown')}"
+                )
                 return []
-            
+
             async with self._lock:
                 if factory_address in self._pools:
-                    logger.info(f"Using cached pools for DEX {dex.get('name', 'unknown')}")
+                    logger.info(
+                        f"Using cached pools for DEX {dex.get('name', 'unknown')}"
+                    )
                     return self._pools[factory_address]
-            
+
             pools = await self.scanner.get_factory_pools(factory_address)
-            
+
             async with self._lock:
                 self._pools[factory_address] = pools
-            
+
             return pools
         except Exception as e:
             logger.exception(f"Error getting pools for DEX: {str(e)}")
@@ -666,17 +742,17 @@ class BaseDexScannerSource:
             # Fetch DEXes if not already fetched
             if not self._dexes:
                 await self.fetch_dexes()
-            
+
             # Get pools for each DEX
             all_pools = {}
             for dex in self._dexes:
                 dex_name = dex.get("name", "unknown")
                 pools = await self.get_pools_for_dex(dex)
                 all_pools[dex_name] = pools
-            
+
             # Find arbitrage opportunities
             opportunities = []
-            
+
             # For each token pair, check prices across different DEXes
             token_pairs = set()
             for dex_name, pools in all_pools.items():
@@ -684,7 +760,7 @@ class BaseDexScannerSource:
                     token0 = pool.get("token0", {}).get("symbol", "unknown")
                     token1 = pool.get("token1", {}).get("symbol", "unknown")
                     token_pairs.add(f"{token0}/{token1}")
-            
+
             for token_pair in token_pairs:
                 # Find pools for this token pair across different DEXes
                 pair_pools = {}
@@ -692,69 +768,76 @@ class BaseDexScannerSource:
                     for pool in pools:
                         token0 = pool.get("token0", {}).get("symbol", "unknown")
                         token1 = pool.get("token1", {}).get("symbol", "unknown")
-                        if f"{token0}/{token1}" == token_pair or f"{token1}/{token0}" == token_pair:
+                        if (
+                            f"{token0}/{token1}" == token_pair
+                            or f"{token1}/{token0}" == token_pair
+                        ):
                             pair_pools[dex_name] = pool
-                
+
                 # Check for price differences
                 if len(pair_pools) >= 2:
                     # Find DEX with lowest price (best to buy from)
                     buy_dex = None
-                    buy_price = float('inf')
-                    
+                    buy_price = float("inf")
+
                     # Find DEX with highest price (best to sell to)
                     sell_dex = None
                     sell_price = 0
-                    
+
                     if USE_MOCK_DATA:
-                        logger.warning("!!! USING MOCK PRICE DATA FOR TESTING PURPOSES ONLY !!!")
+                        logger.warning(
+                            "!!! USING MOCK PRICE DATA FOR TESTING PURPOSES ONLY !!!"
+                        )
                         logger.warning("!!! ARBITRAGE OPPORTUNITIES ARE NOT REAL !!!")
-                    
+
                     for dex_name, pool in pair_pools.items():
                         # Get price from pool
-                        price_info = await self.scanner.get_pool_price(pool.get("address"))
+                        price_info = await self.scanner.get_pool_price(
+                            pool.get("address")
+                        )
                         if not price_info:
                             continue
-                            
+
                         price = price_info.get("price", 0)
                         if price <= 0:
                             continue
-                            
+
                         if price < buy_price:
                             buy_price = price
                             buy_dex = dex_name
-                            
+
                         if price > sell_price:
                             sell_price = price
                             sell_dex = dex_name
-                    
+
                     # If we found a price difference
                     if buy_dex and sell_dex and buy_dex != sell_dex:
                         # Calculate profit
                         price_diff = sell_price - buy_price
                         price_diff_pct = price_diff / buy_price
-                        
+
                         # Only consider significant price differences
                         if price_diff_pct >= 0.01:  # 1% or more
                             # Create opportunity
-                            tokens = token_pair.split('/')
-                            
+                            tokens = token_pair.split("/")
+
                             # Get pool details
                             buy_pool = pair_pools[buy_dex]
                             sell_pool = pair_pools[sell_dex]
-                            
+
                             # Calculate profit
                             # Assume 1 ETH trade size for calculation
                             trade_amount_eth = 1.0
                             gross_profit_usd = trade_amount_eth * price_diff
-                            
+
                             # Estimate gas cost
                             gas_cost_eth = 0.01  # Estimate
                             gas_price_gwei = 30  # Estimate
                             gas_cost_usd = gas_cost_eth * buy_price
-                            
+
                             # Calculate net profit
                             net_profit_usd = gross_profit_usd - gas_cost_usd
-                            
+
                             # Only consider profitable opportunities
                             if net_profit_usd > 0:
                                 # Create opportunity object
@@ -763,16 +846,21 @@ class BaseDexScannerSource:
                                     token_in=tokens[0],
                                     token_out=tokens[1],
                                     input_amount=TokenAmount(
-                                        amount=trade_amount_eth,
-                                        decimals=18
+                                        amount=trade_amount_eth, decimals=18
                                     ),
                                     output_amount=TokenAmount(
                                         amount=trade_amount_eth * (1 + price_diff_pct),
-                                        decimals=18
+                                        decimals=18,
                                     ),
                                     path=[
-                                        {"dex": buy_dex, "pool": buy_pool.get("address")},
-                                        {"dex": sell_dex, "pool": sell_pool.get("address")}
+                                        {
+                                            "dex": buy_dex,
+                                            "pool": buy_pool.get("address"),
+                                        },
+                                        {
+                                            "dex": sell_dex,
+                                            "pool": sell_pool.get("address"),
+                                        },
                                     ],
                                     gas_estimate=gas_cost_eth,
                                     gas_price_gwei=gas_price_gwei,
@@ -782,14 +870,14 @@ class BaseDexScannerSource:
                                     gas_cost_usd=gas_cost_usd,
                                     net_profit_usd=net_profit_usd,
                                     is_profitable=True,
-                                    timestamp=datetime.now().timestamp()
+                                    timestamp=datetime.now().timestamp(),
                                 )
-                                
+
                                 opportunities.append(opp)
-            
+
             # Sort opportunities by profit
             opportunities.sort(key=lambda x: x.net_profit_usd, reverse=True)
-            
+
             logger.info(f"Found {len(opportunities)} arbitrage opportunities")
             return opportunities
         except Exception as e:

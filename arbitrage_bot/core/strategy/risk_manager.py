@@ -9,9 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_risk_manager(
-    risk_params: Dict[str, Any],
-    web3_manager: Web3Manager,
-    config: Dict[str, Any]
+    risk_params: Dict[str, Any], web3_manager: Web3Manager, config: Dict[str, Any]
 ) -> "RiskManager":
     """
     Create risk manager instance.
@@ -30,7 +28,12 @@ def create_risk_manager(
 class RiskManager:
     """Manages trading risk and exposure."""
 
-    def __init__(self, risk_params: Dict[str, Any], web3_manager: Web3Manager, config: Dict[str, Any]):
+    def __init__(
+        self,
+        risk_params: Dict[str, Any],
+        web3_manager: Web3Manager,
+        config: Dict[str, Any],
+    ):
         """
         Initialize risk manager.
 

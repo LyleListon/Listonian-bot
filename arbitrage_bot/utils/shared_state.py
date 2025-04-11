@@ -7,6 +7,7 @@ of the arbitrage trading system.
 
 from typing import List, Dict, Any
 
+
 class SharedState:
     def __init__(self):
         """
@@ -17,7 +18,7 @@ class SharedState:
     def update_opportunities(self, opportunities: List[Dict[str, Any]]):
         """
         Update the list of current arbitrage opportunities
-        
+
         Args:
             opportunities (List[Dict[str, Any]]): List of detected arbitrage opportunities
         """
@@ -26,7 +27,7 @@ class SharedState:
     def get_opportunities(self) -> List[Dict[str, Any]]:
         """
         Retrieve the current list of arbitrage opportunities
-        
+
         Returns:
             List[Dict[str, Any]]: Current list of opportunities
         """

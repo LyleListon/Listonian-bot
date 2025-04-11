@@ -3,9 +3,10 @@
 import logging
 import asyncio
 from typing import Dict, Any, Callable, List
-from datetime import datetime, timedelta
+# from datetime import datetime, timedelta # Unused
 
 logger = logging.getLogger(__name__)
+
 
 class SchedulingSystem:
     """Mock scheduling system using asyncio."""
@@ -17,7 +18,7 @@ class SchedulingSystem:
         ml_system: Any,
         benchmarking_system: Any,
         reporting_system: Any,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
     ):
         """Initialize scheduling system.
 
@@ -35,19 +36,13 @@ class SchedulingSystem:
         self.benchmarking = benchmarking_system
         self.reporting = reporting_system
         self.config = config
-        
+
         self.tasks: Dict[str, asyncio.Task] = {}
         self.running = True
-        
+
         logger.info("Mock scheduling system initialized")
 
-    async def add_job(
-        self,
-        func: Callable,
-        job_id: str,
-        interval: int,
-        **kwargs
-    ):
+    async def add_job(self, func: Callable, job_id: str, interval: int, **kwargs):
         """Add a job to run at intervals.
 
         Args:
@@ -60,7 +55,7 @@ class SchedulingSystem:
             if job_id in self.tasks:
                 logger.warning(f"Job {job_id} already exists")
                 return
-                
+
             async def run_job():
                 while self.running:
                     try:
@@ -68,10 +63,10 @@ class SchedulingSystem:
                     except Exception as e:
                         logger.error(f"Error in job {job_id}: {e}")
                     await asyncio.sleep(interval)
-                    
+
             self.tasks[job_id] = asyncio.create_task(run_job())
             logger.info(f"Added job {job_id} with {interval}s interval")
-            
+
         except Exception as e:
             logger.error(f"Failed to add job {job_id}: {e}")
 
@@ -88,7 +83,7 @@ class SchedulingSystem:
                 logger.info(f"Removed job {job_id}")
             else:
                 logger.warning(f"Job {job_id} not found")
-                
+
         except Exception as e:
             logger.error(f"Failed to remove job {job_id}: {e}")
 
@@ -99,10 +94,7 @@ class SchedulingSystem:
             List of job information
         """
         return [
-            {
-                "id": job_id,
-                "running": not task.done()
-            }
+            {"id": job_id, "running": not task.done()}
             for job_id, task in self.tasks.items()
         ]
 
@@ -118,9 +110,10 @@ class SchedulingSystem:
                     pass
             self.tasks.clear()
             logger.info("Scheduler shutdown complete")
-            
+
         except Exception as e:
             logger.error(f"Error during scheduler shutdown: {e}")
+
 
 async def create_scheduling_system(
     analytics_system: Any,
@@ -128,7 +121,7 @@ async def create_scheduling_system(
     ml_system: Any,
     benchmarking_system: Any,
     reporting_system: Any,
-    config: Dict[str, Any]
+    config: Dict[str, Any],
 ) -> SchedulingSystem:
     """Create scheduling system."""
     try:
@@ -138,7 +131,7 @@ async def create_scheduling_system(
             ml_system,
             benchmarking_system,
             reporting_system,
-            config
+            config,
         )
         return system
     except Exception as e:

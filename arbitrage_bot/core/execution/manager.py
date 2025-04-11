@@ -1,13 +1,14 @@
 """Execution management module."""
 
 import logging
-import asyncio
-from typing import Dict, Any, Optional
+# import asyncio # Unused
+from typing import Any, Optional # Removed Dict
 from decimal import Decimal
 from web3 import Web3
 from .config import ExecutionConfig
 
 logger = logging.getLogger(__name__)
+
 
 class ExecutionManager:
     """Manages execution of trades."""
@@ -17,7 +18,7 @@ class ExecutionManager:
         config: ExecutionConfig,
         web3: Web3,
         distribution_manager: Any,
-        memory_bank: Any
+        memory_bank: Any,
     ):
         """Initialize execution manager."""
         self.config = config
@@ -34,12 +35,12 @@ class ExecutionManager:
         try:
             # Initialize tracking dictionaries
             self._pending_txs = {}
-            
+
             # Get current nonce
             self._nonce = self.web3.eth.get_transaction_count(
                 self.web3.eth.default_account
             )
-            
+
             # Get current block
             self._last_block = self.web3.eth.block_number
 
@@ -58,7 +59,7 @@ class ExecutionManager:
         token_out: str,
         amount_in: int,
         min_amount_out: int,
-        path: list
+        path: list,
     ) -> Optional[str]:
         """Execute a trade on a DEX."""
         try:
@@ -79,37 +80,34 @@ class ExecutionManager:
 
             # Build transaction
             tx = {
-                'from': self.web3.eth.default_account,
-                'nonce': self._get_next_nonce(),
-                'gas': self.config.gas_limit,
-                'gasPrice': gas_price,
-                'value': 0
+                "from": self.web3.eth.default_account,
+                "nonce": self._get_next_nonce(),
+                "gas": self.config.gas_limit,
+                "gasPrice": gas_price,
+                "value": 0,
             }
 
             # Add trade parameters
-            tx.update({
-                'to': path[0],
-                'data': self._encode_trade_data(
-                    token_in,
-                    token_out,
-                    amount_in,
-                    min_amount_out,
-                    path
-                )
-            })
+            tx.update(
+                {
+                    "to": path[0],
+                    "data": self._encode_trade_data(
+                        token_in, token_out, amount_in, min_amount_out, path
+                    ),
+                }
+            )
 
             # Sign and send transaction
             signed_tx = self.web3.eth.account.sign_transaction(
-                tx,
-                private_key=self.web3.eth.account.default_account.privateKey
+                tx, private_key=self.web3.eth.account.default_account.privateKey
             )
             tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
             # Track pending transaction
             self._pending_txs[tx_hash.hex()] = {
-                'nonce': tx['nonce'],
-                'gas_price': gas_price,
-                'timestamp': self.web3.eth.get_block('latest').timestamp
+                "nonce": tx["nonce"],
+                "gas_price": gas_price,
+                "timestamp": self.web3.eth.get_block("latest").timestamp,
             }
 
             return tx_hash.hex()
@@ -125,14 +123,13 @@ class ExecutionManager:
             gas_price = self.web3.eth.gas_price
 
             # Apply multiplier based on pending transactions
-            pending_multiplier = 1 + (len(self._pending_txs) * 0.1)  # 10% increase per pending tx
+            pending_multiplier = 1 + (
+                len(self._pending_txs) * 0.1
+            )  # 10% increase per pending tx
             gas_price = int(gas_price * pending_multiplier)
 
             # Ensure within limits
-            max_gas_price_wei = self.web3.to_wei(
-                self.config.max_gas_price,
-                'gwei'
-            )
+            max_gas_price_wei = self.web3.to_wei(self.config.max_gas_price, "gwei")
             return min(gas_price, max_gas_price_wei)
 
         except Exception as e:
@@ -154,27 +151,25 @@ class ExecutionManager:
         token_out: str,
         amount_in: int,
         min_amount_out: int,
-        path: list
+        path: list,
     ) -> bytes:
         """Encode trade data for transaction."""
         try:
             # Get contract ABI from memory bank
-            abi = self.memory_bank.get_contract_abi('UniswapV2Router02')
-            contract = self.web3.eth.contract(
-                address=path[0],
-                abi=abi
-            )
+            abi = self.memory_bank.get_contract_abi("UniswapV2Router02")
+            contract = self.web3.eth.contract(address=path[0], abi=abi)
 
             # Encode swap function call
             return contract.encodeABI(
-                fn_name='swapExactTokensForTokens',
+                fn_name="swapExactTokensForTokens",
                 args=[
                     amount_in,
                     min_amount_out,
                     path,
                     self.web3.eth.default_account,
-                    self.web3.eth.get_block('latest').timestamp + 60  # 1 minute deadline
-                ]
+                    self.web3.eth.get_block("latest").timestamp
+                    + 60,  # 1 minute deadline
+                ],
             )
 
         except Exception as e:

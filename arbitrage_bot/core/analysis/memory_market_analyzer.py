@@ -2,13 +2,14 @@
 
 import logging
 import asyncio
-from typing import Dict, Any, Optional, List, Set, Tuple, Union
+from typing import Dict, Any, Optional
 from decimal import Decimal
 from datetime import datetime, timedelta
 from ..web3.web3_manager import Web3Manager
-from ..models.market_models import MarketCondition, MarketTrend, PricePoint
+# from ..models.market_models import MarketCondition, MarketTrend, PricePoint # Removed unused imports
 
 logger = logging.getLogger(__name__)
+
 
 class MemoryMarketAnalyzer:
     """Analyzes market conditions using in-memory data."""
@@ -35,17 +36,17 @@ class MemoryMarketAnalyzer:
         async with self._init_lock:
             if self.initialized:  # Double-check under lock
                 return True
-                
+
             try:
                 async with self._market_lock:
                     # Initialize market conditions
                     self.market_conditions = {
-                        'prices': {},
-                        'trends': {},
-                        'volumes': {},
-                        'liquidity': {},
-                        'volatility': {},
-                        'last_update': datetime.now()
+                        "prices": {},
+                        "trends": {},
+                        "volumes": {},
+                        "liquidity": {},
+                        "volatility": {},
+                        "last_update": datetime.now(),
                     }
 
                 self.initialized = True
@@ -61,7 +62,9 @@ class MemoryMarketAnalyzer:
         self.dex_manager = dex_manager
         logger.debug("DEX manager set in market analyzer")
 
-    async def get_market_condition(self, token: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def get_market_condition(
+        self, token: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Get current market condition for token."""
         try:
             if not self.initialized and not await self.initialize():
@@ -69,7 +72,7 @@ class MemoryMarketAnalyzer:
 
             # If token is a string (symbol), get token data from config
             if isinstance(token, str):
-                token_data = self.config.get('tokens', {}).get(token)
+                token_data = self.config.get("tokens", {}).get(token)
                 if not token_data:
                     logger.error("Token %s not found in config", token)
                     return None
@@ -77,7 +80,7 @@ class MemoryMarketAnalyzer:
                 token_data = token
 
             # Get real price data
-            if not token_data or 'address' not in token_data:
+            if not token_data or "address" not in token_data:
                 logger.error("Invalid token data: %s", str(token_data))
                 return None
 
@@ -89,19 +92,19 @@ class MemoryMarketAnalyzer:
 
             # Create market condition
             condition = {
-                'price': float(price_decimal),
-                'trend': {
-                    'direction': 'sideways',
-                    'strength': 0.0,
-                    'duration': 0.0,
-                    'volatility': 0.0,
-                    'confidence': 0.0
+                "price": float(price_decimal),
+                "trend": {
+                    "direction": "sideways",
+                    "strength": 0.0,
+                    "duration": 0.0,
+                    "volatility": 0.0,
+                    "confidence": 0.0,
                 },
-                'volume_24h': 0.0,
-                'liquidity': 0.0,
-                'volatility_24h': 0.0,
-                'price_impact': 0.0,
-                'last_updated': datetime.now().timestamp()
+                "volume_24h": 0.0,
+                "liquidity": 0.0,
+                "volatility_24h": 0.0,
+                "price_impact": 0.0,
+                "last_updated": datetime.now().timestamp(),
             }
 
             return condition
@@ -115,21 +118,22 @@ class MemoryMarketAnalyzer:
         try:
             # Check cache first
             async with self._cache_lock:
-                cache_entry = self._price_cache.get(token['address'])
+                cache_entry = self._price_cache.get(token["address"])
                 if cache_entry:
                     timestamp, price = cache_entry
                     if datetime.now() - timestamp < self._cache_duration:
                         return price
 
             # Ensure token address is valid
-            address = token['address']
+            address = token["address"]
             if not address or not self.web3_manager.w3.is_address(address):
                 raise ValueError("Invalid token address: %s" % address)
 
             # Get all enabled DEXes
             enabled_dexes = [
-                name for name, config in self.config.get('dexes', {}).items()
-                if config.get('enabled', False)
+                name
+                for name, config in self.config.get("dexes", {}).items()
+                if config.get("enabled", False)
             ]
 
             if not enabled_dexes:
@@ -172,7 +176,7 @@ class MemoryMarketAnalyzer:
             # Sort prices and calculate median
             prices.sort()
             mid = len(prices) // 2
-            
+
             # Calculate median price
             if len(prices) % 2 == 0 and len(prices) > 0:
                 median_price = (prices[mid - 1] + prices[mid]) / 2
@@ -195,7 +199,9 @@ class MemoryMarketAnalyzer:
             return False
         try:
             float_price = float(price)
-            return float_price > 0 and not (float_price == float('inf') or float_price != float_price)  # Check for inf and nan
+            return float_price > 0 and not (
+                float_price == float("inf") or float_price != float_price
+            )  # Check for inf and nan
         except (ValueError, TypeError):
             return False
 
@@ -204,14 +210,17 @@ class MemoryMarketAnalyzer:
         try:
             async with self._market_lock:
                 return {
-                    'conditions': self.market_conditions.copy(),
-                    'timestamp': datetime.now().timestamp()
+                    "conditions": self.market_conditions.copy(),
+                    "timestamp": datetime.now().timestamp(),
                 }
         except Exception as e:
             logger.error("Failed to get market summary: %s", str(e))
             return {}
 
-async def create_memory_market_analyzer(web3_manager: Web3Manager, config: Dict[str, Any]) -> MemoryMarketAnalyzer:
+
+async def create_memory_market_analyzer(
+    web3_manager: Web3Manager, config: Dict[str, Any]
+) -> MemoryMarketAnalyzer:
     """Create and initialize memory market analyzer."""
     try:
         analyzer = MemoryMarketAnalyzer(web3_manager, config)

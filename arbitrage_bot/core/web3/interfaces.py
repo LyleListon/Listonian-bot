@@ -8,13 +8,17 @@ from typing import Any, Dict, Optional, Protocol, TypedDict, List, Union
 from eth_typing import ChecksumAddress, HexStr
 import decimal
 
+
 class AccessList(TypedDict, total=False):
     """Access list for EIP-2930 transactions."""
+
     address: ChecksumAddress
     storageKeys: List[HexStr]
 
+
 class Transaction(TypedDict, total=False):
     """Transaction dictionary type."""
+
     blockHash: HexStr
     blockNumber: int
     from_: ChecksumAddress  # Note: actual key is 'from'
@@ -35,8 +39,10 @@ class Transaction(TypedDict, total=False):
     r: HexStr
     s: HexStr
 
+
 class TransactionReceipt(TypedDict, total=False):
     """Transaction receipt dictionary type."""
+
     transactionHash: HexStr
     transactionIndex: int
     blockHash: HexStr
@@ -52,61 +58,67 @@ class TransactionReceipt(TypedDict, total=False):
     type: int
     logsBloom: HexStr
 
+
 class ContractFunction:
     """Interface for web3.py contract functions."""
-    
+
     async def call(self, *args, **kwargs) -> Any:
         """Call contract function."""
         raise NotImplementedError
 
+
 class Contract:
     """Interface for web3.py contracts."""
-    
+
     @property
     def functions(self) -> Any:
         """Get contract functions."""
         raise NotImplementedError
-    
+
     @property
     def address(self) -> ChecksumAddress:
         """Get contract address."""
         raise NotImplementedError
 
+
 class Web3Client(Protocol):
     """Interface for web3.py client."""
-    
+
     @property
     def eth(self) -> Any:
         """Get eth module."""
         raise NotImplementedError
-    
+
     async def initialize(self) -> None:
         """Initialize the Web3 connection."""
         raise NotImplementedError
-    
+
     async def close(self) -> None:
         """Close the Web3 connection and cleanup resources."""
         raise NotImplementedError
-    
+
     def contract(self, address: ChecksumAddress, abi: Dict[str, Any]) -> Contract:
         """Create contract instance."""
         raise NotImplementedError
-    
+
     async def get_gas_price(self) -> int:
         """Get current gas price in wei."""
         raise NotImplementedError
-    
+
     async def get_block(self, block_identifier: Union[str, int]) -> Dict[str, Any]:
         """Get block by number or hash."""
         raise NotImplementedError
-    
-    def to_wei(self, value: Union[int, float, str, decimal.Decimal], currency: str) -> int:
+
+    def to_wei(
+        self, value: Union[int, float, str, decimal.Decimal], currency: str
+    ) -> int:
         """Convert currency value to wei."""
         raise NotImplementedError
 
+
 class ContractFunctionWrapper:
     """Wrapper for web3.py contract functions to ensure proper async/await."""
-    
+
     def __init__(self, contract_function: Any, w3: Any):
         """
         Initialize wrapper.
@@ -129,29 +141,23 @@ class ContractFunctionWrapper:
         # Make a direct RPC call to call contract function
         # First, encode the function call
         data = self._function.encode_input(*args)
-        
+
         # Prepare the transaction
-        tx = {
-            'to': self.address,
-            'data': data,
-            **kwargs
-        }
-        
+        tx = {"to": self.address, "data": data, **kwargs}
+
         # Make the call
-        response = await self._w3.provider.make_request(
-            "eth_call",
-            [tx, "latest"]
-        )
+        response = await self._w3.provider.make_request("eth_call", [tx, "latest"])
         if "error" in response:
             raise ValueError(f"Failed to call contract: {response['error']}")
-            
+
         # Decode the result
         result = self._function.decode_output(response["result"])
         return result
 
+
 class ContractWrapper:
     """Wrapper for web3.py contracts to ensure proper async/await."""
-    
+
     def __init__(self, contract: Any):
         """
         Initialize wrapper.
@@ -182,9 +188,10 @@ class ContractWrapper:
         """
         return self._contract.address
 
+
 class ContractFunctionsWrapper:
     """Wrapper for web3.py contract functions object to ensure proper async/await."""
-    
+
     def __init__(self, functions: Any, w3: Any):
         """
         Initialize wrapper.

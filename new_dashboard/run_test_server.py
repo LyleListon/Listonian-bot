@@ -53,8 +53,15 @@ app.add_middleware(
 
 # Setup templates and static files
 base_dir = Path(__file__).parent
-templates = Jinja2Templates(directory=str(base_dir / "tests" / "dashboard" / "templates"))
-app.mount("/static", StaticFiles(directory=str(base_dir / "tests" / "dashboard" / "static")), name="static")
+templates = Jinja2Templates(
+    directory=str(base_dir / "tests" / "dashboard" / "templates")
+)
+app.mount(
+    "/static",
+    StaticFiles(directory=str(base_dir / "tests" / "dashboard" / "static")),
+    name="static",
+)
+
 
 # Mock data storage
 class MockDataStore:
@@ -69,44 +76,65 @@ class MockDataStore:
                 "cpu_usage": 15.0,
                 "memory_usage": 256.0,
                 "scan_time": 120.0,
-            }
+            },
         }
         self.dex_prices: Dict[str, float] = {
             "baseswap_v3": 42495201.744674,
             "uniswap_v3": 42498123.123456,
             "sushiswap_v2": 42490567.891234,
         }
-        
+
     def update_metrics(self):
         """Update mock metrics with random variations"""
         # Update uptime
         self.metrics["uptime"] = int(time.time() - self.start_time)
-        
+
         # Random variations for gas price (20-30 Gwei)
-        self.metrics["gas_price"] = max(20.0, min(30.0, 
-            self.metrics["gas_price"] + random.uniform(-0.5, 0.5)))
-        
+        self.metrics["gas_price"] = max(
+            20.0, min(30.0, self.metrics["gas_price"] + random.uniform(-0.5, 0.5))
+        )
+
         # Random variations for performance metrics
-        self.metrics["performance"]["cpu_usage"] = max(5.0, min(95.0, 
-            self.metrics["performance"]["cpu_usage"] + random.uniform(-2.0, 2.0)))
-        
-        self.metrics["performance"]["memory_usage"] = max(128.0, min(512.0, 
-            self.metrics["performance"]["memory_usage"] + random.uniform(-10.0, 10.0)))
-        
-        self.metrics["performance"]["scan_time"] = max(50.0, min(200.0, 
-            self.metrics["performance"]["scan_time"] + random.uniform(-5.0, 5.0)))
-        
+        self.metrics["performance"]["cpu_usage"] = max(
+            5.0,
+            min(
+                95.0,
+                self.metrics["performance"]["cpu_usage"] + random.uniform(-2.0, 2.0),
+            ),
+        )
+
+        self.metrics["performance"]["memory_usage"] = max(
+            128.0,
+            min(
+                512.0,
+                self.metrics["performance"]["memory_usage"]
+                + random.uniform(-10.0, 10.0),
+            ),
+        )
+
+        self.metrics["performance"]["scan_time"] = max(
+            50.0,
+            min(
+                200.0,
+                self.metrics["performance"]["scan_time"] + random.uniform(-5.0, 5.0),
+            ),
+        )
+
         # Occasionally simulate network disconnection (1% chance)
         if random.random() < 0.01:
-            self.metrics["network_status"] = "Disconnected" if self.metrics["network_status"] == "Connected" else "Connected"
-    
+            self.metrics["network_status"] = (
+                "Disconnected"
+                if self.metrics["network_status"] == "Connected"
+                else "Connected"
+            )
+
     def update_prices(self):
         """Update mock DEX prices with small variations"""
         for dex in self.dex_prices:
             # Small price variations (±0.01%)
             variation = self.dex_prices[dex] * random.uniform(-0.0001, 0.0001)
             self.dex_prices[dex] += variation
-    
+
     def generate_trade(self) -> Optional[Dict[str, Any]]:
         """Occasionally generate a mock trade (5% chance per update)"""
         if random.random() < 0.05:
@@ -114,20 +142,22 @@ class MockDataStore:
             timestamp = int(time.time())
             dexes = list(self.dex_prices.keys())
             path = f"{random.choice(dexes)} → {random.choice(dexes)}"
-            
+
             # Trade parameters
             gas_used = random.randint(100000, 500000)
             gas_price = self.metrics["gas_price"]
-            gas_cost_usd = (gas_used * gas_price * 1e-9) * 2500  # Assuming ETH price of $2500
-            
+            gas_cost_usd = (
+                gas_used * gas_price * 1e-9
+            ) * 2500  # Assuming ETH price of $2500
+
             # Profit calculation (70% chance of profitable trade)
             if random.random() < 0.7:
                 profit = random.uniform(0.01, 0.5)  # $0.01 to $0.50
             else:
                 profit = random.uniform(0.001, 0.01)  # Very small profit or break-even
-            
+
             net_profit = profit - gas_cost_usd
-            
+
             trade = {
                 "timestamp": timestamp,
                 "path": path,
@@ -135,44 +165,50 @@ class MockDataStore:
                 "gas_used": gas_used,
                 "gas_price": gas_price,
                 "gas_cost_usd": gas_cost_usd,
-                "net_profit": net_profit
+                "net_profit": net_profit,
             }
-            
+
             self.trade_history.append(trade)
-            
+
             # Keep only the last 100 trades
             if len(self.trade_history) > 100:
                 self.trade_history = self.trade_history[-100:]
-            
+
             return trade
-        
+
         return None
-    
+
     def get_dashboard_data(self) -> Dict[str, Any]:
         """Get all dashboard data for WebSocket updates"""
         return {
             "trade_history": self.trade_history,
             "metrics": self.metrics,
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.datetime.now().isoformat(),
         }
+
 
 # Initialize mock data store
 mock_data = MockDataStore()
+
 
 # WebSocket connection manager
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
-    
+
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
-        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
-    
+        logger.info(
+            f"WebSocket client connected. Total connections: {len(self.active_connections)}"
+        )
+
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
-        logger.info(f"WebSocket client disconnected. Remaining connections: {len(self.active_connections)}")
-    
+        logger.info(
+            f"WebSocket client disconnected. Remaining connections: {len(self.active_connections)}"
+        )
+
     async def broadcast(self, data: Dict[str, Any]):
         for connection in self.active_connections:
             try:
@@ -180,8 +216,10 @@ class ConnectionManager:
             except Exception as e:
                 logger.error(f"Error sending data to WebSocket: {e}")
 
+
 # Initialize connection manager
 manager = ConnectionManager()
+
 
 # Background task to update and broadcast mock data
 async def update_mock_data():
@@ -190,48 +228,60 @@ async def update_mock_data():
         mock_data.update_metrics()
         mock_data.update_prices()
         trade = mock_data.generate_trade()
-        
+
         # Log price updates (for debugging)
         if random.random() < 0.1:  # Only log occasionally to avoid spam
             dex = random.choice(list(mock_data.dex_prices.keys()))
-            logger.debug(f"Received price update event (not processed): {{'dex': '{dex}', 'old_price': {mock_data.dex_prices[dex]}, 'new_price': {mock_data.dex_prices[dex]}}}")
-        
+            logger.debug(
+                f"Received price update event (not processed): {{'dex': '{dex}', 'old_price': {mock_data.dex_prices[dex]}, 'new_price': {mock_data.dex_prices[dex]}}}"
+            )
+
         # Log new trades
         if trade:
-            logger.info(f"Generated mock trade: {trade['path']} with net profit: ${trade['net_profit']:.4f}")
-        
+            logger.info(
+                f"Generated mock trade: {trade['path']} with net profit: ${trade['net_profit']:.4f}"
+            )
+
         # Broadcast updated data to all connected clients
         dashboard_data = mock_data.get_dashboard_data()
-        
+
         # Log memory updates
         logger.debug(f"--- Handling Memory Update ---")
         logger.debug(f"Received update keys: {list(dashboard_data.keys())}")
-        logger.debug(f"Received trade_history length: {len(dashboard_data['trade_history'])}")
-        logger.debug(f"Received memory_metrics keys: {list(dashboard_data['metrics'].keys())}")
+        logger.debug(
+            f"Received trade_history length: {len(dashboard_data['trade_history'])}"
+        )
+        logger.debug(
+            f"Received memory_metrics keys: {list(dashboard_data['metrics'].keys())}"
+        )
         logger.debug(f"Received memory update: {dashboard_data['timestamp']}")
-        
+
         # Calculate some derived metrics (for logging only)
         net_profit_by_pair = {}
         avg_roi_by_trade_type = {}
         profit_per_gas = 0
         profit_distribution_by_strategy = {}
-        
+
         logger.debug(f"Calculated net_profit_by_pair: {net_profit_by_pair}")
         logger.debug(f"Calculated avg_roi_by_trade_type: {avg_roi_by_trade_type}")
         logger.debug(f"Calculated profit_per_gas: {profit_per_gas}")
-        logger.debug(f"Calculated profit_distribution_by_strategy: {profit_distribution_by_strategy}")
+        logger.debug(
+            f"Calculated profit_distribution_by_strategy: {profit_distribution_by_strategy}"
+        )
         logger.debug(f"--- Finished Handling Memory Update ---")
-        
+
         await manager.broadcast(dashboard_data)
-        
+
         # Wait for the next update interval
         await asyncio.sleep(UPDATE_INTERVAL)
+
 
 # Routes
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request):
     """Serve the dashboard HTML page"""
     return templates.TemplateResponse("test.html", {"request": request})
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -240,7 +290,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Send initial data
         await websocket.send_json(mock_data.get_dashboard_data())
-        
+
         # Keep the connection open
         while True:
             await websocket.receive_text()
@@ -250,11 +300,13 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
 
+
 @app.on_event("startup")
 async def startup_event():
     """Start the background task on server startup"""
     asyncio.create_task(update_mock_data())
     logger.info(f"Test server started on http://{TEST_SERVER_HOST}:{TEST_SERVER_PORT}")
+
 
 # Main function to run the server
 def main():
@@ -263,15 +315,16 @@ def main():
         # Ensure directories exist
         templates_dir = base_dir / "tests" / "dashboard" / "templates"
         static_dir = base_dir / "tests" / "dashboard" / "static"
-        
+
         templates_dir.mkdir(parents=True, exist_ok=True)
         static_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Create empty CSS file if it doesn't exist
         css_file = static_dir / "styles.css"
         if not css_file.exists():
             with open(css_file, "w") as f:
-                f.write("""
+                f.write(
+                    """
 /* Dashboard Styles */
 body {
     background-color: #1e1e2f;
@@ -354,8 +407,9 @@ body {
     height: 6px;
     margin-bottom: 15px;
 }
-                """)
-        
+                """
+                )
+
         # Start the server
         uvicorn.run(
             "run_test_server:app",
@@ -367,6 +421,7 @@ body {
     except Exception as e:
         logger.error(f"Error starting test server: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

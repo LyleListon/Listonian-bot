@@ -10,7 +10,4 @@ This package provides Web3 functionality with:
 
 from .web3_manager import Web3Manager, create_web3_manager
 
-__all__ = [
-    'Web3Manager',
-    'create_web3_manager'
-]
+__all__ = ["Web3Manager", "create_web3_manager"]

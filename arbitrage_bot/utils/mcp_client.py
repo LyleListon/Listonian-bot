@@ -7,9 +7,10 @@ from subprocess import Popen, PIPE
 
 logger = logging.getLogger(__name__)
 
+
 class MCPClient:
     """Client for communicating with MCP servers."""
-    
+
     def __init__(self, process: Popen):
         """Initialize MCP client."""
         self.process = process
@@ -23,10 +24,7 @@ class MCPClient:
                 "jsonrpc": "2.0",
                 "id": self.request_id,
                 "method": "callTool",
-                "params": {
-                    "name": tool_name,
-                    "arguments": arguments
-                }
+                "params": {"name": tool_name, "arguments": arguments},
             }
             self.request_id += 1
 
@@ -56,9 +54,7 @@ class MCPClient:
                 "jsonrpc": "2.0",
                 "id": self.request_id,
                 "method": "accessResource",
-                "params": {
-                    "uri": uri
-                }
+                "params": {"uri": uri},
             }
             self.request_id += 1
 

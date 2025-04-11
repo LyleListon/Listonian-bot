@@ -6,11 +6,12 @@ This module provides an async provider implementation for Web3.py.
 
 import logging
 import asyncio
-from typing import Any, Dict, List, Optional, Union
+from typing import Any # Removed Dict, List, Optional, Union
 from web3.providers import BaseProvider
 from web3.types import RPCEndpoint, RPCResponse
 
 logger = logging.getLogger(__name__)
+
 
 class CustomAsyncProvider(BaseProvider):
     """Custom async provider with rate limiting and failover support."""
@@ -46,6 +47,7 @@ class CustomAsyncProvider(BaseProvider):
                 # Ensure session is initialized
                 if not self._session:
                     import aiohttp
+
                     self._session = aiohttp.ClientSession()
 
                 # Prepare request
@@ -53,14 +55,12 @@ class CustomAsyncProvider(BaseProvider):
                     "jsonrpc": "2.0",
                     "method": method,
                     "params": params,
-                    "id": id(params)
+                    "id": id(params),
                 }
 
                 # Make request
                 async with self._session.post(
-                    self.endpoint_uri,
-                    json=request_data,
-                    timeout=30
+                    self.endpoint_uri, json=request_data, timeout=30
                 ) as response:
                     if response.status != 200:
                         raise ValueError(
@@ -72,9 +72,7 @@ class CustomAsyncProvider(BaseProvider):
 
                     # Check for RPC error
                     if "error" in result:
-                        raise ValueError(
-                            f"RPC error: {result['error']}"
-                        )
+                        raise ValueError(f"RPC error: {result['error']}")
 
                     return result
 
@@ -93,8 +91,7 @@ class CustomAsyncProvider(BaseProvider):
                 loop = asyncio.get_running_loop()
                 # Create a future in the current loop
                 future = asyncio.run_coroutine_threadsafe(
-                    self.make_request(method, params),
-                    loop
+                    self.make_request(method, params), loop
                 )
                 return future.result()
             except RuntimeError:

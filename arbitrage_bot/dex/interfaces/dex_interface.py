@@ -14,12 +14,13 @@ from web3.contract import Contract
 from web3.types import TxParams, Wei
 from web3.exceptions import ContractLogicError
 
-from arbitrage_bot.utils.web3_utils import Web3, create_web3_manager
+from arbitrage_bot.core.web3.web3_manager import Web3Manager, create_web3_manager
 from arbitrage_bot.utils.rate_limiter import create_rate_limiter
-from arbitrage_bot.utils.config_loader import load_config, ensure_config_exists
+from arbitrage_bot.utils.config_loader import load_config
 from arbitrage_bot.configs.logging_config import get_logger
 
 logger = get_logger("DexInterface")
+
 
 class DexInterface:
     """Interface for interacting with different DEXes"""
@@ -87,7 +88,9 @@ class DexInterface:
             for dex_name, config in self.dex_configs.items():
                 contracts = {}
                 version = config.get("version", "v2")
-                logger.debug("Initializing {} contracts (version {})".format(dex_name, version))
+                logger.debug(
+                    "Initializing {} contracts (version {})".format(dex_name, version)
+                )
 
                 # Initialize router
                 if version == "v2":
@@ -116,7 +119,9 @@ class DexInterface:
                         )
                         logger.info("Initialized quoter for {}".format(dex_name))
                     else:
-                        logger.error("Quoter ABI not found at {}".format(quoter_abi_path))
+                        logger.error(
+                            "Quoter ABI not found at {}".format(quoter_abi_path)
+                        )
 
                 self.dex_contracts[dex_name] = contracts
                 logger.info("Initialized all contracts for {}".format(dex_name))
@@ -149,8 +154,9 @@ class DexInterface:
         decimals = self._get_token_decimals(token)
         return Decimal(amount) / Decimal(10**decimals)
 
-    async def get_quote(self, dex_name: str, token_in: str, token_out: str,
-                       amount_in: Decimal) -> Tuple[bool, Optional[Decimal], Optional[str]]:
+    async def get_quote(
+        self, dex_name: str, token_in: str, token_out: str, amount_in: Decimal
+    ) -> Tuple[bool, Optional[Decimal], Optional[str]]:
         """Get quote for trade"""
         if not self._initialized:
             await self.initialize()
@@ -163,7 +169,9 @@ class DexInterface:
 
             # Skip if DEX contracts not initialized
             if dex_name not in self.dex_contracts:
-                logger.warning("DEX {} contracts not initialized, skipping".format(dex_name))
+                logger.warning(
+                    "DEX {} contracts not initialized, skipping".format(dex_name)
+                )
                 return False, None, "DEX {} contracts not initialized".format(dex_name)
 
             contracts = self.dex_contracts[dex_name]
@@ -171,31 +179,53 @@ class DexInterface:
             logger.debug("Getting quote from {} (version {})".format(dex_name, version))
 
             # Get token addresses
-            token_in_address = Web3.to_checksum_address(self._get_token_address(token_in))
-            token_out_address = Web3.to_checksum_address(self._get_token_address(token_out))
+            token_in_address = Web3.to_checksum_address(
+                self._get_token_address(token_in)
+            )
+            token_out_address = Web3.to_checksum_address(
+                self._get_token_address(token_out)
+            )
 
             # Convert amount to token units
             amount_in_units = self._to_token_units(amount_in, token_in)
-            logger.debug("Converting {} {} to {} units".format(amount_in, token_in, amount_in_units))
+            logger.debug(
+                "Converting {} {} to {} units".format(
+                    amount_in, token_in, amount_in_units
+                )
+            )
 
             try:
                 if version == "v2":
                     logger.debug("Using V2 quote method for {}".format(dex_name))
                     # Use V2 router for quotes
                     if "router" not in contracts:
-                        logger.error("Router contract not found for {}".format(dex_name))
-                        return False, None, "Router contract not found for {}".format(dex_name)
+                        logger.error(
+                            "Router contract not found for {}".format(dex_name)
+                        )
+                        return (
+                            False,
+                            None,
+                            "Router contract not found for {}".format(dex_name),
+                        )
 
                     router = contracts["router"]
                     path = [token_in_address, token_out_address]
-                    amounts = await router.functions.getAmountsOut(amount_in_units, path).call()
+                    amounts = await router.functions.getAmountsOut(
+                        amount_in_units, path
+                    ).call()
                     amount_out = amounts[1]
                 else:
                     logger.debug("Using V3 quote method for {}".format(dex_name))
                     # Use V3 quoter for quotes
                     if "quoter" not in contracts:
-                        logger.error("Quoter contract not found for {}".format(dex_name))
-                        return False, None, "Quoter contract not found for {}".format(dex_name)
+                        logger.error(
+                            "Quoter contract not found for {}".format(dex_name)
+                        )
+                        return (
+                            False,
+                            None,
+                            "Quoter contract not found for {}".format(dex_name),
+                        )
 
                     quoter = contracts["quoter"]
                     fee = self.dex_configs[dex_name].get("fee", 3000)
@@ -209,13 +239,22 @@ class DexInterface:
                             fee,
                             0,  # sqrtPriceLimitX96
                         )
-                        logger.debug("Calling PancakeSwap quoteExactInputSingle with params: {}".format(params))
-                        quote_result = await quoter.functions.quoteExactInputSingle(params).call()
+                        logger.debug(
+                            "Calling PancakeSwap quoteExactInputSingle with params: {}".format(
+                                params
+                            )
+                        )
+                        quote_result = await quoter.functions.quoteExactInputSingle(
+                            params
+                        ).call()
                     else:
                         # Uniswap V3 expects individual parameters
                         logger.debug(
                             "Calling Uniswap quoteExactInputSingle with params: tokenIn={}, tokenOut={}, fee={}, amountIn={}".format(
-                                token_in_address, token_out_address, fee, amount_in_units
+                                token_in_address,
+                                token_out_address,
+                                fee,
+                                amount_in_units,
                             )
                         )
                         quote_result = await quoter.functions.quoteExactInputSingle(
@@ -235,7 +274,11 @@ class DexInterface:
 
                 # Convert amount out from token units
                 amount_out_decimal = self._from_token_units(amount_out, token_out)
-                logger.debug("Converting {} units to {} {}".format(amount_out, amount_out_decimal, token_out))
+                logger.debug(
+                    "Converting {} units to {} {}".format(
+                        amount_out, amount_out_decimal, token_out
+                    )
+                )
 
                 return True, amount_out_decimal, None
 
@@ -249,9 +292,16 @@ class DexInterface:
             logger.error("Error details:", exc_info=True)
             return False, None, str(e)
 
-    async def execute_trade(self, dex_name: str, token_in: str, token_out: str,
-                          amount_in: Decimal, min_amount_out: Decimal,
-                          wallet_address: str, private_key: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    async def execute_trade(
+        self,
+        dex_name: str,
+        token_in: str,
+        token_out: str,
+        amount_in: Decimal,
+        min_amount_out: Decimal,
+        wallet_address: str,
+        private_key: str,
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """Execute trade on specified DEX"""
         if not self._initialized:
             await self.initialize()
@@ -264,7 +314,9 @@ class DexInterface:
 
             # Skip if DEX contracts not initialized
             if dex_name not in self.dex_contracts:
-                logger.warning("DEX {} contracts not initialized, skipping".format(dex_name))
+                logger.warning(
+                    "DEX {} contracts not initialized, skipping".format(dex_name)
+                )
                 return False, None, "DEX {} contracts not initialized".format(dex_name)
 
             contracts = self.dex_contracts[dex_name]
@@ -277,8 +329,12 @@ class DexInterface:
             router = contracts["router"]
 
             # Get token addresses
-            token_in_address = Web3.to_checksum_address(self._get_token_address(token_in))
-            token_out_address = Web3.to_checksum_address(self._get_token_address(token_out))
+            token_in_address = Web3.to_checksum_address(
+                self._get_token_address(token_in)
+            )
+            token_out_address = Web3.to_checksum_address(
+                self._get_token_address(token_out)
+            )
 
             # Convert amounts to token units
             amount_in_units = self._to_token_units(amount_in, token_in)
@@ -298,12 +354,16 @@ class DexInterface:
                         path,
                         Web3.to_checksum_address(wallet_address),
                         deadline,
-                    ).build_transaction({
-                        "from": Web3.to_checksum_address(wallet_address),
-                        "gas": 500000,
-                        "nonce": await self.web3_manager.w3.eth.get_transaction_count(wallet_address),
-                        "gasPrice": await self.web3_manager.w3.eth.gas_price,
-                    })
+                    ).build_transaction(
+                        {
+                            "from": Web3.to_checksum_address(wallet_address),
+                            "gas": 500000,
+                            "nonce": await self.web3_manager.w3.eth.get_transaction_count(
+                                wallet_address
+                            ),
+                            "gasPrice": await self.web3_manager.w3.eth.gas_price,
+                        }
+                    )
                 else:
                     logger.debug("Using V3 trade method for {}".format(dex_name))
                     fee = self.dex_configs[dex_name].get("fee", 3000)
@@ -320,12 +380,18 @@ class DexInterface:
                             min_out_units,
                             0,  # sqrtPriceLimitX96
                         )
-                        tx = await router.functions.exactInputSingle(params).build_transaction({
-                            "from": Web3.to_checksum_address(wallet_address),
-                            "gas": 500000,
-                            "nonce": await self.web3_manager.w3.eth.get_transaction_count(wallet_address),
-                            "gasPrice": await self.web3_manager.w3.eth.gas_price,
-                        })
+                        tx = await router.functions.exactInputSingle(
+                            params
+                        ).build_transaction(
+                            {
+                                "from": Web3.to_checksum_address(wallet_address),
+                                "gas": 500000,
+                                "nonce": await self.web3_manager.w3.eth.get_transaction_count(
+                                    wallet_address
+                                ),
+                                "gasPrice": await self.web3_manager.w3.eth.gas_price,
+                            }
+                        )
                     else:
                         # Uniswap V3 expects individual parameters
                         tx = await router.functions.exactInputSingle(
@@ -337,21 +403,31 @@ class DexInterface:
                             amount_in_units,
                             min_out_units,
                             0,  # sqrtPriceLimitX96
-                        ).build_transaction({
-                            "from": Web3.to_checksum_address(wallet_address),
-                            "gas": 500000,
-                            "nonce": await self.web3_manager.w3.eth.get_transaction_count(wallet_address),
-                            "gasPrice": await self.web3_manager.w3.eth.gas_price,
-                        })
+                        ).build_transaction(
+                            {
+                                "from": Web3.to_checksum_address(wallet_address),
+                                "gas": 500000,
+                                "nonce": await self.web3_manager.w3.eth.get_transaction_count(
+                                    wallet_address
+                                ),
+                                "gasPrice": await self.web3_manager.w3.eth.gas_price,
+                            }
+                        )
 
                 # Sign transaction
-                signed_tx = self.web3_manager.w3.eth.account.sign_transaction(tx, private_key)
+                signed_tx = self.web3_manager.w3.eth.account.sign_transaction(
+                    tx, private_key
+                )
 
                 # Send transaction
-                tx_hash = await self.web3_manager.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                tx_hash = await self.web3_manager.w3.eth.send_raw_transaction(
+                    signed_tx.rawTransaction
+                )
 
                 # Wait for confirmation
-                receipt = await self.web3_manager.w3.eth.wait_for_transaction_receipt(tx_hash)
+                receipt = await self.web3_manager.w3.eth.wait_for_transaction_receipt(
+                    tx_hash
+                )
 
                 if receipt["status"] == 1:
                     logger.info("Trade executed successfully: {}".format(tx_hash.hex()))
@@ -369,6 +445,7 @@ class DexInterface:
             logger.error("Error executing trade: {}".format(e))
             logger.error("Error details:", exc_info=True)
             return False, None, str(e)
+
 
 async def create_dex_interface() -> DexInterface:
     """Factory function to create DexInterface instance"""

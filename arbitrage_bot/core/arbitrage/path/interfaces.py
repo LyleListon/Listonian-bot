@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Optional, Set, Union
 class Pool:
     """
     Represents a liquidity pool.
-    
+
     Attributes:
         address: Pool contract address
         token0: Address of the first token in the pool
@@ -25,7 +25,7 @@ class Pool:
         pool_type: Type of pool (e.g., "constant_product", "stable", "weighted")
         dex: DEX name (e.g., "uniswap_v2", "uniswap_v3", "sushiswap")
     """
-    
+
     address: str
     token0: str
     token1: str
@@ -34,13 +34,13 @@ class Pool:
     fee: int = 3000  # 0.3% default
     pool_type: str = "constant_product"
     dex: str = "unknown"
-    
+
     def __post_init__(self):
         """Validate pool attributes."""
         # Ensure token addresses are checksummed
-        if self.token0 and not self.token0.startswith('0x'):
+        if self.token0 and not self.token0.startswith("0x"):
             raise ValueError(f"Token0 address must be checksummed: {self.token0}")
-        if self.token1 and not self.token1.startswith('0x'):
+        if self.token1 and not self.token1.startswith("0x"):
             raise ValueError(f"Token1 address must be checksummed: {self.token1}")
 
 
@@ -48,7 +48,7 @@ class Pool:
 class ArbitragePath:
     """
     Represents an arbitrage path.
-    
+
     Attributes:
         tokens: List of token addresses in the path
         pools: List of pools in the path
@@ -63,7 +63,7 @@ class ArbitragePath:
         estimated_gas_cost: Estimated gas cost in ETH
         execution_priority: Priority for execution (lower is higher priority)
     """
-    
+
     tokens: List[str]
     pools: List[Pool]
     dexes: List[str]
@@ -75,7 +75,7 @@ class ArbitragePath:
     estimated_gas: int = 0
     estimated_gas_cost: Optional[Decimal] = None
     execution_priority: int = 0
-    
+
     def __post_init__(self):
         """Calculate derived attributes."""
         # Calculate profit if optimal_amount and expected_output are set
@@ -83,51 +83,55 @@ class ArbitragePath:
             self.profit = self.expected_output - self.optimal_amount
         else:
             self.profit = None
-        
+
         # Calculate path yield if optimal_amount and expected_output are set
-        if self.optimal_amount is not None and self.expected_output is not None and self.optimal_amount > 0:
+        if (
+            self.optimal_amount is not None
+            and self.expected_output is not None
+            and self.optimal_amount > 0
+        ):
             self.path_yield = self.expected_output / self.optimal_amount
         else:
             self.path_yield = None
-    
+
     @property
     def is_cyclic(self) -> bool:
         """Check if the path is cyclic (starts and ends with the same token)."""
         return len(self.tokens) >= 2 and self.tokens[0] == self.tokens[-1]
-    
+
     @property
     def start_token(self) -> str:
         """Get the start token of the path."""
         return self.tokens[0] if self.tokens else ""
-    
+
     @property
     def end_token(self) -> str:
         """Get the end token of the path."""
         return self.tokens[-1] if self.tokens else ""
-    
+
     @property
     def is_valid(self) -> bool:
         """Check if the path is valid."""
         # Check if tokens and pools are non-empty
         if not self.tokens or not self.pools:
             return False
-        
+
         # Check if the path is cyclic
         if not self.is_cyclic:
             return False
-        
+
         # Check if the number of pools is correct
         if len(self.pools) != len(self.tokens) - 1:
             return False
-        
+
         # Check if the number of dexes is correct
         if len(self.dexes) != len(self.pools):
             return False
-        
+
         # Check if the path is profitable
         if self.profit is None or self.profit <= 0:
             return False
-        
+
         return True
 
 
@@ -135,7 +139,7 @@ class ArbitragePath:
 class MultiPathOpportunity:
     """
     Represents a multi-path arbitrage opportunity.
-    
+
     Attributes:
         paths: List of arbitrage paths
         start_token: Start token address
@@ -146,7 +150,7 @@ class MultiPathOpportunity:
         created_at: Creation timestamp
         expiration: Expiration timestamp
     """
-    
+
     paths: List[ArbitragePath]
     start_token: str
     required_amount: Decimal
@@ -155,32 +159,32 @@ class MultiPathOpportunity:
     confidence_level: float
     created_at: int
     expiration: Optional[int] = None
-    
+
     @property
     def is_valid(self) -> bool:
         """Check if the opportunity is valid."""
         # Check if paths and allocations are non-empty
         if not self.paths or not self.allocations:
             return False
-        
+
         # Check if the number of paths and allocations match
         if len(self.paths) != len(self.allocations):
             return False
-        
+
         # Check if all paths are valid
         if not all(path.is_valid for path in self.paths):
             return False
-        
+
         # Check if all paths have the same start token
         if not all(path.start_token == self.start_token for path in self.paths):
             return False
-        
+
         # Check if the opportunity is profitable
         if self.expected_profit <= 0:
             return False
-        
+
         # Check if the opportunity has expired
         if self.expiration is not None and self.expiration < self.created_at:
             return False
-        
+
         return True

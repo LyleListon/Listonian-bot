@@ -20,6 +20,7 @@ from .services.service_manager import service_manager
 configure_logging()
 logger = get_logger("dashboard")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
@@ -37,13 +38,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error during dashboard shutdown: {e}")
 
+
 def create_app():
     """Create and configure the FastAPI application."""
     # Create FastAPI app
-    app = FastAPI(
-        title="Arbitrage Bot Dashboard",
-        lifespan=lifespan
-    )
+    app = FastAPI(title="Arbitrage Bot Dashboard", lifespan=lifespan)
 
     # Configure CORS
     app.add_middleware(
@@ -80,7 +79,9 @@ def create_app():
 
     # Configure static files and templates
     logger.info("Mounting static files from: %s", static_dir)
-    app.mount("/static", StaticFiles(directory=str(static_dir), html=True), name="static")
+    app.mount(
+        "/static", StaticFiles(directory=str(static_dir), html=True), name="static"
+    )
 
     logger.info("Initializing templates with directory: %s", templates_dir)
     templates = Jinja2Templates(directory=str(templates_dir))
@@ -112,38 +113,44 @@ def create_app():
 
     return app
 
+
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Run the dashboard application")
-    parser.add_argument("--port", type=int, default=9095, help="Port to run the server on")
+    parser.add_argument(
+        "--port", type=int, default=9095, help="Port to run the server on"
+    )
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
     return parser.parse_args()
 
+
 # Create the app instance at module level for uvicorn
 app = create_app()
+
 
 def main():
     """Run the dashboard application."""
     try:
         args = parse_args()
         logger.info("Starting dashboard on %s:%d...", args.host, args.port)
-        
+
         # Configure uvicorn logging to handle redirected stdout
         log_config = uvicorn.config.LOGGING_CONFIG
         log_config["formatters"]["default"]["use_colors"] = False
         log_config["formatters"]["access"]["use_colors"] = False
-        
+
         uvicorn.run(
             app,
             host=args.host,
             port=args.port,
             log_level="info",
             access_log=True,
-            log_config=log_config
+            log_config=log_config,
         )
     except Exception as e:
         logger.error(f"Failed to start dashboard: {e}", exc_info=True)
         raise
+
 
 if __name__ == "__main__":
     main()

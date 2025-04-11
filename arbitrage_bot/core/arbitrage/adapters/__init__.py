@@ -7,19 +7,19 @@ with the new arbitrage system architecture.
 
 from .triangular_adapter import (
     TriangularArbitrageDetector,
-    create_triangular_arbitrage_detector
+    create_triangular_arbitrage_detector,
 )
 
 from .path_finder_adapter import (
     PathFinderDetector,
     PathFinderValidator,
     create_path_finder_detector,
-    create_path_finder_validator
+    create_path_finder_validator,
 )
 
 from .execution_adapter import (
     ArbitrageExecutorAdapter,
     TransactionMonitorAdapter,
     create_execution_adapter,
-    create_transaction_monitor_adapter
+    create_transaction_monitor_adapter,
 )

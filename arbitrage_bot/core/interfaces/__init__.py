@@ -12,9 +12,11 @@ from typing import Dict, Any, Optional
 from decimal import Decimal
 from eth_typing import ChecksumAddress
 
+
 @dataclass
 class Transaction:
     """Represents a blockchain transaction."""
+
     to: ChecksumAddress
     from_: Optional[ChecksumAddress] = None
     value: int = 0
@@ -35,12 +37,14 @@ class Transaction:
             "gasPrice": hex(self.gas_price) if self.gas_price else "0x0",
             "nonce": hex(self.nonce) if self.nonce is not None else None,
             "data": self.data,
-            "chainId": hex(self.chain_id) if self.chain_id is not None else None
+            "chainId": hex(self.chain_id) if self.chain_id is not None else None,
         }
+
 
 @dataclass
 class TokenPair:
     """Represents a trading pair of tokens."""
+
     token0: ChecksumAddress
     token1: ChecksumAddress
     fee: Optional[int] = None
@@ -49,9 +53,11 @@ class TokenPair:
         """String representation of token pair."""
         return f"{self.token0}/{self.token1}"
 
+
 @dataclass
 class LiquidityData:
     """Represents pool liquidity information."""
+
     liquidity: Decimal
     fee: int
     token0_reserve: Decimal
@@ -63,17 +69,21 @@ class LiquidityData:
         """Calculate total value locked in the pool."""
         return self.token0_reserve + self.token1_reserve
 
+
 @dataclass
 class PriceData:
     """Represents token price information."""
+
     price: Decimal
     timestamp: int
     source: str
     confidence: float = 1.0
 
+
 @dataclass
 class ExecutionResult:
     """Represents the result of an arbitrage execution."""
+
     success: bool
     profit: int
     gas_used: int

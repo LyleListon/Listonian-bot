@@ -6,4 +6,4 @@ from ..monitoring import PerformanceTracker, create_performance_tracker
 PortfolioTracker = PerformanceTracker
 create_portfolio_tracker = create_performance_tracker
 
-__all__ = ['PortfolioTracker', 'create_portfolio_tracker']
+__all__ = ["PortfolioTracker", "create_portfolio_tracker"]

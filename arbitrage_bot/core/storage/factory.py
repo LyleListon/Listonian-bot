@@ -8,6 +8,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 class StorageFactory:
     """Factory for creating storage instances."""
 
@@ -43,21 +44,27 @@ class StorageFactory:
 
             try:
                 # Create storage directory if it doesn't exist
-                storage_path = Path(base_path) if base_path else Path(self.config.get('storage_path', 'data/storage'))
+                storage_path = (
+                    Path(base_path)
+                    if base_path
+                    else Path(self.config.get("storage_path", "data/storage"))
+                )
                 storage_path.mkdir(parents=True, exist_ok=True)
 
                 async with self._storage_lock:
                     # Initialize storage instances
                     self.storage_instances = {
-                        'memory': {
-                            'type': 'memory',
-                            'path': str(storage_path),
-                            'timestamp': time.time()
+                        "memory": {
+                            "type": "memory",
+                            "path": str(storage_path),
+                            "timestamp": time.time(),
                         }
                     }
 
                 self.initialized = True
-                logger.debug("Storage factory initialized with path: %s", str(storage_path))
+                logger.debug(
+                    "Storage factory initialized with path: %s", str(storage_path)
+                )
                 return True
 
             except Exception as e:
@@ -70,7 +77,7 @@ class StorageFactory:
             async with self._storage_lock:
                 storage = self.storage_instances.get(name)
                 if storage:
-                    storage['timestamp'] = time.time()
+                    storage["timestamp"] = time.time()
                 return storage.copy() if storage else None
 
         except Exception as e:
@@ -86,7 +93,9 @@ class StorageFactory:
             async with self._storage_lock:
                 # Find expired instances
                 for name, storage in self.storage_instances.items():
-                    if current_time - storage['timestamp'] > self.config.get('storage_ttl', 86400):
+                    if current_time - storage["timestamp"] > self.config.get(
+                        "storage_ttl", 86400
+                    ):
                         to_delete.append(name)
 
                 # Delete expired instances
@@ -101,18 +110,24 @@ class StorageFactory:
         """Get storage metrics."""
         async with self._storage_lock:
             return {
-                'instances': len(self.storage_instances),
-                'initialized': self.initialized
+                "instances": len(self.storage_instances),
+                "initialized": self.initialized,
             }
+
 
 class StorageHub:
     """Central hub for managing different storage instances."""
 
-    def __init__(self, config: Dict[str, Any] = None, base_path: Optional[str] = None, memory_bank: Any = None):
+    def __init__(
+        self,
+        config: Dict[str, Any] = None,
+        base_path: Optional[str] = None,
+        memory_bank: Any = None,
+    ):
         """Initialize storage hub."""
         self.config = config or {}
         if base_path:
-            self.config['storage_path'] = base_path
+            self.config["storage_path"] = base_path
         self.factory = StorageFactory(self.config)
         self.memory_bank = memory_bank
         self.initialized = False
@@ -120,8 +135,8 @@ class StorageHub:
     async def initialize(self) -> bool:
         """Initialize the storage hub."""
         try:
-            if await self.factory.initialize(self.config.get('storage_path')):
-                self.memory_storage = await self.factory.get_storage('memory')
+            if await self.factory.initialize(self.config.get("storage_path")):
+                self.memory_storage = await self.factory.get_storage("memory")
                 self.initialized = True
                 return True
             return False
@@ -143,10 +158,11 @@ class StorageHub:
         """Get storage metrics."""
         return await self.factory.get_metrics()
 
+
 async def create_storage_hub(
     config: Optional[Dict[str, Any]] = None,
     base_path: Optional[str] = None,
-    memory_bank: Any = None
+    memory_bank: Any = None,
 ) -> StorageHub:
     """Create and initialize a storage hub instance."""
     try:

@@ -9,7 +9,7 @@ This module provides functionality for:
 
 import logging
 from typing import List, Dict, Any
-from decimal import Decimal
+# from decimal import Decimal # Unused
 from eth_typing import ChecksumAddress
 from web3 import Web3
 
@@ -18,14 +18,12 @@ from ...utils.async_manager import with_retry, AsyncLock
 
 logger = logging.getLogger(__name__)
 
+
 class AaveFlashLoan:
     """Manages flash loan operations through Aave."""
 
     def __init__(
-        self,
-        w3: Web3Client,
-        pool_address: ChecksumAddress,
-        min_profit: int = 0
+        self, w3: Web3Client, pool_address: ChecksumAddress, min_profit: int = 0
     ):
         """
         Initialize Aave flash loan manager.
@@ -42,44 +40,38 @@ class AaveFlashLoan:
         self._initialized = False
 
         # Aave Pool ABI for flash loan function
-        self.pool_abi = [{
-            "inputs": [
-                {
-                    "internalType": "address[]",
-                    "name": "assets",
-                    "type": "address[]"
-                },
-                {
-                    "internalType": "uint256[]",
-                    "name": "amounts",
-                    "type": "uint256[]"
-                },
-                {
-                    "internalType": "uint256[]",
-                    "name": "modes",
-                    "type": "uint256[]"
-                },
-                {
-                    "internalType": "address",
-                    "name": "onBehalfOf",
-                    "type": "address"
-                },
-                {
-                    "internalType": "bytes",
-                    "name": "params",
-                    "type": "bytes"
-                },
-                {
-                    "internalType": "uint16",
-                    "name": "referralCode",
-                    "type": "uint16"
-                }
-            ],
-            "name": "flashLoan",
-            "outputs": [],
-            "stateMutability": "nonpayable",
-            "type": "function"
-        }]
+        self.pool_abi = [
+            {
+                "inputs": [
+                    {
+                        "internalType": "address[]",
+                        "name": "assets",
+                        "type": "address[]",
+                    },
+                    {
+                        "internalType": "uint256[]",
+                        "name": "amounts",
+                        "type": "uint256[]",
+                    },
+                    {"internalType": "uint256[]", "name": "modes", "type": "uint256[]"},
+                    {
+                        "internalType": "address",
+                        "name": "onBehalfOf",
+                        "type": "address",
+                    },
+                    {"internalType": "bytes", "name": "params", "type": "bytes"},
+                    {
+                        "internalType": "uint16",
+                        "name": "referralCode",
+                        "type": "uint16",
+                    },
+                ],
+                "name": "flashLoan",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function",
+            }
+        ]
 
         # Contract instance will be initialized later
         self.pool_contract = None
@@ -98,8 +90,7 @@ class AaveFlashLoan:
         try:
             # Create contract instance using the Web3Manager's web3 property
             self.pool_contract = self.w3.eth.contract(
-                address=self.pool_address,
-                abi=self.pool_abi
+                address=self.pool_address, abi=self.pool_abi
             )
             self._initialized = True
             logger.info("Aave flash loan manager initialized successfully")
@@ -113,7 +104,7 @@ class AaveFlashLoan:
         tokens: List[str],
         amounts: List[int],
         target_contract: ChecksumAddress,
-        callback_data: bytes
+        callback_data: bytes,
     ) -> Dict[str, Any]:
         """
         Build flash loan transaction.
@@ -148,18 +139,20 @@ class AaveFlashLoan:
 
                 # Build transaction
                 tx = await self.pool_contract.functions.flashLoan(
-                    tokens,          # assets
-                    amounts,         # amounts
-                    modes,           # modes
-                    target_contract, # onBehalfOf
-                    callback_data,   # params
-                    0               # referralCode
-                ).build_transaction({
-                    'from': self.w3.wallet_address,
-                    'gas': 500000,  # Estimate gas * safety margin
-                    'gasPrice': gas_price,
-                    'nonce': await self.w3.eth.get_nonce(self.w3.wallet_address)
-                })
+                    tokens,  # assets
+                    amounts,  # amounts
+                    modes,  # modes
+                    target_contract,  # onBehalfOf
+                    callback_data,  # params
+                    0,  # referralCode
+                ).build_transaction(
+                    {
+                        "from": self.w3.wallet_address,
+                        "gas": 500000,  # Estimate gas * safety margin
+                        "gasPrice": gas_price,
+                        "nonce": await self.w3.eth.get_nonce(self.w3.wallet_address),
+                    }
+                )
 
                 return tx
 
@@ -168,10 +161,7 @@ class AaveFlashLoan:
                 raise
 
     async def validate_flash_loan(
-        self,
-        tokens: List[str],
-        amounts: List[int],
-        expected_profit: int
+        self, tokens: List[str], amounts: List[int], expected_profit: int
     ) -> bool:
         """
         Validate flash loan parameters.
@@ -201,13 +191,15 @@ class AaveFlashLoan:
                 # Get token contract
                 token_contract = self.w3.eth.contract(
                     address=token,
-                    abi=[{
-                        "constant": True,
-                        "inputs": [{"name": "_owner", "type": "address"}],
-                        "name": "balanceOf",
-                        "outputs": [{"name": "balance", "type": "uint256"}],
-                        "type": "function"
-                    }]
+                    abi=[
+                        {
+                            "constant": True,
+                            "inputs": [{"name": "_owner", "type": "address"}],
+                            "name": "balanceOf",
+                            "outputs": [{"name": "balance", "type": "uint256"}],
+                            "type": "function",
+                        }
+                    ],
                 )
 
                 # Check pool liquidity
@@ -232,9 +224,9 @@ class AaveFlashLoan:
         """Clean up resources."""
         pass  # No cleanup needed for Aave flash loans
 
+
 async def create_aave_flash_loan(
-    w3: Web3Client,
-    config: Dict[str, Any]
+    w3: Web3Client, config: Dict[str, Any]
 ) -> AaveFlashLoan:
     """
     Create and initialize an AaveFlashLoan instance.
@@ -248,17 +240,17 @@ async def create_aave_flash_loan(
     """
     try:
         # Validate configuration
-        if not config.get('flash_loan', {}).get('aave_pool'):
+        if not config.get("flash_loan", {}).get("aave_pool"):
             raise ValueError("Aave pool address not configured")
 
         # Convert pool address to checksum format
-        pool_address = Web3.to_checksum_address(config['flash_loan']['aave_pool'])
+        pool_address = Web3.to_checksum_address(config["flash_loan"]["aave_pool"])
 
         # Create instance
         flash_loan = AaveFlashLoan(
             w3=w3,
             pool_address=pool_address,
-            min_profit=int(config.get('flash_loan', {}).get('min_profit', '0'))
+            min_profit=int(config.get("flash_loan", {}).get("min_profit", "0")),
         )
 
         # Initialize the instance

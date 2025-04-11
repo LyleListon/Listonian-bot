@@ -17,15 +17,16 @@ from .schema import SchemaValidator
 
 logger = logging.getLogger(__name__)
 
-CORE_DIRECTORIES = ['trades', 'metrics', 'state']
+CORE_DIRECTORIES = ["trades", "metrics", "state"]
 CORE_FILES = [
-    'projectbrief.md',
-    'productContext.md',
-    'systemPatterns.md',
-    'techContext.md',
-    'activeContext.md',
-    'progress.md'
+    "projectbrief.md",
+    "productContext.md",
+    "systemPatterns.md",
+    "techContext.md",
+    "activeContext.md",
+    "progress.md",
 ]
+
 
 class MemoryBankInitializer:
     """Handles initialization and verification of the memory bank system."""
@@ -36,7 +37,9 @@ class MemoryBankInitializer:
         self._lock = asyncio.Lock()
         self._monitor: Optional[MemoryBankMonitor] = None
         self._validator: Optional[SchemaValidator] = None
-        self._backup_path = self._base_path / '.backups' / datetime.now().strftime('%Y%m%d_%H%M%S')
+        self._backup_path = (
+            self._base_path / ".backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
+        )
 
     async def initialize(self, preserve_data: bool = True) -> None:
         """Initialize the memory bank system.
@@ -90,7 +93,7 @@ class MemoryBankInitializer:
                 shutil.copytree(
                     self._base_path,
                     self._backup_path,
-                    ignore=shutil.ignore_patterns('.backups', '__pycache__', '*.pyc')
+                    ignore=shutil.ignore_patterns(".backups", "__pycache__", "*.pyc"),
                 )
                 logger.info(f"Backup created at {self._backup_path}")
         except Exception as e:
@@ -136,8 +139,10 @@ class MemoryBankInitializer:
             for file_name in CORE_FILES:
                 file_path = self._base_path / file_name
                 if not file_path.exists():
-                    with open(file_path, 'w') as f:
-                        f.write(f"# Listonian Arbitrage Bot - {file_name.replace('.md', '')}\n\n")
+                    with open(file_path, "w") as f:
+                        f.write(
+                            f"# Listonian Arbitrage Bot - {file_name.replace('.md', '')}\n\n"
+                        )
                         f.write(f"Created: {timestamp}\n\n")
                         f.write("[Content to be added]\n")
                     logger.debug(f"Core file created: {file_path}")
@@ -151,14 +156,14 @@ class MemoryBankInitializer:
 
         try:
             # Validate trades
-            trades_dir = self._base_path / 'trades'
-            for trade_file in trades_dir.glob('*.json'):
-                await self._validator.validate_file(trade_file, 'trade')
+            trades_dir = self._base_path / "trades"
+            for trade_file in trades_dir.glob("*.json"):
+                await self._validator.validate_file(trade_file, "trade")
 
             # Validate metrics
-            metrics_file = self._base_path / 'metrics' / 'metrics.json'
+            metrics_file = self._base_path / "metrics" / "metrics.json"
             if metrics_file.exists():
-                await self._validator.validate_file(metrics_file, 'metrics')
+                await self._validator.validate_file(metrics_file, "metrics")
 
             logger.info("Data validation completed successfully")
 
@@ -193,9 +198,9 @@ class MemoryBankInitializer:
                 logger.error(f"Error cleaning up memory bank initializer: {e}")
                 raise
 
+
 async def initialize_memory_bank(
-    base_path: Path,
-    preserve_data: bool = True
+    base_path: Path, preserve_data: bool = True
 ) -> HealthStatus:
     """Initialize the memory bank system.
 

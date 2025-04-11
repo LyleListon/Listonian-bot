@@ -18,13 +18,17 @@ from ..web3.web3_manager import Web3Manager
 
 logger = logging.getLogger(__name__)
 
+
 class DEXProtocol(Enum):
     """Supported DEX protocols."""
+
     V2 = "v2"
     V3 = "v3"
 
+
 class DEXType(Enum):
     """Supported DEX types."""
+
     PANCAKESWAP = "pancakeswap"
     BASESWAP = "baseswap"
     SWAPBASED = "swapbased"
@@ -32,6 +36,7 @@ class DEXType(Enum):
     ROCKETSWAP = "rocketswap"
     AERODROME = "aerodrome"
     SUSHISWAP = "sushiswap"
+
 
 class DEXFactory:
     """Factory for creating and managing DEX instances."""
@@ -44,7 +49,7 @@ class DEXFactory:
         DEXType.UNISWAP_V3: DEXProtocol.V3,
         DEXType.ROCKETSWAP: DEXProtocol.V2,
         DEXType.AERODROME: DEXProtocol.V2,
-        DEXType.SUSHISWAP: DEXProtocol.V2
+        DEXType.SUSHISWAP: DEXProtocol.V2,
     }
 
     # Implementation mapping
@@ -54,43 +59,30 @@ class DEXFactory:
         DEXType.SWAPBASED: SwapBasedDEX,
         DEXType.UNISWAP_V3: UniswapV3DEX,
         DEXType.ROCKETSWAP: RocketSwapDEX,
-        DEXType.AERODROME: AerodromeDEX
-,
-        DEXType.SUSHISWAP: SushiswapDEX
+        DEXType.AERODROME: AerodromeDEX,
+        DEXType.SUSHISWAP: SushiswapDEX,
     }
 
     # Required config keys for each protocol
-    V2_REQUIRED_CONFIG = {
-        'router': str,
-        'factory': str,
-        'fee': int
-    }
+    V2_REQUIRED_CONFIG = {"router": str, "factory": str, "fee": int}
 
-    V3_REQUIRED_CONFIG = {
-        'router': str,
-        'factory': str,
-        'quoter': str,
-        'fee': int
-    }
+    V3_REQUIRED_CONFIG = {"router": str, "factory": str, "quoter": str, "fee": int}
 
     @classmethod
     def create_dex(
-        cls,
-        dex_type: DEXType,
-        web3_manager: Web3Manager,
-        config: Dict[str, Any]
+        cls, dex_type: DEXType, web3_manager: Web3Manager, config: Dict[str, Any]
     ) -> BaseDEX:
         """
         Create a DEX instance.
-        
+
         Args:
             dex_type: Type of DEX to create
             web3_manager: Web3Manager instance
             config: DEX configuration
-            
+
         Returns:
             BaseDEX: Configured DEX instance
-            
+
         Raises:
             ValueError: If configuration is invalid
         """
@@ -110,20 +102,18 @@ class DEXFactory:
 
     @classmethod
     def create_all(
-        cls,
-        web3_manager: Web3Manager,
-        configs: Dict[str, Dict[str, Any]]
+        cls, web3_manager: Web3Manager, configs: Dict[str, Dict[str, Any]]
     ) -> Dict[str, BaseDEX]:
         """
         Create multiple DEX instances.
-        
+
         Args:
             web3_manager: Web3Manager instance
             configs: Dictionary mapping DEX names to configs
-            
+
         Returns:
             Dict[str, BaseDEX]: Dictionary mapping DEX names to instances
-            
+
         Raises:
             ValueError: If any configuration is invalid
         """
@@ -131,16 +121,12 @@ class DEXFactory:
         for dex_name, config in configs.items():
             try:
                 dex_type = DEXType(dex_name.lower())
-                if not config.get('enabled', True):
+                if not config.get("enabled", True):
                     logger.info(f"Skipping disabled DEX {dex_name}")
                     continue
-                    
+
                 if dex_type in cls.IMPLEMENTATION_MAP:
-                    dexes[dex_name] = cls.create_dex(
-                        dex_type,
-                        web3_manager,
-                        config
-                    )
+                    dexes[dex_name] = cls.create_dex(dex_type, web3_manager, config)
                 else:
                     logger.warning(f"Skipping unsupported DEX type: {dex_name}")
             except ValueError as e:
@@ -152,16 +138,17 @@ class DEXFactory:
     def _validate_config(cls, config: Dict[str, Any], protocol: DEXProtocol) -> None:
         """
         Validate DEX configuration.
-        
+
         Args:
             config: Configuration to validate
             protocol: DEX protocol
-            
+
         Raises:
             ValueError: If configuration is invalid
         """
         required_config = (
-            cls.V3_REQUIRED_CONFIG if protocol == DEXProtocol.V3
+            cls.V3_REQUIRED_CONFIG
+            if protocol == DEXProtocol.V3
             else cls.V2_REQUIRED_CONFIG
         )
 
@@ -176,24 +163,26 @@ class DEXFactory:
                 )
 
         # Validate addresses
-        for key in ['router', 'factory']:
+        for key in ["router", "factory"]:
             if not cls._is_valid_address(config[key]):
                 raise ValueError(f"Invalid address for {key}: {config[key]}")
 
         if protocol == DEXProtocol.V3:
-            if not cls._is_valid_address(config['quoter']):
+            if not cls._is_valid_address(config["quoter"]):
                 raise ValueError(f"Invalid quoter address: {config['quoter']}")
 
         # Validate fee
-        if not 0 <= config['fee'] <= 10000:
-            raise ValueError(f"Invalid fee: {config['fee']}. Must be between 0 and 10000")
+        if not 0 <= config["fee"] <= 10000:
+            raise ValueError(
+                f"Invalid fee: {config['fee']}. Must be between 0 and 10000"
+            )
 
     @staticmethod
     def _is_valid_address(address: str) -> bool:
         """Check if address is valid."""
         if not isinstance(address, str):
             return False
-        if not address.startswith('0x'):
+        if not address.startswith("0x"):
             return False
         try:
             int(address, 16)
@@ -215,6 +204,7 @@ class DEXFactory:
     def get_required_config(cls, protocol: DEXProtocol) -> Dict[str, type]:
         """Get required config for protocol."""
         return (
-            cls.V3_REQUIRED_CONFIG if protocol == DEXProtocol.V3
+            cls.V3_REQUIRED_CONFIG
+            if protocol == DEXProtocol.V3
             else cls.V2_REQUIRED_CONFIG
         )

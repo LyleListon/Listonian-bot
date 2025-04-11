@@ -7,6 +7,7 @@ from web3 import Web3
 from .base_dex_v3 import BaseDEXV3
 from ..web3.web3_manager import Web3Manager
 
+
 class RocketSwapV3(BaseDEXV3):
     """RocketSwap V3 DEX implementation."""
 
@@ -15,7 +16,9 @@ class RocketSwapV3(BaseDEXV3):
         super().__init__(web3_manager, config)
         self.name = "RocketSwap"
 
-    async def get_quote_from_quoter(self, amount_in: int, path: List[str]) -> Optional[int]:
+    async def get_quote_from_quoter(
+        self, amount_in: int, path: List[str]
+    ) -> Optional[int]:
         """Get quote from quoter contract if available."""
         if not self.quoter:
             return None
@@ -24,8 +27,7 @@ class RocketSwapV3(BaseDEXV3):
             # First try quoteExactInput
             encoded_path = self._encode_path(path)
             contract_func = self.quoter.functions.quoteExactInput(
-                encoded_path,
-                amount_in
+                encoded_path, amount_in
             )
             result = await self.web3_manager.call_contract_function(contract_func)
             if result:
@@ -37,7 +39,7 @@ class RocketSwapV3(BaseDEXV3):
                 Web3.to_checksum_address(path[1]),  # tokenOut
                 self.fee,  # fee
                 amount_in,  # amountIn
-                0  # sqrtPriceLimitX96 (0 for no limit)
+                0,  # sqrtPriceLimitX96 (0 for no limit)
             )
             result = await self.web3_manager.call_contract_function(contract_func)
             if result:
@@ -49,7 +51,9 @@ class RocketSwapV3(BaseDEXV3):
             self.logger.error("Failed to get quote: %s", str(e))
             return None
 
-    async def get_quote_with_impact(self, amount_in: int, path: List[str]) -> Optional[Dict[str, Any]]:
+    async def get_quote_with_impact(
+        self, amount_in: int, path: List[str]
+    ) -> Optional[Dict[str, Any]]:
         """Get quote with price impact calculation."""
         try:
             # Get quote from quoter
@@ -66,7 +70,9 @@ class RocketSwapV3(BaseDEXV3):
 
             # Calculate impact and validate
             try:
-                impact = 1 - (int(amount_out) * small_amount) / (int(baseline_out) * amount_in)
+                impact = 1 - (int(amount_out) * small_amount) / (
+                    int(baseline_out) * amount_in
+                )
                 if impact < -1 or impact > 1:
                     self.logger.warning("Invalid price impact calculated: %s", impact)
                     return None
@@ -81,7 +87,7 @@ class RocketSwapV3(BaseDEXV3):
                     Web3.to_checksum_address(path[1]),  # tokenOut
                     self.fee,  # fee
                     amount_in,  # amountIn
-                    0  # sqrtPriceLimitX96 (0 for no limit)
+                    0,  # sqrtPriceLimitX96 (0 for no limit)
                 )
                 result = await self.web3_manager.call_contract_function(contract_func)
                 gas_estimate = int(result) if isinstance(result, str) else 250000
@@ -90,11 +96,15 @@ class RocketSwapV3(BaseDEXV3):
                 gas_estimate = 250000  # Use default if estimate fails
 
             return {
-                'amount_out': str(amount_out),
-                'impact': str(float(impact)),  # Convert to float for JSON serialization
-                'fee_rate': str(float(self.fee) / 1000000),  # Convert to float to avoid decimal division
-                'fee': str(self.fee),  # Include raw fee value
-                'estimated_gas': str(gas_estimate)  # Use actual gas estimate from quoter
+                "amount_out": str(amount_out),
+                "impact": str(float(impact)),  # Convert to float for JSON serialization
+                "fee_rate": str(
+                    float(self.fee) / 1000000
+                ),  # Convert to float to avoid decimal division
+                "fee": str(self.fee),  # Include raw fee value
+                "estimated_gas": str(
+                    gas_estimate
+                ),  # Use actual gas estimate from quoter
             }
 
         except Exception as e:
@@ -111,8 +121,7 @@ class RocketSwapV3(BaseDEXV3):
             # Get quote for 1 token worth of WETH
             amount_in = 10**18  # 1 WETH
             quote = await self.get_quote_from_quoter(
-                amount_in,
-                [self.weth_address, token_address]
+                amount_in, [self.weth_address, token_address]
             )
 
             if quote:
@@ -143,13 +152,13 @@ class RocketSwapV3(BaseDEXV3):
             from_block = current_block - 7200  # ~24h of blocks
 
             # Get events
-            events = await self._get_pool_events(pool, 'Swap', from_block)
+            events = await self._get_pool_events(pool, "Swap", from_block)
 
             # Calculate volume
             volume = Decimal(0)
             for event in events:
-                amount0 = abs(Decimal(event['args']['amount0']))
-                amount1 = abs(Decimal(event['args']['amount1']))
+                amount0 = abs(Decimal(event["args"]["amount0"]))
+                amount1 = abs(Decimal(event["args"]["amount1"]))
                 volume += max(amount0, amount1)
 
             return volume
@@ -164,32 +173,35 @@ class RocketSwapV3(BaseDEXV3):
             total_liquidity = Decimal(0)
 
             # Get event signature
-            event_signature = self._get_event_signature('PoolCreated')
-            
+            event_signature = self._get_event_signature("PoolCreated")
+
             # Get logs using eth_getLogs
-            logs = await self.web3_manager.w3.eth.get_logs({
-                'address': self.factory_address,
-                'fromBlock': 0,
-                'toBlock': 'latest',
-                'topics': [event_signature]
-            })
+            logs = await self.web3_manager.w3.eth.get_logs(
+                {
+                    "address": self.factory_address,
+                    "fromBlock": 0,
+                    "toBlock": "latest",
+                    "topics": [event_signature],
+                }
+            )
 
             # Limit to most recent 100 pools for performance
             for log in logs[-100:]:
                 try:
                     # Process log using contract event
                     decoded = await self._process_log(
-                        self.factory.events.PoolCreated(),
-                        dict(log)
+                        self.factory.events.PoolCreated(), dict(log)
                     )
-                    pool_address = Web3.to_checksum_address(decoded['args']['pool'])
+                    pool_address = Web3.to_checksum_address(decoded["args"]["pool"])
                     pool = await self._get_pool_contract(pool_address)
                     if pool:
                         liquidity = await self._get_pool_liquidity(pool)
                         total_liquidity += liquidity
 
                 except Exception as e:
-                    self.logger.warning("Failed to get liquidity for pool %s: %s", pool_address, str(e))
+                    self.logger.warning(
+                        "Failed to get liquidity for pool %s: %s", pool_address, str(e)
+                    )
                     continue
 
             return total_liquidity

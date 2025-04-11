@@ -15,6 +15,7 @@ from ....utils.async_manager import AsyncLock, with_retry
 
 logger = logging.getLogger(__name__)
 
+
 class AttackDetector:
     """Detects and analyzes potential MEV attacks."""
 
@@ -35,12 +36,18 @@ class AttackDetector:
         self._request_lock = AsyncLock()
 
         # Initialize detection parameters
-        self.sandwich_threshold = config.get('mev_protection', {}).get('sandwich_threshold', 0.85)
-        self.frontrun_threshold = config.get('mev_protection', {}).get('frontrun_threshold', 0.75)
-        self.max_time_diff = config.get('mev_protection', {}).get('max_time_diff', 2)
+        self.sandwich_threshold = config.get("mev_protection", {}).get(
+            "sandwich_threshold", 0.85
+        )
+        self.frontrun_threshold = config.get("mev_protection", {}).get(
+            "frontrun_threshold", 0.75
+        )
+        self.max_time_diff = config.get("mev_protection", {}).get("max_time_diff", 2)
 
     @with_retry(retries=3, delay=1.0)
-    async def scan_for_attacks(self, start_block: Optional[int] = None, blocks_to_scan: int = 10) -> List[Dict[str, Any]]:
+    async def scan_for_attacks(
+        self, start_block: Optional[int] = None, blocks_to_scan: int = 10
+    ) -> List[Dict[str, Any]]:
         """
         Scan recent blocks for potential MEV attacks.
 
@@ -60,7 +67,7 @@ class AttackDetector:
             try:
                 # Get current block number
                 end_block = await self.web3_manager.get_block_number()
-                
+
                 # Calculate start block if not provided
                 if start_block is None:
                     start_block = end_block - blocks_to_scan
@@ -90,49 +97,67 @@ class AttackDetector:
         """
         attacks = []
         try:
-            txs = block.get('transactions', [])
-            
+            txs = block.get("transactions", [])
+
             # Check for sandwich attacks
             for i in range(len(txs) - 2):
-                if await self._is_sandwich_pattern(txs[i:i+3]):
-                    attacks.append({
-                        'type': 'sandwich',
-                        'severity': 'HIGH',
-                        'block_number': block['number'],
-                        'details': f"Potential sandwich attack detected in block {block['number']}",
-                        'confidence': self.sandwich_threshold
-                    })
+                if await self._is_sandwich_pattern(txs[i : i + 3]):
+                    attacks.append(
+                        {
+                            "type": "sandwich",
+                            "severity": "HIGH",
+                            "block_number": block["number"],
+                            "details": f"Potential sandwich attack detected in block {block['number']}",
+                            "confidence": self.sandwich_threshold,
+                        }
+                    )
 
             # Check for frontrunning
             for i in range(len(txs) - 1):
-                if await self._is_frontrun_pattern(txs[i:i+2]):
-                    attacks.append({
-                        'type': 'frontrun',
-                        'severity': 'MEDIUM',
-                        'block_number': block['number'],
-                        'details': f"Potential frontrunning detected in block {block['number']}",
-                        'confidence': self.frontrun_threshold
-                    })
+                if await self._is_frontrun_pattern(txs[i : i + 2]):
+                    attacks.append(
+                        {
+                            "type": "frontrun",
+                            "severity": "MEDIUM",
+                            "block_number": block["number"],
+                            "details": f"Potential frontrunning detected in block {block['number']}",
+                            "confidence": self.frontrun_threshold,
+                        }
+                    )
 
             # Analyze timing patterns
             if len(txs) > 1:
-                block_num = int(block['number'], 16) if isinstance(block['number'], str) else block['number']
+                block_num = (
+                    int(block["number"], 16)
+                    if isinstance(block["number"], str)
+                    else block["number"]
+                )
                 prev_block = await self.web3_manager.get_block(block_num - 1)
-                
+
                 # Convert timestamps to integers
-                current_timestamp = int(block['timestamp'], 16) if isinstance(block['timestamp'], str) else block['timestamp']
-                prev_timestamp = int(prev_block['timestamp'], 16) if isinstance(prev_block['timestamp'], str) else prev_block['timestamp']
-                
+                current_timestamp = (
+                    int(block["timestamp"], 16)
+                    if isinstance(block["timestamp"], str)
+                    else block["timestamp"]
+                )
+                prev_timestamp = (
+                    int(prev_block["timestamp"], 16)
+                    if isinstance(prev_block["timestamp"], str)
+                    else prev_block["timestamp"]
+                )
+
                 time_diff = current_timestamp - prev_timestamp
-                
+
                 if time_diff < self.max_time_diff:
-                    attacks.append({
-                        'type': 'timing',
-                        'severity': 'LOW',
-                        'block_number': block['number'],
-                        'details': f"Suspicious block timing detected: {time_diff}s",
-                        'confidence': 0.6
-                    })
+                    attacks.append(
+                        {
+                            "type": "timing",
+                            "severity": "LOW",
+                            "block_number": block["number"],
+                            "details": f"Suspicious block timing detected: {time_diff}s",
+                            "confidence": 0.6,
+                        }
+                    )
 
             return attacks
 
@@ -159,9 +184,9 @@ class AttackDetector:
             # 2. Target transaction
             # 3. High gas price sell
             return (
-                txs[0]['gasPrice'] > txs[1]['gasPrice'] and
-                txs[2]['gasPrice'] > txs[1]['gasPrice'] and
-                await self._share_token_pair(txs[0], txs[2])
+                txs[0]["gasPrice"] > txs[1]["gasPrice"]
+                and txs[2]["gasPrice"] > txs[1]["gasPrice"]
+                and await self._share_token_pair(txs[0], txs[2])
             )
         except Exception:
             return False
@@ -183,10 +208,9 @@ class AttackDetector:
             # Check for typical frontrunning pattern:
             # 1. High gas price copy of target tx
             # 2. Target transaction
-            return (
-                txs[0]['gasPrice'] > txs[1]['gasPrice'] and
-                await self._share_token_pair(txs[0], txs[1])
-            )
+            return txs[0]["gasPrice"] > txs[1][
+                "gasPrice"
+            ] and await self._share_token_pair(txs[0], txs[1])
         except Exception:
             return False
 
@@ -205,9 +229,9 @@ class AttackDetector:
             # This is a simplified check - in production, you'd decode the transaction
             # input data to determine the actual tokens being traded
             return (
-                tx1.get('to') == tx2.get('to') and
-                len(tx1.get('input', '')) > 10 and
-                len(tx2.get('input', '')) > 10
+                tx1.get("to") == tx2.get("to")
+                and len(tx1.get("input", "")) > 10
+                and len(tx2.get("input", "")) > 10
             )
         except Exception:
             return False

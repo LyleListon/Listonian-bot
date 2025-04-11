@@ -19,10 +19,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 # --- Integration Imports ---
-from typing import Optional # Add Optional for global type hint
+from typing import Optional  # Add Optional for global type hint
+
 # Remove conflicting import from arbitrage_bot.dashboard.metrics_service
-from .core.dependencies import register_services, lifespan # Import registry functions
-from .dashboard.routes import websocket as websocket_router # Import the router
+from .core.dependencies import register_services, lifespan  # Import registry functions
+from .dashboard.routes import websocket as websocket_router  # Import the router
+
 # --- End Integration Imports ---
 
 
@@ -37,31 +39,36 @@ from arbitrage_bot.utils.config_loader import load_config, save_config
 from .components import create_production_components
 
 
-
 logger.info("=== About to create FastAPI app with lifespan context manager ===")
 logger.info("lifespan type: %s", type(lifespan).__name__)
 
 app = FastAPI(lifespan=lifespan)
 
 # --- Include WebSocket Routes ---
-app.include_router(websocket_router.router) # Remove prefix to match static files
+app.include_router(websocket_router.router)  # Remove prefix to match static files
 # --- End Include WebSocket Routes ---
 
 # Get the directory containing this file
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Mount static files
-app.mount("/static", StaticFiles(directory=os.path.join(current_dir, "static")), name="static")
+app.mount(
+    "/static", StaticFiles(directory=os.path.join(current_dir, "static")), name="static"
+)
+
 
 class TradingConfig(BaseModel):
     """Trading configuration parameters."""
+
     slippage: float
     maxLiquidity: int
     minProfit: float
     maxGasPrice: int
 
+
 class ConnectionManager:
     """Manages WebSocket connections."""
+
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
         self.update_task = None
@@ -105,18 +112,18 @@ class ConnectionManager:
                 status = await get_status()
 
                 # Broadcast update
-                await self.broadcast({
-                    "type": "update",
-                    "metrics": metrics,
-                    "status": status
-                })
+                await self.broadcast(
+                    {"type": "update", "metrics": metrics, "status": status}
+                )
 
                 await asyncio.sleep(1)  # Update every second
         except asyncio.CancelledError:
             pass
 
+
 class SystemComponents:
     """Holds system component instances."""
+
     def __init__(self):
         """Initialize system components."""
         self.web3_manager = None
@@ -125,8 +132,10 @@ class SystemComponents:
         self.memory_bank = None
         self.system_service = None
 
+
 system = SystemComponents()
 manager = ConnectionManager()
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -165,9 +174,12 @@ async def startup_event():
         logger.info("=== startup_event finished ===")
 
     except Exception as e:
-        logger.error(f"Failed to initialize components during startup: {e}", exc_info=True)
+        logger.error(
+            f"Failed to initialize components during startup: {e}", exc_info=True
+        )
         # Optionally re-raise or handle differently depending on desired behavior
-        raise # Re-raise the exception to halt startup on error
+        raise  # Re-raise the exception to halt startup on error
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -180,10 +192,12 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
 
+
 @app.get("/")
 async def read_root():
     """Serve the dashboard HTML."""
     return FileResponse(os.path.join(current_dir, "static/index.html"))
+
 
 @app.get("/api/config")
 async def get_config():
@@ -193,8 +207,9 @@ async def get_config():
         "slippage": config.get("trading", {}).get("max_slippage", 0.5),
         "maxLiquidity": config.get("trading", {}).get("max_liquidity_usage", 30),
         "minProfit": config.get("trading", {}).get("min_profit_threshold", 0.01),
-        "maxGasPrice": config.get("trading", {}).get("max_gas_price", 500)
+        "maxGasPrice": config.get("trading", {}).get("max_gas_price", 500),
     }
+
 
 @app.post("/api/config")
 async def update_config(trading_config: TradingConfig):
@@ -207,12 +222,14 @@ async def update_config(trading_config: TradingConfig):
         if "trading" not in config:
             config["trading"] = {}
 
-        config["trading"].update({
-            "max_slippage": trading_config.slippage,
-            "max_liquidity_usage": trading_config.maxLiquidity,
-            "min_profit_threshold": trading_config.minProfit,
-            "max_gas_price": trading_config.maxGasPrice
-        })
+        config["trading"].update(
+            {
+                "max_slippage": trading_config.slippage,
+                "max_liquidity_usage": trading_config.maxLiquidity,
+                "min_profit_threshold": trading_config.minProfit,
+                "max_gas_price": trading_config.maxGasPrice,
+            }
+        )
 
         # Save updated config
         await save_config(config)
@@ -221,7 +238,9 @@ async def update_config(trading_config: TradingConfig):
         if system.flash_loan_manager:
             await system.flash_loan_manager.update_settings(
                 max_slippage=Decimal(str(trading_config.slippage / 100)),
-                min_profit_threshold=system.web3_manager.to_wei(trading_config.minProfit, 'ether')
+                min_profit_threshold=system.web3_manager.to_wei(
+                    trading_config.minProfit, "ether"
+                ),
             )
 
         if system.market_analyzer:
@@ -231,25 +250,28 @@ async def update_config(trading_config: TradingConfig):
 
         if system.arbitrage_executor:
             await system.arbitrage_executor.update_settings(
-                max_gas_price=system.web3_manager.to_wei(trading_config.maxGasPrice, 'gwei')
+                max_gas_price=system.web3_manager.to_wei(
+                    trading_config.maxGasPrice, "gwei"
+                )
             )
 
         # Update memory bank metrics
-        await system.memory_bank.update_system_metrics({
-            "config_updated": True,
-            "settings": {
-                "slippage": trading_config.slippage,
-                "max_liquidity": trading_config.maxLiquidity,
-                "min_profit": trading_config.minProfit,
-                "max_gas_price": trading_config.maxGasPrice
+        await system.memory_bank.update_system_metrics(
+            {
+                "config_updated": True,
+                "settings": {
+                    "slippage": trading_config.slippage,
+                    "max_liquidity": trading_config.maxLiquidity,
+                    "min_profit": trading_config.minProfit,
+                    "max_gas_price": trading_config.maxGasPrice,
+                },
             }
-        })
+        )
 
         # Broadcast update to all connected clients
-        await manager.broadcast({
-            "type": "config_update",
-            "config": trading_config.dict()
-        })
+        await manager.broadcast(
+            {"type": "config_update", "config": trading_config.dict()}
+        )
 
         logger.info("Trading configuration updated successfully")
         return {"status": "success"}
@@ -258,6 +280,7 @@ async def update_config(trading_config: TradingConfig):
         logger.error(f"Failed to update configuration: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 async def get_metrics():
     """Get real-time system metrics."""
     try:
@@ -265,7 +288,7 @@ async def get_metrics():
         wallet_balance = await system.web3_manager.get_balance(
             system.web3_manager.wallet_address
         )
-        wallet_balance_eth = system.web3_manager.from_wei(wallet_balance, 'ether')
+        wallet_balance_eth = system.web3_manager.from_wei(wallet_balance, "ether")
 
         # Get execution stats
         execution_stats = await system.arbitrage_executor.get_execution_stats()
@@ -284,12 +307,13 @@ async def get_metrics():
             "averageProfit": execution_stats.average_profit,
             "totalExecutions": execution_stats.total_executions,
             "currentState": current_state,
-            "metrics": metrics
+            "metrics": metrics,
         }
 
     except Exception as e:
         logger.error(f"Failed to fetch metrics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 async def get_status():
     """Get system status and health check."""
@@ -300,18 +324,21 @@ async def get_status():
         return {
             "status": "running",
             "web3_connected": await system.web3_manager.is_connected(),
-            "components_initialized": all([
-                system.web3_manager,
-                system.flash_loan_manager,
-                system.market_analyzer,
-                system.arbitrage_executor
-            ]),
+            "components_initialized": all(
+                [
+                    system.web3_manager,
+                    system.flash_loan_manager,
+                    system.market_analyzer,
+                    system.arbitrage_executor,
+                ]
+            ),
             "current_block": await system.web3_manager.get_block_number(),
-            "memory_bank_status": memory_bank_status
+            "memory_bank_status": memory_bank_status,
         }
     except Exception as e:
         logger.error(f"Failed to get system status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/system/detailed")
 async def get_detailed_system_metrics():
@@ -330,12 +357,13 @@ async def get_detailed_system_metrics():
             "detailed_metrics": detailed_metrics,
             "resource_usage": resource_usage,
             "health_check": health_check,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
     except Exception as e:
         logger.error(f"Failed to get detailed system metrics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/trades")
 async def get_trades():
@@ -345,16 +373,15 @@ async def get_trades():
         state = await system.memory_bank.get_current_state()
         trades = state.get("trade_history", [])
 
-        return {
-            "trades": trades,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        return {"trades": trades, "timestamp": datetime.utcnow().isoformat()}
 
     except Exception as e:
         logger.error(f"Failed to get trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 if __name__ == "__main__":
     import uvicorn
+
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host="0.0.0.0", port=9050)

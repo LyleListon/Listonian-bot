@@ -9,13 +9,14 @@ import asyncio
 from .base_dex_v2 import BaseDEXV2
 from ..web3.web3_manager import Web3Manager
 
+
 class BaseSwap(BaseDEXV2):
     """BaseSwap DEX implementation."""
 
     def __init__(self, web3_manager: Web3Manager, config: Dict[str, Any]):
         """Initialize BaseSwap interface."""
         super().__init__(web3_manager, config)
-        self._enabled = config.get('enabled', False)
+        self._enabled = config.get("enabled", False)
 
     async def is_enabled(self) -> bool:
         """Check if DEX is enabled."""
@@ -26,35 +27,33 @@ class BaseSwap(BaseDEXV2):
         try:
             # Initialize contracts with checksummed addresses
             self.router = await self.web3_manager.get_contract(
-                address=self.router_address,
-                abi_name="baseswap_router"
+                address=self.router_address, abi_name="baseswap_router"
             )
             self.factory = await self.web3_manager.get_contract(
-                address=self.factory_address,
-                abi_name="baseswap_factory"
+                address=self.factory_address, abi_name="baseswap_factory"
             )
-            
+
             # Validate contracts are working
             try:
                 # Test factory contract
                 await self.web3_manager.call_contract_function(
                     self.factory.functions.allPairsLength
                 )
-                
+
                 # Test router contract
                 await self.web3_manager.call_contract_function(
                     self.router.functions.factory
                 )
-                
+
                 self.initialized = True
                 self.logger.info("%s interface initialized successfully", self.name)
                 return True
-                
+
             except Exception as e:
                 self.logger.error("Contract validation failed: %s", str(e))
                 self.initialized = False
                 return False
-            
+
         except Exception as e:
             self._handle_error(e, "BaseSwap initialization")
             return False
@@ -68,17 +67,17 @@ class BaseSwap(BaseDEXV2):
         deadline: int,
         gas: Optional[int] = None,
         maxFeePerGas: Optional[int] = None,
-        maxPriorityFeePerGas: Optional[int] = None
+        maxPriorityFeePerGas: Optional[int] = None,
     ) -> TxReceipt:
         """Execute a swap."""
         try:
             # Validate inputs
             self._validate_path(path)
             self._validate_amounts(amount_in=amount_in, amount_out_min=amount_out_min)
-            
+
             # Always use web3_manager's wallet address as recipient
             recipient = self.web3_manager.wallet_address
-            
+
             # Get initial balances
             token_in = await self.web3_manager.get_token_contract(path[0])
             token_out = await self.web3_manager.get_token_contract(path[-1])
@@ -88,43 +87,48 @@ class BaseSwap(BaseDEXV2):
             balance_out_before = await self.web3_manager.call_contract_function(
                 token_out.functions.balanceOf, recipient
             )
-            
+
             # Check allowance and approve if needed
             allowance = await self.web3_manager.call_contract_function(
-                token_in.functions.allowance,
-                recipient,
-                self.router_address
+                token_in.functions.allowance, recipient, self.router_address
             )
-            
+
             if allowance < amount_in:
-                self.logger.info("Approving %s for router %s", path[0], self.router_address)
+                self.logger.info(
+                    "Approving %s for router %s", path[0], self.router_address
+                )
                 approve_tx = await self.web3_manager.build_and_send_transaction(
                     token_in,
-                    'approve',
+                    "approve",
                     self.router_address,
-                    amount_in * 2  # Double for future use
+                    amount_in * 2,  # Double for future use
                 )
-                if not approve_tx or approve_tx['status'] != 1:
+                if not approve_tx or approve_tx["status"] != 1:
                     raise Exception("Token approval failed")
-            
+
             # Get quote for gas estimation
             quote = await self.get_quote_with_impact(amount_in, path)
             if not quote:
                 raise Exception("Failed to get quote for swap")
-            
+
             # Calculate gas limit
-            gas_limit = gas or int(quote['estimated_gas'] * 1.2)  # 20% buffer if not specified
-            
+            gas_limit = gas or int(
+                quote["estimated_gas"] * 1.2
+            )  # 20% buffer if not specified
+
             # Get gas parameters if not provided
             if not all([maxFeePerGas, maxPriorityFeePerGas]):
-                block = await self.web3_manager.w3.eth.get_block('latest')
-                maxFeePerGas = maxFeePerGas or block['baseFeePerGas'] * 2
-                maxPriorityFeePerGas = maxPriorityFeePerGas or await self.web3_manager.w3.eth.max_priority_fee
-            
+                block = await self.web3_manager.w3.eth.get_block("latest")
+                maxFeePerGas = maxFeePerGas or block["baseFeePerGas"] * 2
+                maxPriorityFeePerGas = (
+                    maxPriorityFeePerGas
+                    or await self.web3_manager.w3.eth.max_priority_fee
+                )
+
             # Execute swap
             receipt = await self.web3_manager.build_and_send_transaction(
                 self.router,
-                'swapExactTokensForTokens',
+                "swapExactTokensForTokens",
                 amount_in,
                 amount_out_min,
                 path,
@@ -133,10 +137,10 @@ class BaseSwap(BaseDEXV2):
                 value=0,  # No ETH value for token swaps
                 gas=gas_limit,
                 maxFeePerGas=maxFeePerGas,
-                maxPriorityFeePerGas=maxPriorityFeePerGas
+                maxPriorityFeePerGas=maxPriorityFeePerGas,
             )
-            
-            if receipt and receipt['status'] == 1:
+
+            if receipt and receipt["status"] == 1:
                 # Verify balance changes
                 balance_in_after = await self.web3_manager.call_contract_function(
                     token_in.functions.balanceOf, recipient
@@ -144,31 +148,32 @@ class BaseSwap(BaseDEXV2):
                 balance_out_after = await self.web3_manager.call_contract_function(
                     token_out.functions.balanceOf, recipient
                 )
-                
+
                 in_diff = balance_in_before - balance_in_after
                 out_diff = balance_out_after - balance_out_before
-                
+
                 if in_diff <= 0 or out_diff <= 0:
                     raise Exception(
-                        "Balance verification failed: in_diff=%s, out_diff=%s, expected_min_out=%s" % (
-                            in_diff, out_diff, amount_out_min
-                        )
+                        "Balance verification failed: in_diff=%s, out_diff=%s, expected_min_out=%s"
+                        % (in_diff, out_diff, amount_out_min)
                     )
-                
+
                 self.logger.info(
                     "Swap successful:\n"
                     "  In: %s %s\n"
                     "  Out: %s %s\n"
                     "  Gas Used: %s",
-                    in_diff, path[0],
-                    out_diff, path[-1],
-                    receipt['gasUsed']
+                    in_diff,
+                    path[0],
+                    out_diff,
+                    path[-1],
+                    receipt["gasUsed"],
                 )
-                
+
                 return receipt
             else:
                 raise Exception("Swap transaction failed")
-            
+
         except Exception as e:
             self.logger.error("Swap failed: %s", str(e))
             raise
@@ -186,32 +191,31 @@ class BaseSwap(BaseDEXV2):
                 self.factory.functions.getPair,
                 token_address,
                 self.weth_address,
-                retries=3
+                retries=3,
             )
-            
+
             if pair_address == "0x0000000000000000000000000000000000000000":
                 return 0.0
-                
+
             # Get pair contract
             pair = await self.web3_manager.get_contract(
-                address=Web3.to_checksum_address(pair_address),
-                abi_name="baseswap_pair"
+                address=Web3.to_checksum_address(pair_address), abi_name="baseswap_pair"
             )
-            
+
             # Get reserves and token0 concurrently
             reserves, token0 = await asyncio.gather(
                 self._retry_async(
                     self.web3_manager.call_contract_function,
                     pair.functions.getReserves,
-                    retries=3
+                    retries=3,
                 ),
                 self._retry_async(
                     self.web3_manager.call_contract_function,
                     pair.functions.token0,
-                    retries=3
-                )
+                    retries=3,
+                ),
             )
-            
+
             # Determine which reserve corresponds to which token
             if token_address.lower() == token0.lower():
                 token_reserve = Decimal(str(reserves[0]))
@@ -219,14 +223,14 @@ class BaseSwap(BaseDEXV2):
             else:
                 token_reserve = Decimal(str(reserves[1]))
                 weth_reserve = Decimal(str(reserves[0]))
-            
+
             if token_reserve == 0 or weth_reserve == 0:
                 return 0.0
-                
+
             # Calculate price in WETH
             price = float(weth_reserve / token_reserve)
             return float(price)
-            
+
         except Exception as e:
             self.logger.error("Failed to get token price: %s", str(e))
             return 0.0
@@ -240,32 +244,31 @@ class BaseSwap(BaseDEXV2):
                 self.factory.functions.getPair,
                 token0,
                 token1,
-                retries=3
+                retries=3,
             )
-            
+
             if pair_address == "0x0000000000000000000000000000000000000000":
-                return Decimal('0')
-                
+                return Decimal("0")
+
             # Get pair contract
             pair = await self.web3_manager.get_contract(
-                address=Web3.to_checksum_address(pair_address),
-                abi_name="baseswap_pair"
+                address=Web3.to_checksum_address(pair_address), abi_name="baseswap_pair"
             )
-            
+
             # Get reserves
             reserves = await self._retry_async(
                 self.web3_manager.call_contract_function,
                 pair.functions.getReserves,
-                retries=3
+                retries=3,
             )
-            
+
             # Calculate volume (simplified - actual implementation would track events)
             volume = Decimal(str(reserves[0] + reserves[1]))
             return volume
-            
+
         except Exception as e:
             self.logger.error("Failed to get 24h volume: %s", str(e))
-            return Decimal('0')
+            return Decimal("0")
 
     async def get_total_liquidity(self) -> Decimal:
         """Get total liquidity across all pairs."""
@@ -274,11 +277,11 @@ class BaseSwap(BaseDEXV2):
             pair_count = await self._retry_async(
                 self.web3_manager.call_contract_function,
                 self.factory.functions.allPairsLength,
-                retries=3
+                retries=3,
             )
-            
-            total_liquidity = Decimal('0')
-            
+
+            total_liquidity = Decimal("0")
+
             # Sample first 100 pairs for efficiency
             sample_size = min(100, int(pair_count))
             for i in range(sample_size):
@@ -288,53 +291,59 @@ class BaseSwap(BaseDEXV2):
                         self.web3_manager.call_contract_function,
                         self.factory.functions.allPairs,
                         i,
-                        retries=3
+                        retries=3,
                     )
-                    
+
                     # Get pair contract
                     pair = await self.web3_manager.get_contract(
                         address=Web3.to_checksum_address(pair_address),
-                        abi_name="baseswap_pair"
+                        abi_name="baseswap_pair",
                     )
-                    
+
                     # Get reserves
                     reserves = await self._retry_async(
                         self.web3_manager.call_contract_function,
                         pair.functions.getReserves,
-                        retries=3
+                        retries=3,
                     )
-                    
+
                     # Add to total (simplified - actual implementation would convert to common currency)
-                    total_liquidity += Decimal(str(reserves[0])) + Decimal(str(reserves[1]))
-                    
+                    total_liquidity += Decimal(str(reserves[0])) + Decimal(
+                        str(reserves[1])
+                    )
+
                 except Exception as e:
-                    self.logger.debug("Error getting liquidity for pair %s: %s", i, str(e))
+                    self.logger.debug(
+                        "Error getting liquidity for pair %s: %s", i, str(e)
+                    )
                     continue
-            
+
             # Extrapolate total based on sample
             if sample_size < pair_count:
-                total_liquidity = total_liquidity * Decimal(str(int(pair_count) / sample_size))
-            
+                total_liquidity = total_liquidity * Decimal(
+                    str(int(pair_count) / sample_size)
+                )
+
             return total_liquidity
-            
+
         except Exception as e:
             self.logger.error("Failed to get total liquidity: %s", str(e))
-            return Decimal('0')
+            return Decimal("0")
 
     async def get_supported_tokens(self) -> List[str]:
         """Get list of supported tokens with active pairs."""
         try:
             supported_tokens = set()
-            
+
             # Add WETH as it's always supported
             supported_tokens.add(self.weth_address)
-            
+
             # Check USDC and DAI pairs
             common_tokens = {
-                'USDC': self.config['tokens']['USDC']['address'],
-                'DAI': self.config['tokens']['DAI']['address']
+                "USDC": self.config["tokens"]["USDC"]["address"],
+                "DAI": self.config["tokens"]["DAI"]["address"],
             }
-            
+
             for token_address in common_tokens.values():
                 try:
                     # Get pair address
@@ -343,18 +352,20 @@ class BaseSwap(BaseDEXV2):
                         self.factory.functions.getPair,
                         token_address,
                         self.weth_address,
-                        retries=3
+                        retries=3,
                     )
-                    
+
                     if pair_address != "0x0000000000000000000000000000000000000000":
                         # Add token if pair exists
                         supported_tokens.add(token_address)
                         self.logger.debug("Found active pair for %s", token_address)
-                        
+
                 except Exception as e:
-                    self.logger.debug("Error checking pair for %s: %s", token_address, str(e))
+                    self.logger.debug(
+                        "Error checking pair for %s: %s", token_address, str(e)
+                    )
                     continue
-            
+
             return list(supported_tokens)
         except Exception as e:
             self.logger.error("Failed to get supported tokens: %s", str(e))

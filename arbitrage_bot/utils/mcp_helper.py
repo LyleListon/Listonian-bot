@@ -22,9 +22,7 @@ class MockClient:
         self.version = version
         self.connected = True
 
-    def call_tool(
-        self, tool_name: str, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Mock tool calls with predefined responses."""
         if tool_name == "get_prices":
             return {"data": {"bitcoin": 50000.0, "ethereum": 3000.0}}
@@ -60,25 +58,32 @@ def get_mcp_client(server_name: str) -> Any:
 
     try:
         # Try loading from Claude.app MCP settings first
-        mcp_settings_path = Path(r"c:\Users\listonianapp\AppData\Roaming\Code\User\globalStorage\rooveterinaryinc.roo-cline\settings\cline_mcp_settings.json")
+        mcp_settings_path = Path(
+            r"c:\Users\listonianapp\AppData\Roaming\Code\User\globalStorage\rooveterinaryinc.roo-cline\settings\cline_mcp_settings.json"
+        )
         if mcp_settings_path.exists():
             try:
-                with open(mcp_settings_path, 'r') as f:
+                with open(mcp_settings_path, "r") as f:
                     mcp_settings = json.load(f)
-                if "mcpServers" in mcp_settings and server_name in mcp_settings["mcpServers"]:
+                if (
+                    "mcpServers" in mcp_settings
+                    and server_name in mcp_settings["mcpServers"]
+                ):
                     server_config = mcp_settings["mcpServers"][server_name]
                     # Create MCP client using server config
                     # Start the MCP server process
                     process = subprocess.Popen(
-                        [server_config['command']] + server_config['args'],
-                        env=server_config.get('env', {}),
+                        [server_config["command"]] + server_config["args"],
+                        env=server_config.get("env", {}),
                         stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE,
-                        text=True
+                        text=True,
                     )
                     client = MCPClient(process)
                     _mcp_clients[server_name] = client
-                    logger.info(f"Created MCP client for {server_name} from Claude.app settings")
+                    logger.info(
+                        f"Created MCP client for {server_name} from Claude.app settings"
+                    )
                     return client
             except Exception as e:
                 logger.error(f"Failed to load Claude.app MCP settings: {e}")

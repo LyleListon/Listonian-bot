@@ -8,12 +8,12 @@ This module provides functionality for:
 - Response validation
 """
 
-import asyncio
+# import asyncio # Unused
 import logging
 import json
 from typing import Any, Dict, Optional
 from eth_account import Account
-from eth_account.signers.local import LocalAccount
+# from eth_account.signers.local import LocalAccount # Unused
 from eth_typing import HexStr
 from web3 import Web3
 from web3.types import RPCEndpoint
@@ -21,6 +21,7 @@ from web3.types import RPCEndpoint
 from ....utils.async_manager import with_retry, AsyncLock
 
 logger = logging.getLogger(__name__)
+
 
 class FlashbotsRelay:
     """Manages Flashbots relay connection and authentication."""
@@ -30,7 +31,7 @@ class FlashbotsRelay:
         w3: Web3,
         relay_url: str,
         auth_key: Optional[str] = None,
-        chain_id: int = 8453  # Base mainnet
+        chain_id: int = 8453,  # Base mainnet
     ):
         """
         Initialize Flashbots relay.
@@ -76,12 +77,7 @@ class FlashbotsRelay:
             raise ValueError("No auth signer configured")
 
         # Create message
-        message = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params
-        }
+        message = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
         message_hash = self.w3.keccak(text=json.dumps(message, sort_keys=True))
 
         # Sign message
@@ -89,11 +85,7 @@ class FlashbotsRelay:
         return HexStr(signature.signature.hex())
 
     @with_retry(retries=3, delay=1.0)
-    async def send_request(
-        self,
-        method: RPCEndpoint,
-        params: Any
-    ) -> Dict[str, Any]:
+    async def send_request(self, method: RPCEndpoint, params: Any) -> Dict[str, Any]:
         """
         Send authenticated request to Flashbots relay.
 
@@ -112,34 +104,38 @@ class FlashbotsRelay:
                 # Add authentication headers
                 headers = {
                     "X-Flashbots-Signature": signature,
-                    "X-Flashbots-Chain-Id": str(self.chain_id)
+                    "X-Flashbots-Chain-Id": str(self.chain_id),
                 }
 
                 # Make RPC call
-                response = await self.w3.eth.call({
-                    "to": self.relay_url,
-                    "data": self.w3.eth.abi.encode_abi(
-                        ["tuple(string method, bytes params, bytes signature)"],
-                        [{
-                            "method": method,
-                            "params": self.w3.eth.abi.encode_abi(
-                                ["tuple(bytes)"],
-                                [params]
-                            ),
-                            "signature": signature
-                        }]
-                    )
-                })
+                response = await self.w3.eth.call(
+                    {
+                        "to": self.relay_url,
+                        "data": self.w3.eth.abi.encode_abi(
+                            ["tuple(string method, bytes params, bytes signature)"],
+                            [
+                                {
+                                    "method": method,
+                                    "params": self.w3.eth.abi.encode_abi(
+                                        ["tuple(bytes)"], [params]
+                                    ),
+                                    "signature": signature,
+                                }
+                            ],
+                        ),
+                    }
+                )
 
                 # Parse response
                 result = self.w3.eth.abi.decode_abi(
-                    ["tuple(bool success, bytes result)"],
-                    response
+                    ["tuple(bool success, bytes result)"], response
                 )[0]
 
                 if not result[0]:
                     error = json.loads(result[1])
-                    raise ValueError(f"RPC request failed: {error.get('error', 'Unknown error')}")
+                    raise ValueError(
+                        f"RPC request failed: {error.get('error', 'Unknown error')}"
+                    )
 
                 return json.loads(result[1])
 
@@ -157,23 +153,16 @@ class FlashbotsRelay:
         """
         try:
             response = await self.send_request(
-                method="flashbots_getUserStats",
-                params=[]
+                method="flashbots_getUserStats", params=[]
             )
             return response
 
         except Exception as e:
             logger.error(f"Failed to get user stats: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     @with_retry(retries=3, delay=1.0)
-    async def get_bundle_stats(
-        self,
-        bundle_hash: HexStr
-    ) -> Dict[str, Any]:
+    async def get_bundle_stats(self, bundle_hash: HexStr) -> Dict[str, Any]:
         """
         Get bundle statistics from Flashbots relay.
 
@@ -185,27 +174,21 @@ class FlashbotsRelay:
         """
         try:
             response = await self.send_request(
-                method="flashbots_getBundleStats",
-                params=[bundle_hash]
+                method="flashbots_getBundleStats", params=[bundle_hash]
             )
             return response
 
         except Exception as e:
             logger.error(f"Failed to get bundle stats: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     async def close(self):
         """Clean up resources."""
         pass
 
+
 async def create_flashbots_relay(
-    w3: Web3,
-    relay_url: str,
-    auth_key: Optional[str] = None,
-    chain_id: int = 8453
+    w3: Web3, relay_url: str, auth_key: Optional[str] = None, chain_id: int = 8453
 ) -> FlashbotsRelay:
     """
     Create a new Flashbots relay instance.
@@ -220,8 +203,5 @@ async def create_flashbots_relay(
         FlashbotsRelay instance
     """
     return FlashbotsRelay(
-        w3=w3,
-        relay_url=relay_url,
-        auth_key=auth_key,
-        chain_id=chain_id
+        w3=w3, relay_url=relay_url, auth_key=auth_key, chain_id=chain_id
     )

@@ -76,7 +76,7 @@
     "path_finder": {
         "max_paths_to_check": 8,
         "max_path_length": 4,
-        "max_parallel_requests": 15,
+        "max_parallel_requests": 10,
         "preferred_intermediate_tokens": ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
                                          "0x4200000000000000000000000000000000000006"]
     },
@@ -86,7 +86,7 @@
         "buffer_percent": 20
     },
     "logging": {
-        "level": "DEBUG",
+        "level": "INFO",
         "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         "file": "logs/arbitrage.log",
         "max_size": 10485760,
@@ -105,7 +105,7 @@
         "frontrun_protection": true
     },
     "performance": {
-        "cache_ttl": 300,
+        "cache_ttl": 600,
         "max_concurrent_paths": 10,
         "batch_size": 100
     }

@@ -9,27 +9,26 @@ This module provides an enhanced Alchemy provider that leverages Alchemy's speci
 """
 
 import logging
-import asyncio
+import json # Import standard json library
+# import asyncio # Unused
 import aiohttp
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional # Removed Union
 from web3 import Web3
-from web3.types import RPCEndpoint, RPCResponse
+from web3.types import RPCEndpoint # Removed RPCResponse
 from decimal import Decimal
 
 # Import from same directory
 from .async_provider import CustomAsyncProvider
-from arbitrage_bot.utils.async_manager import AsyncLock, manager, rate_limiter
+from arbitrage_bot.utils.async_manager import AsyncLock # Removed manager, rate_limiter
 
 logger = logging.getLogger(__name__)
+
 
 class AlchemyProvider(CustomAsyncProvider):
     """Enhanced Alchemy provider with specialized API support."""
 
     def __init__(
-        self,
-        endpoint_uri: str,
-        api_key: str,
-        websocket_uri: Optional[str] = None
+        self, endpoint_uri: str, api_key: str, websocket_uri: Optional[str] = None
     ):
         """
         Initialize Alchemy provider.
@@ -53,15 +52,14 @@ class AlchemyProvider(CustomAsyncProvider):
         if self.websocket_uri:
             try:
                 import websockets
+
                 self._ws = await websockets.connect(self.websocket_uri)
                 logger.info("WebSocket connection established")
             except Exception as e:
                 logger.error(f"Failed to establish WebSocket connection: {e}")
 
     async def get_token_prices(
-        self,
-        token_addresses: List[str],
-        quote_currency: str = "USD"
+        self, token_addresses: List[str], quote_currency: str = "USD"
     ) -> Dict[str, Decimal]:
         """
         Get current prices for multiple tokens using Alchemy Token API.
@@ -76,14 +74,13 @@ class AlchemyProvider(CustomAsyncProvider):
         try:
             async with aiohttp.ClientSession() as session:
                 url = f"{self.base_api_url}{self.api_key}/token-api/getTokenPrices"
-                params = {
-                    "tokens": token_addresses,
-                    "quote": quote_currency
-                }
+                params = {"tokens": token_addresses, "quote": quote_currency}
                 async with session.get(url, params=params) as response:
                     if response.status != 200:
-                        raise ValueError(f"HTTP {response.status}: {await response.text()}")
-                    
+                        raise ValueError(
+                            f"HTTP {response.status}: {await response.text()}"
+                        )
+
                     data = await response.json()
                     return {
                         token: Decimal(str(price_data["price"]))
@@ -94,11 +91,7 @@ class AlchemyProvider(CustomAsyncProvider):
             logger.error(f"Failed to fetch token prices: {e}")
             return {}
 
-    async def subscribe_to_price_updates(
-        self,
-        token_address: str,
-        callback: callable
-    ):
+    async def subscribe_to_price_updates(self, token_address: str, callback: callable):
         """
         Subscribe to real-time price updates for a token.
 
@@ -115,17 +108,13 @@ class AlchemyProvider(CustomAsyncProvider):
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "eth_subscribe",
-                "params": [
-                    "alchemy_tokenPriceUpdates",
-                    {"token": token_address}
-                ]
+                "params": ["alchemy_tokenPriceUpdates", {"token": token_address}],
             }
             await self._ws.send(message)
             self._price_subscriptions[subscription_id] = callback
 
     async def get_pending_transactions(
-        self,
-        filter_criteria: Optional[Dict] = None
+        self, filter_criteria: Optional[Dict] = None
     ) -> List[Dict]:
         """
         Get pending transactions from mempool with optional filtering.
@@ -142,8 +131,7 @@ class AlchemyProvider(CustomAsyncProvider):
                 params.append(filter_criteria)
 
             result = await self.make_request(
-                RPCEndpoint("eth_getBlockByNumber"),
-                params
+                RPCEndpoint("eth_getBlockByNumber"), params
             )
             return result.get("transactions", [])
 
@@ -165,15 +153,13 @@ class AlchemyProvider(CustomAsyncProvider):
         try:
             # Get base fee
             base_fee_result = await self.make_request(
-                RPCEndpoint("eth_baseFeePerGas"),
-                []
+                RPCEndpoint("eth_baseFeePerGas"), []
             )
             base_fee = int(base_fee_result, 16)
 
             # Get max priority fee
             priority_fee_result = await self.make_request(
-                RPCEndpoint("eth_maxPriorityFeePerGas"),
-                []
+                RPCEndpoint("eth_maxPriorityFeePerGas"), []
             )
             priority_fee = int(priority_fee_result, 16)
 
@@ -187,31 +173,27 @@ class AlchemyProvider(CustomAsyncProvider):
                 "safe_low": base_fee + int(priority_fee * safe_low_multiplier),
                 "standard": base_fee + int(priority_fee * standard_multiplier),
                 "fast": base_fee + int(priority_fee * fast_multiplier),
-                "fastest": base_fee + int(priority_fee * fastest_multiplier)
+                "fastest": base_fee + int(priority_fee * fastest_multiplier),
             }
 
         except Exception as e:
             # Fallback to eth_gasPrice if EIP-1559 methods fail
             try:
                 gas_price_result = await self.make_request(
-                    RPCEndpoint("eth_gasPrice"),
-                    []
+                    RPCEndpoint("eth_gasPrice"), []
                 )
                 gas_price = int(gas_price_result, 16)
                 return {
                     "safe_low": gas_price,
                     "standard": int(gas_price * 1.1),
                     "fast": int(gas_price * 1.2),
-                    "fastest": int(gas_price * 1.3)
+                    "fastest": int(gas_price * 1.3),
                 }
             except Exception as e2:
                 logger.error(f"Failed to get gas price prediction: {e2}")
                 return {"safe_low": 0, "standard": 0, "fast": 0, "fastest": 0}
 
-    async def simulate_asset_changes(
-        self,
-        tx_params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def simulate_asset_changes(self, tx_params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate asset changes from a transaction using Alchemy Simulator.
 
@@ -226,8 +208,10 @@ class AlchemyProvider(CustomAsyncProvider):
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=tx_params) as response:
                     if response.status != 200:
-                        raise ValueError(f"HTTP {response.status}: {await response.text()}")
-                    
+                        raise ValueError(
+                            f"HTTP {response.status}: {await response.text()}"
+                        )
+
                     return await response.json()
 
         except Exception as e:
@@ -242,12 +226,14 @@ class AlchemyProvider(CustomAsyncProvider):
         try:
             while True:
                 message = await self._ws.recv()
-                data = Web3.json.loads(message)
-                
+                data = json.loads(message) # Use standard json library
+
                 if "method" in data:
                     subscription_id = data["params"]["subscription"]
                     if subscription_id in self._price_subscriptions:
-                        await self._price_subscriptions[subscription_id](data["params"]["result"])
+                        await self._price_subscriptions[subscription_id](
+                            data["params"]["result"]
+                        )
 
         except Exception as e:
             logger.error(f"WebSocket message handling error: {e}")

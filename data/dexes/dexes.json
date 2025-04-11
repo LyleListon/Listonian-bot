@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "name": "baseswap",
+    "protocol_type": "UNISWAP_V2",
+    "version": "v1",
+    "chain_id": 8453,
+    "factory_address": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB",
+    "router_address": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+    "quoter_address": null,
+    "fee_tiers": [
+      3000
+    ],
+    "default_fee": 30,
+    "tvl_usd": null,
+    "volume_24h_usd": null,
+    "last_updated": "2025-04-11T12:29:20.673250",
+    "source": "defipulse_fallback",
+    "validated": true,
+    "validation_errors": [],
+    "metadata": {
+      "fallback": true
+    }
+  }
+]

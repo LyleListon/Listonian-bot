@@ -22,6 +22,7 @@ from .services.memory_service import MemoryService
 configure_logging()
 logger = get_logger("dashboard")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for FastAPI app."""
@@ -43,14 +44,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
-    app = FastAPI(
-        title="Arbitrage Bot Dashboard",
-        lifespan=lifespan,
-        debug=True
-    )
+    app = FastAPI(title="Arbitrage Bot Dashboard", lifespan=lifespan, debug=True)
 
     # Configure static files and templates
     static_dir = Path(__file__).parent / "static"
@@ -77,36 +75,25 @@ def create_app() -> FastAPI:
     # Register API routers with detailed logging
     logger.debug("Available routes before registration:")
     for route in app.routes:
-        if hasattr(route, 'methods'):
+        if hasattr(route, "methods"):
             logger.debug(f"  {route.name}: {route.path} [{route.methods}]")
-        elif hasattr(route, 'path'):
+        elif hasattr(route, "path"):
             logger.debug(f"  {route.__class__.__name__}: {route.path}")
         else:
             logger.debug(f"  {route.__class__.__name__}: {route}")
 
     # Register routers
+    app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
     app.include_router(
-        metrics.router,
-        prefix="/api/metrics",
-        tags=["metrics"]
+        system.router, prefix="/api/system", tags=["system"], include_in_schema=True
     )
-    app.include_router(
-        system.router,
-        prefix="/api/system",
-        tags=["system"],
-        include_in_schema=True
-    )
-    app.include_router(
-        websocket.router,
-        tags=["websocket"],
-        include_in_schema=True
-    )
+    app.include_router(websocket.router, tags=["websocket"], include_in_schema=True)
 
     logger.debug("Available routes after registration:")
     for route in app.routes:
-        if hasattr(route, 'methods'):
+        if hasattr(route, "methods"):
             logger.debug(f"  {route.name}: {route.path} [{route.methods}]")
-        elif hasattr(route, 'path'):
+        elif hasattr(route, "path"):
             logger.debug(f"  {route.__class__.__name__}: {route.path}")
         else:
             logger.debug(f"  {route.__class__.__name__}: {route}")
@@ -128,14 +115,14 @@ def create_app() -> FastAPI:
         """Serve dashboard frontend."""
         # Ensure services are initialized (handled by lifespan now, but keep check just in case)
         if not service_manager._initialized:
-             logger.warning("Lifespan did not initialize services? Attempting manual init.")
-             await service_manager.initialize() # Should ideally not be needed
-        return templates.TemplateResponse(
-            "base.html",
-            {"request": request}
-        )
+            logger.warning(
+                "Lifespan did not initialize services? Attempting manual init."
+            )
+            await service_manager.initialize()  # Should ideally not be needed
+        return templates.TemplateResponse("base.html", {"request": request})
 
     return app
+
 
 # Create default application instance
 app = create_app()

@@ -11,10 +11,7 @@ from core.logging import setup_logging, get_logger
 from core.dependencies import lifespan, register_services
 
 # Set up logging
-setup_logging(
-    level=settings.log_level,
-    log_file=settings.log_file
-)
+setup_logging(level=settings.log_level, log_file=settings.log_file)
 
 logger = get_logger("main")
 
@@ -23,7 +20,7 @@ app = FastAPI(
     title="Arbitrage Bot Dashboard",
     description="Real-time monitoring dashboard for the arbitrage bot",
     version="2.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Mount static files
@@ -39,26 +36,28 @@ register_services()
 
 # Import and include routers
 from api.routes import websocket, metrics, system
+
 app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
 app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 
+
 @app.on_event("startup")
 async def startup_event():
     """Handle application startup."""
-    logger.info(
-        f"Starting dashboard on http://{settings.host}:{settings.port}"
-    )
+    logger.info(f"Starting dashboard on http://{settings.host}:{settings.port}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Handle application shutdown."""
     logger.info("Shutting down dashboard")
 
+
 def start():
     """Start the dashboard application."""
     import uvicorn
-    
+
     # Configure uvicorn
     config = uvicorn.Config(
         app,
@@ -70,10 +69,11 @@ def start():
         loop="auto",
         timeout_keep_alive=settings.ws_ping_timeout,
     )
-    
+
     # Start server
     server = uvicorn.Server(config)
     server.run()
+
 
 if __name__ == "__main__":
     start()

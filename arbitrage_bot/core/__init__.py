@@ -9,7 +9,7 @@ from .arbitrage import (
     DiscoveryManager,
     ExecutionManager,
     AnalyticsManager,
-    MarketDataProvider
+    MarketDataProvider,
 )
 
 __all__ = [
@@ -17,5 +17,5 @@ __all__ = [
     "DiscoveryManager",
     "ExecutionManager",
     "AnalyticsManager",
-    "MarketDataProvider"
+    "MarketDataProvider",
 ]

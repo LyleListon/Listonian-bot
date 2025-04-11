@@ -3,4 +3,4 @@
 from .manager import ExecutionManager
 from .config import ExecutionConfig
 
-__all__ = ['ExecutionManager', 'ExecutionConfig']
+__all__ = ["ExecutionManager", "ExecutionConfig"]

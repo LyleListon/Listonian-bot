@@ -7,8 +7,8 @@ Supports multi-path arbitrage with parallel price fetching and gas optimization.
 
 import logging
 import asyncio
-from typing import Dict, List, Any, Optional, Set, Tuple
-from decimal import Decimal
+from typing import Dict, List, Any, Optional, Tuple # Removed Set
+# from decimal import Decimal # Removed unused import
 from dataclasses import dataclass
 from eth_typing import ChecksumAddress
 from web3 import Web3
@@ -17,9 +17,11 @@ from ..utils.async_manager import AsyncLock
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class PathStep:
     """Represents a single step in an arbitrage path."""
+
     dex: str
     token_in: ChecksumAddress
     token_out: ChecksumAddress
@@ -28,19 +30,22 @@ class PathStep:
     fee: int
     pool_address: Optional[ChecksumAddress] = None
 
+
 class ArbitragePath:
     """Represents a potential arbitrage path across multiple DEXs."""
 
-    def __init__(self,
-                 path_id: str,
-                 input_token: ChecksumAddress,
-                 output_token: ChecksumAddress,
-                 amount_in: int,
-                 expected_output: int,
-                 profit: int,
-                 steps: List[PathStep],
-                 profit_margin: float,
-                 gas_estimate: int):
+    def __init__(
+        self,
+        path_id: str,
+        input_token: ChecksumAddress,
+        output_token: ChecksumAddress,
+        amount_in: int,
+        expected_output: int,
+        profit: int,
+        steps: List[PathStep],
+        profit_margin: float,
+        gas_estimate: int,
+    ):
         """
         Initialize an arbitrage path.
 
@@ -68,7 +73,9 @@ class ArbitragePath:
         # Calculate metrics
         self.total_fee = sum(step.fee for step in steps)
         self.path_length = len(steps)
-        self.net_profit = profit - (gas_estimate * Web3.to_wei(50, 'gwei'))  # Assume 50 gwei gas price
+        self.net_profit = profit - (
+            gas_estimate * Web3.to_wei(50, "gwei")
+        )  # Assume 50 gwei gas price
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the arbitrage path to a dictionary."""
@@ -88,15 +95,16 @@ class ArbitragePath:
                     "amount_in": step.amount_in,
                     "amount_out": step.amount_out,
                     "fee": step.fee,
-                    "pool_address": step.pool_address
+                    "pool_address": step.pool_address,
                 }
                 for step in self.steps
             ],
             "profit_margin": self.profit_margin,
             "gas_estimate": self.gas_estimate,
             "total_fee": self.total_fee,
-            "path_length": self.path_length
+            "path_length": self.path_length,
         }
+
 
 class PathFinder:
     """Finds optimal arbitrage paths across multiple DEXs."""
@@ -115,11 +123,11 @@ class PathFinder:
         self.config = config or {}
 
         # Extract configuration settings
-        self.max_paths_to_check = self.config.get('max_paths_to_check', 100)
-        self.min_profit_threshold = self.config.get('min_profit_threshold', 0.001)
-        self.max_path_length = self.config.get('max_path_length', 4)
-        self.max_parallel_requests = self.config.get('max_parallel_requests', 10)
-        self.min_liquidity_usd = self.config.get('min_liquidity_usd', 10000)
+        self.max_paths_to_check = self.config.get("max_paths_to_check", 100)
+        self.min_profit_threshold = self.config.get("min_profit_threshold", 0.001)
+        self.max_path_length = self.config.get("max_path_length", 4)
+        self.max_parallel_requests = self.config.get("max_parallel_requests", 10)
+        self.min_liquidity_usd = self.config.get("min_liquidity_usd", 10000)
 
         # Initialize locks
         self._price_lock = AsyncLock()
@@ -131,30 +139,41 @@ class PathFinder:
         self.average_path_length = 0.0
         self._total_length_sum = 0
 
-        logger.info("Initialized PathFinder with max path length %d", self.max_path_length)
+        logger.info(
+            "Initialized PathFinder with max path length %d", self.max_path_length
+        )
 
     async def _get_prices_parallel(
         self,
         token_pairs: List[Tuple[str, str, str]],  # [(dex, token_in, token_out)]
-        amount: int
+        amount: int,
     ) -> Dict[Tuple[str, str, str], int]:
         """Get prices for multiple token pairs in parallel."""
-        async def get_single_price(dex: str, token_in: str, token_out: str) -> Tuple[Tuple[str, str, str], int]:
+
+        async def get_single_price(
+            dex: str, token_in: str, token_out: str
+        ) -> Tuple[Tuple[str, str, str], int]:
             try:
-                price = await self.dex_manager.get_price(dex, token_in, token_out, amount)
+                price = await self.dex_manager.get_price(
+                    dex, token_in, token_out, amount
+                )
                 return ((dex, token_in, token_out), price)
             except Exception as e:
-                logger.debug(f"Failed to get price for {token_in}/{token_out} on {dex}: {e}")
+                logger.debug(
+                    f"Failed to get price for {token_in}/{token_out} on {dex}: {e}"
+                )
                 return ((dex, token_in, token_out), 0)
 
         # Split into batches to avoid too many concurrent requests
         results = {}
         for i in range(0, len(token_pairs), self.max_parallel_requests):
-            batch = token_pairs[i:i + self.max_parallel_requests]
-            batch_results = await asyncio.gather(*[
-                get_single_price(dex, token_in, token_out)
-                for dex, token_in, token_out in batch
-            ])
+            batch = token_pairs[i : i + self.max_parallel_requests]
+            batch_results = await asyncio.gather(
+                *[
+                    get_single_price(dex, token_in, token_out)
+                    for dex, token_in, token_out in batch
+                ]
+            )
             results.update(dict(batch_results))
 
         return results
@@ -164,7 +183,7 @@ class PathFinder:
         start_token_address: ChecksumAddress,
         amount_in: int,
         max_paths: Optional[int] = None,
-        min_profit_threshold: Optional[float] = None
+        min_profit_threshold: Optional[float] = None,
     ) -> List[ArbitragePath]:
         """
         Find arbitrage paths starting and ending with the specified token.
@@ -181,8 +200,11 @@ class PathFinder:
         max_paths = max_paths or self.max_paths_to_check
         min_profit_threshold = min_profit_threshold or self.min_profit_threshold
 
-        logger.info("Finding arbitrage paths for %s with amount %s",
-                   start_token_address, amount_in)
+        logger.info(
+            "Finding arbitrage paths for %s with amount %s",
+            start_token_address,
+            amount_in,
+        )
 
         # Get list of supported tokens and DEXs
         tokens = await self.dex_manager.get_supported_tokens()
@@ -222,11 +244,9 @@ class PathFinder:
                     # Build list of steps to check
                     steps_to_check = []
                     for i in range(len(full_path) - 1):
-                        steps_to_check.append((
-                            dex_path[i],
-                            full_path[i],
-                            full_path[i + 1]
-                        ))
+                        steps_to_check.append(
+                            (dex_path[i], full_path[i], full_path[i + 1])
+                        )
 
                     # Get all prices in parallel
                     prices = await self._get_prices_parallel(steps_to_check, amount_in)
@@ -238,7 +258,9 @@ class PathFinder:
 
                         for i, (dex, token_in, token_out) in enumerate(steps_to_check):
                             amount_out = prices[(dex, token_in, token_out)]
-                            pool = await self.dex_manager.get_pool(dex, token_in, token_out)
+                            pool = await self.dex_manager.get_pool(
+                                dex, token_in, token_out
+                            )
                             fee = await self.dex_manager.get_fee(dex, pool)
 
                             step = PathStep(
@@ -248,7 +270,7 @@ class PathFinder:
                                 amount_in=current_amount,
                                 amount_out=amount_out,
                                 fee=fee,
-                                pool_address=pool
+                                pool_address=pool,
                             )
                             path_steps.append(step)
                             current_amount = amount_out
@@ -272,7 +294,7 @@ class PathFinder:
                                 profit=profit,
                                 steps=path_steps,
                                 profit_margin=profit_margin,
-                                gas_estimate=gas_estimate
+                                gas_estimate=gas_estimate,
                             )
                             paths.append(path)
 
@@ -284,7 +306,9 @@ class PathFinder:
             self.max_profit_seen = max(self.max_profit_seen, max_profit)
             total_length = sum(path.path_length for path in paths)
             self._total_length_sum += total_length
-            self.average_path_length = self._total_length_sum / self.total_paths_analyzed
+            self.average_path_length = (
+                self._total_length_sum / self.total_paths_analyzed
+            )
 
         # Sort by net profit and return top paths
         paths.sort(key=lambda x: x.net_profit, reverse=True)
@@ -314,24 +338,21 @@ class PathFinder:
         # Verify liquidity in all pools
         for step in path.steps:
             liquidity = await self.dex_manager.get_pool_liquidity(
-                step.dex,
-                step.pool_address
+                step.dex, step.pool_address
             )
             if liquidity < step.amount_in:
                 return {
-                    'viable': False,
-                    'reason': f'Insufficient liquidity in {step.dex} pool',
-                    'required': step.amount_in,
-                    'available': liquidity
+                    "viable": False,
+                    "reason": f"Insufficient liquidity in {step.dex} pool",
+                    "required": step.amount_in,
+                    "available": liquidity,
                 }
 
         # Calculate price impact
         total_price_impact = 0
         for step in path.steps:
             impact = await self.dex_manager.calculate_price_impact(
-                step.dex,
-                step.pool_address,
-                step.amount_in
+                step.dex, step.pool_address, step.amount_in
             )
             total_price_impact += impact
 
@@ -339,10 +360,10 @@ class PathFinder:
         execution_probability = max(0, 1 - (total_price_impact / len(path.steps)))
 
         return {
-            'viable': True,
-            'price_impact': total_price_impact,
-            'execution_probability': execution_probability,
-            'expected_net_profit': path.net_profit * execution_probability
+            "viable": True,
+            "price_impact": total_price_impact,
+            "execution_probability": execution_probability,
+            "expected_net_profit": path.net_profit * execution_probability,
         }
 
     async def simulate_execution(self, path: ArbitragePath) -> Dict[str, Any]:
@@ -364,7 +385,7 @@ class PathFinder:
                     step.token_in,
                     step.token_out,
                     step.amount_in,
-                    step.amount_out * 0.99  # 1% slippage tolerance
+                    step.amount_out * 0.99,  # 1% slippage tolerance
                 )
                 transactions.append(tx)
 
@@ -372,18 +393,15 @@ class PathFinder:
             simulation = await self.web3_manager.simulate_transactions(transactions)
 
             return {
-                'success': simulation['success'],
-                'gas_used': simulation['gas_used'],
-                'error': simulation.get('error', ''),
-                'state_changes': simulation.get('state_changes', [])
+                "success": simulation["success"],
+                "gas_used": simulation["gas_used"],
+                "error": simulation.get("error", ""),
+                "state_changes": simulation.get("state_changes", []),
             }
 
         except Exception as e:
             logger.error(f"Error simulating path execution: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def get_statistics(self) -> Dict[str, Any]:
         """
@@ -393,16 +411,15 @@ class PathFinder:
             Dictionary of statistics
         """
         return {
-            'total_paths_analyzed': self.total_paths_analyzed,
-            'profitable_paths_found': self.profitable_paths_found,
-            'max_profit_seen': self.max_profit_seen,
-            'average_path_length': self.average_path_length
+            "total_paths_analyzed": self.total_paths_analyzed,
+            "profitable_paths_found": self.profitable_paths_found,
+            "max_profit_seen": self.max_profit_seen,
+            "average_path_length": self.average_path_length,
         }
 
+
 async def create_path_finder(
-    dex_manager=None,
-    web3_manager=None,
-    config=None
+    dex_manager=None, web3_manager=None, config=None
 ) -> PathFinder:
     """
     Create and initialize a PathFinder instance.
@@ -420,18 +437,20 @@ async def create_path_finder(
     if dex_manager is None:
         if web3_manager is None:
             from .web3.web3_manager import create_web3_manager
+
             web3_manager = await create_web3_manager(config)
 
         # Load config if not provided
         if config is None:
             from ..utils.config_loader import load_config
+
             config = load_config()
 
         # Create DexManager
         dex_manager = await DexManager.create(web3_manager, config)
 
     # Extract path finder specific config
-    path_config = config.get('path_finder', {}) if config else {}
+    path_config = config.get("path_finder", {}) if config else {}
 
     # Create PathFinder instance
     path_finder = PathFinder(dex_manager, config, web3_manager)

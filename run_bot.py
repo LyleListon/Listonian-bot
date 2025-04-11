@@ -13,6 +13,23 @@ sys.path.insert(0, project_root)
 
 # Load config to get logging level
 import json
+import argparse # Import argparse
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description="Run the Listonian Arbitrage Bot.")
+parser.add_argument('--env', default='production', help='Environment to run in (production, verification)')
+args = parser.parse_args()
+
+# Determine the .env file to load
+env_file = f".env.{args.env}"
+
+# Load environment variables
+from scripts.load_env import load_env
+if not load_env(env_file):
+    logger.error(f"Failed to load environment variables from {env_file}")
+    sys.exit(1)
+
+# Load config to get logging level
 with open('config.json') as f:
     config = json.load(f)
 log_level = getattr(logging, config['logging']['level'].upper())
@@ -27,8 +44,12 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger(__name__)
 
+# Set higher logging level for noisy libraries
+logging.getLogger("web3").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 async def init_and_run():
     """Initialize and run the bot with proper async handling."""
     bot = None
@@ -53,7 +74,7 @@ async def init_and_run():
         except Exception as e:
             logger.error("Failed to initialize async manager: %s", str(e), exc_info=True)
             raise
-
+        
         # Initialize bot components
         try:
             # Load configuration
@@ -161,12 +182,11 @@ def main():
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt")
             # Cancel the task
+            logger.info("Cancelling main task...")
             task.cancel()
-            # Wait for task to be cancelled
-            try:
-                loop.run_until_complete(task)
-            except asyncio.CancelledError:
-                pass
+            # Allow the main run_until_complete(task) call on line 177
+            # to handle the cancelled task, which will trigger the
+            # finally block in init_and_run for cleanup.
         
     except Exception as e:
         logger.error("Critical error: %s", str(e), exc_info=True)

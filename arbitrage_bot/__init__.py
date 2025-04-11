@@ -8,20 +8,17 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 from .core.arbitrage import (
     DiscoveryManager,
     EnhancedExecutionManager,
     AnalyticsManager,
-    MarketDataProvider
-,
-    BaseArbitrageSystem
+    BaseArbitrageSystem,
 )
 
-from .core.ml import MLSystem
+# from .core.ml import MLSystem # Removed as ml directory was deleted
 from .core.web3 import Web3Manager
 from .core.flashbots import FlashbotsProvider
 from .core.market import EnhancedMarketDataProvider
@@ -29,29 +26,26 @@ from .core.memory import MemoryManager
 from .utils.async_manager import (
     async_init,
     manager as async_manager,
-    run_with_async_context
+    run_with_async_context,
 )
 
-__version__ = '0.1.0'
+__version__ = "0.1.0"
 __all__ = [
     # Core arbitrage components
-    'BaseArbitrageSystem',
-    'DiscoveryManager',
-    'EnhancedExecutionManager',
-    'AnalyticsManager',
-    'EnhancedMarketDataProvider',
-    
+    "BaseArbitrageSystem",
+    "DiscoveryManager",
+    "EnhancedExecutionManager",
+    "AnalyticsManager",
+    "EnhancedMarketDataProvider",
     # Core systems
-    'MLSystem',
-    'Web3Manager',
-    'FlashbotsProvider',
-    'MemoryManager',
-    
+    # "MLSystem", # Removed as ml directory was deleted
+    "Web3Manager",
+    "FlashbotsProvider",
+    "MemoryManager",
     # Async utilities
-    'async_init',
-    'async_manager',
-    'run_with_async_context',
-    
+    "async_init",
+    "async_manager",
+    "run_with_async_context",
     # Version
-    '__version__'
+    "__version__",
 ]

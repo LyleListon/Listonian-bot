@@ -2,27 +2,34 @@
 
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
-from datetime import datetime
+# from datetime import datetime # Unused
+from .enums import TransactionStatus
+
 
 @dataclass
 class ErrorType:
     """Type of error that occurred."""
+
     code: int
     name: str
     description: str
 
+
 @dataclass
 class ErrorDetails:
     """Detailed error information."""
+
     error_type: ErrorType
     message: str
     timestamp: float
     context: Optional[Dict[str, Any]] = None
     stack_trace: Optional[str] = None
 
+
 @dataclass
 class TransactionDetails:
     """Details of a blockchain transaction."""
+
     hash: str
     from_address: str
     to_address: str
@@ -32,15 +39,17 @@ class TransactionDetails:
     nonce: int
     data: str
     chain_id: int
-    status: 'TransactionStatus'
+    status: "TransactionStatus"
     block_number: Optional[int] = None
     gas_used: Optional[int] = None
     timestamp: Optional[float] = None
     confirmation_time: Optional[float] = None
 
+
 @dataclass
 class PerformanceMetrics:
     """System performance metrics."""
+
     opportunities_found: int
     opportunities_valid: int
     opportunities_invalid: int
@@ -55,9 +64,11 @@ class PerformanceMetrics:
     average_gas_per_execution: Optional[float] = None
     timestamp: float = 0.0
 
+
 @dataclass
 class ArbitrageSettings:
     """Configuration settings for arbitrage system."""
+
     auto_execute: bool = False
     min_profit_threshold_eth: float = 0.01
     max_opportunities_per_cycle: int = 5

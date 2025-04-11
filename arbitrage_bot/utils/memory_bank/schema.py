@@ -15,16 +15,20 @@ from jsonschema import validate, ValidationError, Draft7Validator
 
 logger = logging.getLogger(__name__)
 
+
 class OpportunityData(TypedDict):
     """Type definition for arbitrage opportunity data."""
+
     token_pair: str
     dex_1: str
     dex_2: str
     potential_profit: float
     confidence: float
 
+
 class TradeData(TypedDict):
     """Type definition for trade data."""
+
     timestamp: str
     opportunity: OpportunityData
     success: bool
@@ -33,23 +37,18 @@ class TradeData(TypedDict):
     tx_hash: str
     error: Optional[str]
 
+
 # Schema Definitions
 OPPORTUNITY_SCHEMA = {
     "type": "object",
-    "required": [
-        "token_pair",
-        "dex_1",
-        "dex_2",
-        "potential_profit",
-        "confidence"
-    ],
+    "required": ["token_pair", "dex_1", "dex_2", "potential_profit", "confidence"],
     "properties": {
         "token_pair": {"type": "string"},
         "dex_1": {"type": "string"},
         "dex_2": {"type": "string"},
         "potential_profit": {"type": "number", "minimum": 0},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
-    }
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
 }
 
 TRADE_SCHEMA = {
@@ -61,30 +60,22 @@ TRADE_SCHEMA = {
         "net_profit",
         "gas_cost",
         "tx_hash",
-        "error"
+        "error",
     ],
     "properties": {
-        "timestamp": {
-            "type": "string",
-            "format": "date-time"
-        },
+        "timestamp": {"type": "string", "format": "date-time"},
         "opportunity": OPPORTUNITY_SCHEMA,
         "success": {"type": "boolean"},
         "net_profit": {"type": "number"},
         "gas_cost": {"type": "number", "minimum": 0},
         "tx_hash": {"type": "string"},
-        "error": {"type": ["string", "null"]}
-    }
+        "error": {"type": ["string", "null"]},
+    },
 }
 
 METRICS_SCHEMA = {
     "type": "object",
-    "required": [
-        "gas_price",
-        "network_status",
-        "uptime",
-        "performance"
-    ],
+    "required": ["gas_price", "network_status", "uptime", "performance"],
     "properties": {
         "gas_price": {"type": "number", "minimum": 0},
         "network_status": {"type": "string"},
@@ -95,7 +86,7 @@ METRICS_SCHEMA = {
                 "total_profit",
                 "success_rate",
                 "average_profit",
-                "profit_trend"
+                "profit_trend",
             ],
             "properties": {
                 "total_profit": {"type": "number"},
@@ -108,29 +99,21 @@ METRICS_SCHEMA = {
                         "required": ["timestamp", "profit"],
                         "properties": {
                             "timestamp": {"type": "string", "format": "date-time"},
-                            "profit": {"type": "number"}
-                        }
-                    }
-                }
-            }
-        }
-    }
+                            "profit": {"type": "number"},
+                        },
+                    },
+                },
+            },
+        },
+    },
 }
 
 MEMORY_BANK_STATUS_SCHEMA = {
     "type": "object",
-    "required": [
-        "last_check",
-        "health_status",
-        "integrity_checks",
-        "alerts"
-    ],
+    "required": ["last_check", "health_status", "integrity_checks", "alerts"],
     "properties": {
         "last_check": {"type": "string", "format": "date-time"},
-        "health_status": {
-            "type": "string",
-            "enum": ["healthy", "degraded", "error"]
-        },
+        "health_status": {"type": "string", "enum": ["healthy", "degraded", "error"]},
         "integrity_checks": {
             "type": "object",
             "required": ["trades", "metrics", "state"],
@@ -141,8 +124,8 @@ MEMORY_BANK_STATUS_SCHEMA = {
                     "properties": {
                         "status": {"type": "string", "enum": ["ok", "error"]},
                         "file_count": {"type": "integer", "minimum": 0},
-                        "last_validated": {"type": "string", "format": "date-time"}
-                    }
+                        "last_validated": {"type": "string", "format": "date-time"},
+                    },
                 },
                 "metrics": {
                     "type": "object",
@@ -150,42 +133,35 @@ MEMORY_BANK_STATUS_SCHEMA = {
                     "properties": {
                         "status": {"type": "string", "enum": ["ok", "error"]},
                         "schema_valid": {"type": "boolean"},
-                        "last_updated": {"type": "string", "format": "date-time"}
-                    }
+                        "last_updated": {"type": "string", "format": "date-time"},
+                    },
                 },
                 "state": {
                     "type": "object",
                     "required": ["status", "last_snapshot"],
                     "properties": {
                         "status": {"type": "string", "enum": ["ok", "error"]},
-                        "last_snapshot": {"type": "string", "format": "date-time"}
-                    }
-                }
-            }
+                        "last_snapshot": {"type": "string", "format": "date-time"},
+                    },
+                },
+            },
         },
         "alerts": {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": [
-                    "timestamp",
-                    "level",
-                    "message",
-                    "component"
-                ],
+                "required": ["timestamp", "level", "message", "component"],
                 "properties": {
                     "timestamp": {"type": "string", "format": "date-time"},
-                    "level": {
-                        "type": "string",
-                        "enum": ["info", "warning", "error"]
-                    },
+                    "level": {"type": "string", "enum": ["info", "warning", "error"]},
                     "message": {"type": "string"},
-                    "component": {"type": "string"}
-                }
-            }
-        }
-    }
+                    "component": {"type": "string"},
+                },
+            },
+        },
+    },
 }
+
 
 class SchemaValidator:
     """Validates data against defined schemas."""
@@ -194,9 +170,9 @@ class SchemaValidator:
         self._initialized = False
         self._lock = asyncio.Lock()
         self._validators = {
-            'trade': Draft7Validator(TRADE_SCHEMA),
-            'metrics': Draft7Validator(METRICS_SCHEMA),
-            'status': Draft7Validator(MEMORY_BANK_STATUS_SCHEMA)
+            "trade": Draft7Validator(TRADE_SCHEMA),
+            "metrics": Draft7Validator(METRICS_SCHEMA),
+            "status": Draft7Validator(MEMORY_BANK_STATUS_SCHEMA),
         }
 
     async def initialize(self) -> None:
@@ -225,7 +201,7 @@ class SchemaValidator:
             raise RuntimeError("Schema validator not initialized")
 
         try:
-            self._validators['trade'].validate(data)
+            self._validators["trade"].validate(data)
         except ValidationError as e:
             logger.error(f"Trade validation error: {e}")
             raise
@@ -236,7 +212,7 @@ class SchemaValidator:
             raise RuntimeError("Schema validator not initialized")
 
         try:
-            self._validators['metrics'].validate(data)
+            self._validators["metrics"].validate(data)
         except ValidationError as e:
             logger.error(f"Metrics validation error: {e}")
             raise
@@ -247,7 +223,7 @@ class SchemaValidator:
             raise RuntimeError("Schema validator not initialized")
 
         try:
-            self._validators['status'].validate(data)
+            self._validators["status"].validate(data)
         except ValidationError as e:
             logger.error(f"Status validation error: {e}")
             raise
@@ -262,7 +238,7 @@ class SchemaValidator:
 
         try:
             async with self._lock:
-                with open(file_path, 'r') as f:
+                with open(file_path, "r") as f:
                     data = json.load(f)
                 self._validators[schema_type].validate(data)
         except json.JSONDecodeError as e:

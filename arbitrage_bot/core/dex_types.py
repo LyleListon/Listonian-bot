@@ -2,8 +2,10 @@
 
 from enum import Enum, auto
 
+
 class DEXType(Enum):
     """Supported DEX types."""
+
     UNISWAP_V2 = auto()
     UNISWAP_V3 = auto()
     BASESWAP = auto()

@@ -15,9 +15,11 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class FileIntegrityInfo:
     """Information about a file's integrity state."""
+
     path: Path
     checksum: str
     last_validated: datetime
@@ -25,13 +27,16 @@ class FileIntegrityInfo:
     is_valid: bool = True
     error_message: Optional[str] = None
 
+
 @dataclass
 class HealthStatus:
     """System health status information."""
+
     status: str  # healthy|degraded|error
     message: str
     timestamp: datetime
     metrics: Dict[str, Any]
+
 
 class MemoryBankMonitor:
     """Monitors the memory bank system in real-time."""
@@ -45,7 +50,7 @@ class MemoryBankMonitor:
             status="initializing",
             message="Monitor starting up",
             timestamp=datetime.utcnow(),
-            metrics={}
+            metrics={},
         )
         self._watched_paths: Set[Path] = set()
         self._check_interval = 30  # seconds
@@ -61,7 +66,7 @@ class MemoryBankMonitor:
 
             try:
                 # Ensure base directories exist
-                for dir_name in ['trades', 'metrics', 'state']:
+                for dir_name in ["trades", "metrics", "state"]:
                     dir_path = self._base_path / dir_name
                     dir_path.mkdir(parents=True, exist_ok=True)
                     self._watched_paths.add(dir_path)
@@ -70,9 +75,7 @@ class MemoryBankMonitor:
                 await self._initialize_checksums()
 
                 # Start monitoring task
-                self._monitoring_task = asyncio.create_task(
-                    self._monitoring_loop()
-                )
+                self._monitoring_task = asyncio.create_task(self._monitoring_loop())
 
                 self._initialized = True
                 self._health_status = HealthStatus(
@@ -81,8 +84,8 @@ class MemoryBankMonitor:
                     timestamp=datetime.utcnow(),
                     metrics={
                         "watched_files": len(self._file_checksums),
-                        "watched_dirs": len(self._watched_paths)
-                    }
+                        "watched_dirs": len(self._watched_paths),
+                    },
                 )
                 logger.info("Memory bank monitor initialized successfully")
 
@@ -93,7 +96,7 @@ class MemoryBankMonitor:
                     status="error",
                     message=error_msg,
                     timestamp=datetime.utcnow(),
-                    metrics={}
+                    metrics={},
                 )
                 raise
 
@@ -101,14 +104,14 @@ class MemoryBankMonitor:
         """Initialize checksums for all monitored files."""
         for path in self._watched_paths:
             if path.is_dir():
-                for file_path in path.glob('**/*'):
+                for file_path in path.glob("**/*"):
                     if file_path.is_file():
                         checksum = await self._calculate_checksum(file_path)
                         self._file_checksums[file_path] = FileIntegrityInfo(
                             path=file_path,
                             checksum=checksum,
                             last_validated=datetime.utcnow(),
-                            size=file_path.stat().st_size
+                            size=file_path.stat().st_size,
                         )
 
     async def _calculate_checksum(self, file_path: Path) -> str:
@@ -118,7 +121,7 @@ class MemoryBankMonitor:
             # Read in chunks to handle large files
             chunk_size = 8192
             async with asyncio.Lock():
-                with open(file_path, 'rb') as f:
+                with open(file_path, "rb") as f:
                     while chunk := f.read(chunk_size):
                         hasher.update(chunk)
             return hasher.hexdigest()
@@ -138,12 +141,12 @@ class MemoryBankMonitor:
                     path=file_path,
                     checksum=current_checksum,
                     last_validated=datetime.utcnow(),
-                    size=current_size
+                    size=current_size,
                 )
 
             is_valid = (
-                current_checksum == previous_info.checksum and
-                current_size == previous_info.size
+                current_checksum == previous_info.checksum
+                and current_size == previous_info.size
             )
 
             return FileIntegrityInfo(
@@ -152,7 +155,7 @@ class MemoryBankMonitor:
                 last_validated=datetime.utcnow(),
                 size=current_size,
                 is_valid=is_valid,
-                error_message=None if is_valid else "File modified unexpectedly"
+                error_message=None if is_valid else "File modified unexpectedly",
             )
 
         except Exception as e:
@@ -164,7 +167,7 @@ class MemoryBankMonitor:
                 last_validated=datetime.utcnow(),
                 size=0,
                 is_valid=False,
-                error_message=error_msg
+                error_message=error_msg,
             )
 
     async def _check_system_health(self) -> HealthStatus:
@@ -176,7 +179,7 @@ class MemoryBankMonitor:
                 "total_files": 0,
                 "total_size_bytes": 0,
                 "invalid_files": 0,
-                "last_check": datetime.utcnow().isoformat()
+                "last_check": datetime.utcnow().isoformat(),
             }
 
             for file_path, integrity_info in self._file_checksums.items():
@@ -201,7 +204,7 @@ class MemoryBankMonitor:
                 status=status,
                 message=message,
                 timestamp=datetime.utcnow(),
-                metrics=metrics
+                metrics=metrics,
             )
 
         except Exception as e:
@@ -211,7 +214,7 @@ class MemoryBankMonitor:
                 status="error",
                 message=error_msg,
                 timestamp=datetime.utcnow(),
-                metrics={}
+                metrics={},
             )
 
     async def _monitoring_loop(self) -> None:

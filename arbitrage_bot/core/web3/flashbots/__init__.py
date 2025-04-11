@@ -10,6 +10,4 @@ This package provides functionality for:
 
 from .risk_analyzer import RiskAnalyzer
 
-__all__ = [
-    'RiskAnalyzer'
-]
+__all__ = ["RiskAnalyzer"]

@@ -15,23 +15,28 @@ from .logging import get_logger
 
 logger = get_logger(__name__)
 
+
 class ConnectionState(Enum):
     """Connection states."""
+
     DISCONNECTED = auto()
     CONNECTING = auto()
     CONNECTED = auto()
     ERROR = auto()
     DISCONNECTING = auto()
 
+
 @dataclass
 class ConnectionInfo:
     """Information about a service connection."""
+
     name: str
     state: ConnectionState
     last_error: Optional[Exception] = None
     retry_count: int = 0
     max_retries: int = 3
     backoff_factor: float = 1.5
+
 
 class ConnectionManager:
     """Manages service connections and dependencies."""
@@ -48,8 +53,7 @@ class ConnectionManager:
         # Initialize core connection info
         for service_name in ["memory", "metrics", "system"]:
             self._connections[service_name] = ConnectionInfo(
-                name=service_name,
-                state=ConnectionState.DISCONNECTED
+                name=service_name, state=ConnectionState.DISCONNECTED
             )
 
     async def initialize(self) -> None:
@@ -63,7 +67,7 @@ class ConnectionManager:
             try:
                 # Ensure service manager is initialized
                 service_status = await self._service_manager.get_status()
-                
+
                 # Connect to services in dependency order
                 for service_name, info in service_status.items():
                     if info["state"] != "READY":
@@ -73,9 +77,7 @@ class ConnectionManager:
                     await self._connect_service(service_name)
 
                 # Start health check task
-                self._health_check_task = asyncio.create_task(
-                    self._health_check_loop()
-                )
+                self._health_check_task = asyncio.create_task(self._health_check_loop())
 
                 self._initialized = True
                 self._logger.info("Connection manager initialized successfully")
@@ -123,7 +125,7 @@ class ConnectionManager:
                             service = await self._service_manager.get_service(
                                 service_name
                             )
-                            
+
                             # Check service health
                             if service_name == "memory":
                                 health_status = await service.get_health_status()
@@ -134,7 +136,7 @@ class ConnectionManager:
                                     )
                                     await self._handle_connection_error(
                                         service_name,
-                                        RuntimeError(health_status.message)
+                                        RuntimeError(health_status.message),
                                     )
 
                         except Exception as e:
@@ -146,16 +148,11 @@ class ConnectionManager:
                 self._logger.info("Health check loop cancelled")
                 break
             except Exception as e:
-                self._logger.error(
-                    f"Error in health check loop: {e}",
-                    exc_info=True
-                )
+                self._logger.error(f"Error in health check loop: {e}", exc_info=True)
                 await asyncio.sleep(self._health_check_interval)
 
     async def _handle_connection_error(
-        self,
-        service_name: str,
-        error: Exception
+        self, service_name: str, error: Exception
     ) -> None:
         """Handle connection errors with retry logic."""
         connection = self._connections[service_name]
@@ -163,7 +160,7 @@ class ConnectionManager:
         connection.last_error = error
 
         if connection.retry_count < connection.max_retries:
-            backoff = connection.backoff_factor ** connection.retry_count
+            backoff = connection.backoff_factor**connection.retry_count
             self._logger.info(
                 f"Retrying {service_name} connection in {backoff:.1f}s "
                 f"(attempt {connection.retry_count + 1})"
@@ -173,13 +170,11 @@ class ConnectionManager:
                 await self._connect_service(service_name)
             except Exception as e:
                 self._logger.error(
-                    f"Retry failed for {service_name}: {e}",
-                    exc_info=True
+                    f"Retry failed for {service_name}: {e}", exc_info=True
                 )
         else:
             self._logger.error(
-                f"Max retries ({connection.max_retries}) reached for "
-                f"{service_name}"
+                f"Max retries ({connection.max_retries}) reached for " f"{service_name}"
             )
 
     async def get_connection_status(self) -> Dict[str, Dict[str, Any]]:
@@ -189,7 +184,7 @@ class ConnectionManager:
                 "state": info.state.name,
                 "error": str(info.last_error) if info.last_error else None,
                 "retry_count": info.retry_count,
-                "max_retries": info.max_retries
+                "max_retries": info.max_retries,
             }
             for name, info in self._connections.items()
         }
@@ -223,8 +218,7 @@ class ConnectionManager:
                         )
                     except Exception as e:
                         self._logger.error(
-                            f"Error disconnecting {service_name}: {e}",
-                            exc_info=True
+                            f"Error disconnecting {service_name}: {e}", exc_info=True
                         )
                         connection.state = ConnectionState.ERROR
                         connection.last_error = e

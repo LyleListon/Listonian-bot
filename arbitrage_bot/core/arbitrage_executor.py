@@ -22,6 +22,7 @@ from ..utils.async_manager import with_retry, AsyncLock
 
 logger = logging.getLogger(__name__)
 
+
 class ArbitrageExecutor:
     """Executes arbitrage opportunities with flash loans and MEV protection."""
 
@@ -29,7 +30,7 @@ class ArbitrageExecutor:
         self,
         path_finder: PathFinder,
         flashbots_integration: FlashbotsIntegration,
-        min_profit_wei: int = 0
+        min_profit_wei: int = 0,
     ):
         """
         Initialize arbitrage executor.
@@ -61,7 +62,7 @@ class ArbitrageExecutor:
         self,
         token_address: ChecksumAddress,
         amount_wei: int,
-        max_paths: Optional[int] = None
+        max_paths: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Find and execute the most profitable arbitrage opportunity.
@@ -80,31 +81,27 @@ class ArbitrageExecutor:
                 paths = await self.path_finder.find_arbitrage_paths(
                     start_token_address=token_address,
                     amount_in=amount_wei,
-                    max_paths=max_paths
+                    max_paths=max_paths,
                 )
 
                 if not paths:
-                    return {
-                        'success': False,
-                        'error': 'No profitable paths found'
-                    }
+                    return {"success": False, "error": "No profitable paths found"}
 
                 # Evaluate paths in parallel
-                evaluations = await asyncio.gather(*[
-                    self.path_finder.evaluate_path(path)
-                    for path in paths
-                ])
+                evaluations = await asyncio.gather(
+                    *[self.path_finder.evaluate_path(path) for path in paths]
+                )
 
                 # Filter viable paths and sort by expected profit
                 viable_paths = []
                 for path, eval_result in zip(paths, evaluations):
-                    if eval_result['viable']:
-                        viable_paths.append((path, eval_result['expected_net_profit']))
+                    if eval_result["viable"]:
+                        viable_paths.append((path, eval_result["expected_net_profit"]))
 
                 if not viable_paths:
                     return {
-                        'success': False,
-                        'error': 'No viable paths after evaluation'
+                        "success": False,
+                        "error": "No viable paths after evaluation",
                     }
 
                 # Sort by expected profit
@@ -113,10 +110,10 @@ class ArbitrageExecutor:
 
                 # Simulate best path
                 simulation = await self.path_finder.simulate_execution(best_path)
-                if not simulation['success']:
+                if not simulation["success"]:
                     return {
-                        'success': False,
-                        'error': f"Path simulation failed: {simulation['error']}"
+                        "success": False,
+                        "error": f"Path simulation failed: {simulation['error']}",
                     }
 
                 # Build transactions for each step
@@ -127,7 +124,7 @@ class ArbitrageExecutor:
                         step.token_in,
                         step.token_out,
                         step.amount_in,
-                        int(step.amount_out * 0.99)  # 1% slippage protection
+                        int(step.amount_out * 0.99),  # 1% slippage protection
                     )
                     transactions.append(tx)
 
@@ -135,40 +132,42 @@ class ArbitrageExecutor:
                 result = await self.flashbots_integration.execute_arbitrage_bundle(
                     transactions=transactions,
                     token_addresses=[token_address],
-                    flash_loan_amount=amount_wei
+                    flash_loan_amount=amount_wei,
                 )
 
                 # Update statistics
                 self.total_executions += 1
-                if result['success']:
+                if result["success"]:
                     self.successful_executions += 1
-                    self.total_profit_wei += result['net_profit']
-                    self.max_profit_wei = max(self.max_profit_wei, result['net_profit'])
+                    self.total_profit_wei += result["net_profit"]
+                    self.max_profit_wei = max(self.max_profit_wei, result["net_profit"])
 
                 return result
 
             except Exception as e:
                 logger.error(f"Error executing arbitrage: {e}")
-                return {
-                    'success': False,
-                    'error': str(e)
-                }
+                return {"success": False, "error": str(e)}
 
     def get_statistics(self) -> Dict[str, Any]:
         """Get execution statistics."""
         return {
-            'total_executions': self.total_executions,
-            'successful_executions': self.successful_executions,
-            'success_rate': self.successful_executions / self.total_executions if self.total_executions > 0 else 0,
-            'total_profit_wei': self.total_profit_wei,
-            'max_profit_wei': self.max_profit_wei,
-            'path_finder_stats': self.path_finder.get_statistics()
+            "total_executions": self.total_executions,
+            "successful_executions": self.successful_executions,
+            "success_rate": (
+                self.successful_executions / self.total_executions
+                if self.total_executions > 0
+                else 0
+            ),
+            "total_profit_wei": self.total_profit_wei,
+            "max_profit_wei": self.max_profit_wei,
+            "path_finder_stats": self.path_finder.get_statistics(),
         }
+
 
 async def create_arbitrage_executor(
     path_finder: Optional[PathFinder] = None,
     flashbots_integration: Optional[FlashbotsIntegration] = None,
-    config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None,
 ) -> ArbitrageExecutor:
     """
     Create and initialize an ArbitrageExecutor instance.
@@ -184,11 +183,13 @@ async def create_arbitrage_executor(
     # Load config if not provided
     if config is None:
         from ..utils.config_loader import load_production_config
+
         config = load_production_config()
 
     # Create PathFinder if not provided
     if path_finder is None:
         from .path_finder import create_path_finder
+
         web3_manager = await create_web3_manager(config["web3"])
         dex_manager = await DexManager.create(web3_manager, config)
         path_finder = await create_path_finder(dex_manager, config)
@@ -198,17 +199,17 @@ async def create_arbitrage_executor(
         from ..integration.flashbots_integration import setup_flashbots_rpc
 
         flashbots_result = await setup_flashbots_rpc(web3_manager, config)
-        
-        if not flashbots_result['success']:
+
+        if not flashbots_result["success"]:
             raise ValueError(f"Failed to set up Flashbots: {flashbots_result['error']}")
-        
-        flashbots_integration = flashbots_result['integration']
+
+        flashbots_integration = flashbots_result["integration"]
 
     # Create executor
     executor = ArbitrageExecutor(
         path_finder=path_finder,
         flashbots_integration=flashbots_integration,
-        min_profit_wei=int(config.get('flashbots', {}).get('min_profit', '0'))
+        min_profit_wei=int(config.get("flashbots", {}).get("min_profit", "0")),
     )
 
     return executor

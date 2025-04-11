@@ -17,13 +17,12 @@ from ...utils.async_manager import with_retry
 
 logger = logging.getLogger(__name__)
 
+
 class BalanceValidator:
     """Validates token balances and liquidity requirements."""
 
     def __init__(
-        self,
-        web3_manager: Web3Manager,
-        config: Optional[Dict[str, Any]] = None
+        self, web3_manager: Web3Manager, config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize balance validator.
@@ -46,9 +45,7 @@ class BalanceValidator:
 
     @with_retry(retries=3, delay=1.0)
     async def validate_eth_balance(
-        self,
-        required_amount: int,
-        address: Optional[ChecksumAddress] = None
+        self, required_amount: int, address: Optional[ChecksumAddress] = None
     ) -> bool:
         """
         Validate ETH balance meets required amount.
@@ -80,7 +77,7 @@ class BalanceValidator:
         self,
         token_address: ChecksumAddress,
         required_amount: int,
-        address: Optional[ChecksumAddress] = None
+        address: Optional[ChecksumAddress] = None,
     ) -> bool:
         """
         Validate token balance meets required amount.
@@ -97,8 +94,7 @@ class BalanceValidator:
             ValueError: If no address provided and no wallet configured
         """
         balance = await self.web3_manager.get_token_balance(
-            token_address=token_address,
-            address=address
+            token_address=token_address, address=address
         )
 
         if balance < required_amount:
@@ -113,9 +109,7 @@ class BalanceValidator:
 
     @with_retry(retries=3, delay=1.0)
     async def validate_pool_liquidity(
-        self,
-        pool_address: ChecksumAddress,
-        token_address: ChecksumAddress
+        self, pool_address: ChecksumAddress, token_address: ChecksumAddress
     ) -> bool:
         """
         Validate pool has sufficient liquidity.
@@ -128,14 +122,10 @@ class BalanceValidator:
             True if liquidity is sufficient
         """
         balance = await self.web3_manager.get_token_balance(
-            token_address=token_address,
-            address=pool_address
+            token_address=token_address, address=pool_address
         )
 
-        min_liquidity_wei = self.web3_manager.w3.to_wei(
-            self.min_liquidity,
-            "ether"
-        )
+        min_liquidity_wei = self.web3_manager.w3.to_wei(self.min_liquidity, "ether")
 
         if balance < min_liquidity_wei:
             logger.warning(
@@ -152,9 +142,9 @@ class BalanceValidator:
         """Clean up resources."""
         pass
 
+
 async def create_balance_validator(
-    web3_manager: Web3Manager,
-    config: Optional[Dict[str, Any]] = None
+    web3_manager: Web3Manager, config: Optional[Dict[str, Any]] = None
 ) -> BalanceValidator:
     """
     Create a new balance validator.
@@ -166,7 +156,4 @@ async def create_balance_validator(
     Returns:
         BalanceValidator instance
     """
-    return BalanceValidator(
-        web3_manager=web3_manager,
-        config=config
-    )
+    return BalanceValidator(web3_manager=web3_manager, config=config)

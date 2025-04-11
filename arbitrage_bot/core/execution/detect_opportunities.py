@@ -10,10 +10,10 @@ from collections import defaultdict, deque
 import time
 import lru
 
-from ..dex import DexManager
+from ..dex.dex_manager import DexManager
 from ..analytics.analytics_system import AnalyticsSystem
-from ..ml.ml_system import MLSystem
-from ..models.opportunity import Opportunity, OpportunityStatus
+from ..ml import MLSystem
+from ..models.opportunity import Opportunity
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ BATCH_TIMEOUT = 5  # Maximum time to wait for batch to fill (seconds)
 
 class OpportunityDetector:
     """Detects arbitrage opportunities across DEXes."""
-    
+
     def __init__(
         self,
         config: Dict[str, Any],
@@ -47,79 +47,79 @@ class OpportunityDetector:
         self.dex_manager = dex_manager
         self.analytics = analytics
         self.ml_system = ml_system
-        
+
         # Get trading config with defaults
         self.config = config or {}
         trading_config = self.config.get("arbitrage", {})  # Use arbitrage section from config
         self.min_profit = Decimal(str(trading_config.get("min_profit_usd", "0.05")))
         self.max_slippage = Decimal(str(trading_config.get("slippage_tolerance", "0.001")))
         self.max_trade_size = Decimal(str(trading_config.get("max_trade_size_usd", "1000.0")))
-        
+
         # Ensure required config sections exist
         if "tokens" not in self.config:
             self.config["tokens"] = {}
         if "pairs" not in self.config:
             self.config["pairs"] = []
-        
+
         # Cache settings
         self.cache_ttl = CACHE_TTL
         self.batch_size = BATCH_SIZE
         self.quote_batch_size = QUOTE_BATCH_SIZE
         self.path_batch_size = PATH_BATCH_SIZE
-        
+
         # LRU caches for frequently accessed data
         self._dex_cache = lru.LRU(CACHE_SIZE)
         self._quote_cache = lru.LRU(CACHE_SIZE)
         self._path_cache = lru.LRU(CACHE_SIZE)
         self._gas_cache = lru.LRU(CACHE_SIZE)
         self._token_cache = lru.LRU(CACHE_SIZE)
-        
+
         # Cache timestamps
         self._dex_cache_times = {}
         self._quote_cache_times = {}
         self._path_cache_times = {}
         self._gas_cache_times = {}
         self._token_cache_times = {}
-        
+
         # Thread pool for CPU-bound operations
         self.executor = ThreadPoolExecutor(max_workers=4)
-        
+
         # Locks for thread safety
         self._cache_lock = asyncio.Lock()
         self._gas_lock = asyncio.Lock()
         self._quote_lock = asyncio.Lock()
         self._path_lock = asyncio.Lock()
         self._batch_lock = asyncio.Lock()
-        
+
         # Gas price tracking
         self.gas_price = 0
         self.last_gas_update = 0
         self.gas_update_interval = 1  # 1 second
-        
+
         # Opportunity batching
         self._opportunity_batch = []
         self._last_batch = time.time()
-        
+
         # Quote batching
         self._quote_batch = []
         self._last_quote_batch = time.time()
-        
+
         # Path batching
         self._path_batch = []
         self._last_path_batch = time.time()
-        
+
         # Recent opportunities for deduplication
         self._recent_opportunities = deque(maxlen=1000)
-        
+
         # Prefetch settings
         self._prefetch_size = 100  # Number of items to prefetch
         self._prefetch_threshold = PREFETCH_THRESHOLD
-        
+
         # Start periodic tasks
         self._cleanup_task = None
         self._batch_task = None
         self._prefetch_task = None
-        
+
         self.initialized = False
         logger.info("OpportunityDetector instance created")
 
@@ -129,9 +129,9 @@ class OpportunityDetector:
             if self.initialized:
                 logger.debug("OpportunityDetector already initialized")
                 return True
-                
+
             logger.info("Initializing OpportunityDetector...")
-            
+
             # Initialize components concurrently with retries
             for attempt in range(MAX_RETRIES):
                 try:
@@ -140,7 +140,7 @@ class OpportunityDetector:
                         asyncio.create_task(self.analytics.initialize()),
                         asyncio.create_task(self.ml_system.initialize())
                     ]
-                    
+
                     results = await asyncio.gather(*init_tasks)
                     if not all(results):
                         raise ValueError("Failed to initialize one or more components")
@@ -151,7 +151,7 @@ class OpportunityDetector:
                         continue
                     logger.error(f"Failed to initialize after {MAX_RETRIES} attempts: {e}")
                     return False
-            
+
             # Get initial gas price in thread pool
             loop = asyncio.get_event_loop()
             try:
@@ -163,16 +163,16 @@ class OpportunityDetector:
             except Exception as e:
                 logger.warning(f"Failed to get initial gas price: {e}, using fallback")
                 self.gas_price = self.w3.to_wei(100, 'gwei')
-            
+
             # Start periodic tasks
             self._cleanup_task = asyncio.create_task(self._periodic_cache_cleanup())
             self._batch_task = asyncio.create_task(self._periodic_batch())
             self._prefetch_task = asyncio.create_task(self._periodic_prefetch())
-            
+
             self.initialized = True
             logger.info("OpportunityDetector initialization complete")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize OpportunityDetector: {e}", exc_info=True)
             return False
@@ -189,17 +189,17 @@ class OpportunityDetector:
         if not self.initialized:
             logger.debug("OpportunityDetector already cleaned up")
             return
-            
+
         try:
             logger.info("Cleaning up OpportunityDetector resources...")
-            
+
             # Cancel periodic tasks
             tasks = [
                 self._cleanup_task,
                 self._batch_task,
                 self._prefetch_task
             ]
-            
+
             for task in tasks:
                 if task:
                     task.cancel()
@@ -207,30 +207,30 @@ class OpportunityDetector:
                         await task
                     except asyncio.CancelledError:
                         pass
-            
+
             # Process any remaining batches
             await self._process_opportunity_batch()
             await self._process_quote_batch()
             await self._process_path_batch()
-            
+
             # Clean up components concurrently
             cleanup_tasks = []
-            
+
             if self.dex_manager:
                 cleanup_tasks.append(asyncio.create_task(self.dex_manager.cleanup()))
             if self.analytics:
                 cleanup_tasks.append(asyncio.create_task(self.analytics.cleanup()))
             if self.ml_system:
                 cleanup_tasks.append(asyncio.create_task(self.ml_system.cleanup()))
-            
+
             # Wait for all cleanups
             await asyncio.gather(*cleanup_tasks, return_exceptions=True)
-            
+
             # Reset state
             self.initialized = False
             self.gas_price = 0
             self.last_gas_update = 0
-            
+
             # Clear caches
             self._dex_cache.clear()
             self._quote_cache.clear()
@@ -242,20 +242,20 @@ class OpportunityDetector:
             self._path_cache_times.clear()
             self._gas_cache_times.clear()
             self._token_cache_times.clear()
-            
+
             # Clear batches
             self._opportunity_batch.clear()
             self._quote_batch.clear()
             self._path_batch.clear()
-            
+
             # Clear recent opportunities
             self._recent_opportunities.clear()
-            
+
             # Shutdown thread pool
             self.executor.shutdown(wait=True)
-            
+
             logger.info("OpportunityDetector cleanup complete")
-            
+
         except Exception as e:
             logger.error(f"Error during OpportunityDetector cleanup: {e}", exc_info=True)
             raise
@@ -265,15 +265,15 @@ class OpportunityDetector:
         try:
             await self.ensure_initialized()
             opportunities = []
-            
+
             if not self.initialized:
                 logger.error("OpportunityDetector not properly initialized")
                 await self.cleanup()
                 return []
-            
+
             # Update gas price if needed
             await self._update_gas_price()
-            
+
             # Get pairs sorted by priority
             pairs = []
             try:
@@ -289,11 +289,11 @@ class OpportunityDetector:
             # Detect opportunities concurrently
             direct_task = asyncio.create_task(self._detect_direct_arbitrage(pairs))
             triangular_task = asyncio.create_task(self._detect_triangular_arbitrage(pairs))
-            
+
             direct_opportunities, triangular_opportunities = await asyncio.gather(
                 direct_task, triangular_task
             )
-            
+
             opportunities.extend(direct_opportunities)
             opportunities.extend(triangular_opportunities)
 
@@ -304,17 +304,17 @@ class OpportunityDetector:
                 self._filter_and_sort_opportunities,
                 opportunities
             )
-            
+
             # Add to batch
             async with self._batch_lock:
                 self._opportunity_batch.extend(opportunities)
-                
+
                 # Process batch if full or timeout reached
                 current_time = time.time()
-                if (len(self._opportunity_batch) >= MAX_BATCH_SIZE or 
+                if (len(self._opportunity_batch) >= MAX_BATCH_SIZE or
                     current_time - self._last_batch >= BATCH_TIMEOUT):
                     await self._process_opportunity_batch()
-            
+
             if opportunities:
                 logger.info(f"Found {len(opportunities)} opportunities")
             return opportunities
@@ -329,12 +329,12 @@ class OpportunityDetector:
             async with self._batch_lock:
                 if not self._opportunity_batch:
                     return
-                    
+
                 # Get batch
                 batch = self._opportunity_batch[:MAX_BATCH_SIZE]
                 self._opportunity_batch = self._opportunity_batch[MAX_BATCH_SIZE:]
                 self._last_batch = time.time()
-            
+
             # Process opportunities concurrently
             tasks = []
             for opportunity in batch:
@@ -342,16 +342,16 @@ class OpportunityDetector:
                 key = f"{opportunity.buy_dex}:{opportunity.sell_dex}:{opportunity.token_pair}"
                 if key in self._recent_opportunities:
                     continue
-                    
+
                 # Add to recent opportunities
                 self._recent_opportunities.append(key)
-                
+
                 # Create task
                 task = asyncio.create_task(self._process_single_opportunity(opportunity))
                 tasks.append(task)
-            
+
             await asyncio.gather(*tasks)
-            
+
         except Exception as e:
             logger.error(f"Error processing opportunity batch: {e}")
 
@@ -365,16 +365,16 @@ class OpportunityDetector:
                 'gas_cost': opportunity.estimated_gas,
                 'price_impact': opportunity.market_conditions['price_impact']
             })
-            
+
             if prediction[0] > 0.8:  # Success probability threshold
                 # Update analytics
                 await self.analytics.analyze_opportunity(opportunity)
-                
+
                 # Store opportunity
                 from ..memory import get_memory_bank
                 memory_bank = await get_memory_bank()
                 await memory_bank.store_opportunities([opportunity])
-                
+
         except Exception as e:
             logger.error(f"Error processing opportunity: {e}")
 
@@ -389,12 +389,12 @@ class OpportunityDetector:
                 opp for opp in opportunities
                 if opp.net_profit > float(self.min_profit)
             ]
-            
+
             # Sort by priority
             opportunities.sort(key=lambda x: x.priority, reverse=True)
-            
+
             return opportunities
-            
+
         except Exception as e:
             logger.error(f"Error filtering and sorting opportunities: {e}")
             return []
@@ -416,17 +416,17 @@ class OpportunityDetector:
             )
             if quotes:
                 return quotes
-            
+
             # Add to quote batch
             async with self._quote_lock:
                 self._quote_batch.append((token0_addr, token1_addr, amount))
-                
+
                 # Process batch if full or timeout reached
                 current_time = time.time()
-                if (len(self._quote_batch) >= QUOTE_BATCH_SIZE or 
+                if (len(self._quote_batch) >= QUOTE_BATCH_SIZE or
                     current_time - self._last_quote_batch >= BATCH_TIMEOUT):
                     await self._process_quote_batch()
-            
+
             # Create quote tasks for each DEX
             quote_tasks = []
             for dex_name, dex in self.dex_manager.dexes.items():
@@ -434,7 +434,7 @@ class OpportunityDetector:
                     dex_name, dex, token0_addr, token1_addr, amount
                 ))
                 quote_tasks.append((dex_name, task))
-            
+
             # Wait for all quotes with retries
             quotes = {}
             for dex_name, task in quote_tasks:
@@ -449,7 +449,7 @@ class OpportunityDetector:
                             await asyncio.sleep(RETRY_DELAY)
                             continue
                         logger.debug(f"Error getting quote from {dex_name} after {MAX_RETRIES} attempts: {e}")
-            
+
             # Update cache
             await self._update_cache(
                 cache_key,
@@ -457,9 +457,9 @@ class OpportunityDetector:
                 self._quote_cache,
                 self._quote_cache_times
             )
-            
+
             return quotes
-            
+
         except Exception as e:
             logger.error(f"Error getting DEX quotes: {e}")
             return {}
@@ -470,12 +470,12 @@ class OpportunityDetector:
             async with self._quote_lock:
                 if not self._quote_batch:
                     return
-                    
+
                 # Get batch
                 batch = self._quote_batch[:QUOTE_BATCH_SIZE]
                 self._quote_batch = self._quote_batch[QUOTE_BATCH_SIZE:]
                 self._last_quote_batch = time.time()
-            
+
             # Process quotes concurrently
             tasks = []
             for token0_addr, token1_addr, amount in batch:
@@ -483,9 +483,9 @@ class OpportunityDetector:
                     token0_addr, token1_addr, amount
                 ))
                 tasks.append(task)
-            
+
             await asyncio.gather(*tasks)
-            
+
         except Exception as e:
             logger.error(f"Error processing quote batch: {e}")
 
@@ -500,12 +500,12 @@ class OpportunityDetector:
         """Get quote from a single DEX with caching."""
         try:
             cache_key = f"{dex_name}:{token0_addr}:{token1_addr}:{amount}"
-            
+
             # Check cache first
             quote = self._quote_cache.get(cache_key)
             if quote is not None:
                 return quote
-            
+
             # Get quote with retries
             for attempt in range(MAX_RETRIES):
                 try:
@@ -521,9 +521,9 @@ class OpportunityDetector:
                         continue
                     logger.debug(f"Error getting quote from {dex_name} after {MAX_RETRIES} attempts: {e}")
                     return None
-            
+
             return None
-            
+
         except Exception as e:
             logger.debug(f"Error getting quote from {dex_name}: {e}")
             return None
@@ -535,18 +535,13 @@ class OpportunityDetector:
             opportunities = []
             for i in range(0, len(pairs), self.batch_size):
                 batch = pairs[i:i + self.batch_size]
-                
-                # Process batch in thread pool
-                loop = asyncio.get_event_loop()
+
+                # Process batch concurrently
                 batch_tasks = [
-                    loop.run_in_executor(
-                        self.executor,
-                        self._analyze_direct_pair,
-                        pair
-                    )
+                    asyncio.create_task(self._analyze_direct_pair(pair))
                     for pair in batch
                 ]
-                
+
                 # Wait for batch results with retries
                 for task in batch_tasks:
                     for attempt in range(MAX_RETRIES):
@@ -560,9 +555,9 @@ class OpportunityDetector:
                                 await asyncio.sleep(RETRY_DELAY)
                                 continue
                             logger.error(f"Error in pair analysis after {MAX_RETRIES} attempts: {e}")
-            
+
             return opportunities
-            
+
         except Exception as e:
             logger.error(f"Error in direct arbitrage detection: {e}")
             return []
@@ -577,43 +572,43 @@ class OpportunityDetector:
             if not token0 or not token1:
                 logger.error(f"Invalid pair configuration: {pair}")
                 return []
-                
+
             tokens = self.config.get("tokens", {})
             token0_info = tokens.get(token0, {})
             token1_info = tokens.get(token1, {})
-            
+
             token0_addr = token0_info.get("address")
             token1_addr = token1_info.get("address")
-            
+
             if not token0_addr or not token1_addr:
                 logger.error(f"Missing token addresses for pair {token0}/{token1}")
                 return []
-            
+
             # Get quotes from all DEXes concurrently
             quotes = await self._get_dex_quotes(
                 token0_addr,
                 token1_addr,
                 int(float(self.max_trade_size))
             )
-            
+
             # Check for arbitrage opportunities
             for buy_dex, buy_quote in quotes.items():
                 for sell_dex, sell_quote in quotes.items():
                     if buy_dex == sell_dex:
                         continue
-                        
+
                     # Calculate profit
                     buy_price = Decimal(str(buy_quote['amount_out'])) / self.max_trade_size
                     sell_price = Decimal(str(sell_quote['amount_in'])) / self.max_trade_size
                     profit_percent = (sell_price - buy_price) / buy_price
-                    
+
                     # Calculate optimal amount
                     optimal_amount = min(
                         self.max_trade_size,
                         Decimal(str(buy_quote['liquidity_depth'])),
                         Decimal(str(sell_quote['liquidity_depth']))
                     )
-                    
+
                     # Get gas cost and ML prediction concurrently
                     gas_task = asyncio.create_task(self._estimate_gas_cost(buy_dex, sell_dex))
                     ml_task = asyncio.create_task(self.ml_system.predict_trade_success({
@@ -623,10 +618,10 @@ class OpportunityDetector:
                         'buy_impact': buy_quote['price_impact'],
                         'sell_impact': sell_quote['price_impact']
                     }))
-                    
+
                     gas_cost, (success_prob, importance) = await asyncio.gather(gas_task, ml_task)
                     net_profit = profit_percent * optimal_amount - Decimal(str(gas_cost))
-                    
+
                     if net_profit > self.min_profit and success_prob > 0.8:
                         opportunities.append(
                             Opportunity(
@@ -663,9 +658,9 @@ class OpportunityDetector:
                                 }
                             )
                         )
-            
+
             return opportunities
-            
+
         except Exception as e:
             logger.error(f"Error analyzing direct pair: {e}")
             return []
@@ -682,7 +677,7 @@ class OpportunityDetector:
                 if token0 and token1 and token0 in config_tokens and token1 in config_tokens:
                     tokens.add(token0)
                     tokens.add(token1)
-            
+
             # Process paths in batches
             opportunities = []
             paths = []
@@ -690,37 +685,34 @@ class OpportunityDetector:
                 for token_b in tokens:
                     if token_a == token_b:
                         continue
-                        
+
                     for token_c in tokens:
                         if token_c in (token_a, token_b):
                             continue
-                            
+
                         paths.append((token_a, token_b, token_c))
-            
+
             # Add paths to batch
             async with self._path_lock:
                 self._path_batch.extend(paths)
-                
+
                 # Process batch if full or timeout reached
                 current_time = time.time()
-                if (len(self._path_batch) >= PATH_BATCH_SIZE or 
+                if (len(self._path_batch) >= PATH_BATCH_SIZE or
                     current_time - self._last_path_batch >= BATCH_TIMEOUT):
                     await self._process_path_batch()
-            
+
             for i in range(0, len(paths), self.path_batch_size):
                 batch = paths[i:i + self.path_batch_size]
-                
-                # Process batch in thread pool
-                loop = asyncio.get_event_loop()
+
+                # Process batch concurrently
                 batch_tasks = [
-                    loop.run_in_executor(
-                        self.executor,
-                        self._analyze_triangular_path,
+                    asyncio.create_task(self._analyze_triangular_path(
                         path[0], path[1], path[2]
-                    )
+                    ))
                     for path in batch
                 ]
-                
+
                 # Wait for batch results with retries
                 for task in batch_tasks:
                     for attempt in range(MAX_RETRIES):
@@ -734,9 +726,9 @@ class OpportunityDetector:
                                 await asyncio.sleep(RETRY_DELAY)
                                 continue
                             logger.error(f"Error in path analysis after {MAX_RETRIES} attempts: {e}")
-            
+
             return opportunities
-            
+
         except Exception as e:
             logger.error(f"Error in triangular arbitrage detection: {e}")
             return []
@@ -747,12 +739,12 @@ class OpportunityDetector:
             async with self._path_lock:
                 if not self._path_batch:
                     return
-                    
+
                 # Get batch
                 batch = self._path_batch[:PATH_BATCH_SIZE]
                 self._path_batch = self._path_batch[PATH_BATCH_SIZE:]
                 self._last_path_batch = time.time()
-            
+
             # Process paths concurrently
             tasks = []
             for token_a, token_b, token_c in batch:
@@ -760,9 +752,9 @@ class OpportunityDetector:
                     token_a, token_b, token_c
                 ))
                 tasks.append(task)
-            
+
             await asyncio.gather(*tasks)
-            
+
         except Exception as e:
             logger.error(f"Error processing path batch: {e}")
 
@@ -780,11 +772,11 @@ class OpportunityDetector:
             token_a_info = tokens.get(token_a, {})
             token_b_info = tokens.get(token_b, {})
             token_c_info = tokens.get(token_c, {})
-            
+
             token_a_addr = token_a_info.get("address")
             token_b_addr = token_b_info.get("address")
             token_c_addr = token_c_info.get("address")
-            
+
             if not all([token_a_addr, token_b_addr, token_c_addr]):
                 logger.error(f"Missing token addresses for path {token_a}-{token_b}-{token_c}")
                 return []
@@ -795,13 +787,13 @@ class OpportunityDetector:
                 asyncio.create_task(self.dex_manager.get_best_dex(f"{token_b}/{token_c}")),
                 asyncio.create_task(self.dex_manager.get_best_dex(f"{token_c}/{token_a}"))
             ]
-            
+
             dex1, dex2, dex3 = await asyncio.gather(*dex_tasks)
-            
+
             if not all([dex1, dex2, dex3]):
                 logger.debug(f"Could not find DEXes for path {token_a}-{token_b}-{token_c}")
                 return []
-            
+
             # Get quotes concurrently
             quote_tasks = [
                 asyncio.create_task(self._get_single_quote(
@@ -813,4 +805,251 @@ class OpportunityDetector:
                 )),
                 asyncio.create_task(self._get_single_quote(
                     dex2,
-                    self.dex_manager.get_dex(dex
+                    self.dex_manager.get_dex(dex2), # Corrected line 816
+                    token_b_addr,
+                    token_c_addr,
+                    int(float(self.max_trade_size)) # Assume same amount for simplicity
+                )),
+                asyncio.create_task(self._get_single_quote(
+                    dex3,
+                    self.dex_manager.get_dex(dex3),
+                    token_c_addr,
+                    token_a_addr,
+                    int(float(self.max_trade_size)) # Assume same amount for simplicity
+                ))
+            ]
+
+            quote1, quote2, quote3 = await asyncio.gather(*quote_tasks)
+
+            if not all([quote1, quote2, quote3]):
+                logger.debug(f"Could not get quotes for path {token_a}-{token_b}-{token_c}")
+                return []
+
+            # Calculate profit
+            amount_a_in = self.max_trade_size
+            amount_b_out = Decimal(str(quote1['amount_out']))
+            amount_c_out = Decimal(str(quote2['amount_out'])) * (amount_b_out / self.max_trade_size) # Adjust for first leg output
+            amount_a_out = Decimal(str(quote3['amount_out'])) * (amount_c_out / self.max_trade_size) # Adjust for second leg output
+
+            profit_percent = (amount_a_out - amount_a_in) / amount_a_in
+
+            # Estimate gas cost
+            gas_cost = await self._estimate_gas_cost(dex1, dex2, dex3)
+
+            # Calculate net profit
+            net_profit = amount_a_out - amount_a_in - Decimal(str(gas_cost))
+
+            # Get ML prediction
+            success_prob, importance = await self.ml_system.predict_trade_success({
+                'profit_percent': float(profit_percent),
+                'buy_amount': float(amount_a_in),
+                'gas_cost': float(gas_cost),
+                'impact_leg1': quote1['price_impact'],
+                'impact_leg2': quote2['price_impact'],
+                'impact_leg3': quote3['price_impact']
+            })
+
+            if net_profit > self.min_profit and success_prob > 0.8:
+                opportunities.append(
+                    Opportunity(
+                        buy_dex=f"{dex1}->{dex2}->{dex3}", # Represent path
+                        sell_dex="N/A", # Not applicable for triangular
+                        token_pair=f"{token_a}->{token_b}->{token_c}->{token_a}",
+                        profit_percent=float(profit_percent),
+                        buy_amount=float(amount_a_in),
+                        sell_amount=float(amount_a_out * (1 - self.max_slippage)), # Apply slippage to final amount
+                        estimated_gas=float(gas_cost),
+                        net_profit=float(net_profit),
+                        priority=self._calculate_priority_score(
+                            profit_percent=float(profit_percent),
+                            net_profit=float(net_profit),
+                            gas_cost=float(gas_cost),
+                            success_prob=success_prob,
+                            impact_score=1 - max(
+                                quote1['price_impact'],
+                                quote2['price_impact'],
+                                quote3['price_impact']
+                            )
+                        ),
+                        route_type="triangular",
+                        confidence_score=success_prob,
+                        market_conditions={
+                            'liquidity': float(min(
+                                quote1['liquidity_depth'],
+                                quote2['liquidity_depth'],
+                                quote3['liquidity_depth']
+                            )),
+                            'price_impact': max(
+                                quote1['price_impact'],
+                                quote2['price_impact'],
+                                quote3['price_impact']
+                            ),
+                            'max_trade_size': float(amount_a_in) # Base trade size
+                        }
+                    )
+                )
+
+            return opportunities
+
+        except Exception as e:
+            logger.error(f"Error analyzing triangular path {token_a}-{token_b}-{token_c}: {e}")
+            return []
+
+    async def _estimate_gas_cost(self, *dex_names: str) -> float:
+        """Estimate gas cost for a trade involving given DEXes."""
+        try:
+            async with self._gas_lock:
+                # Check cache first
+                cache_key = ":".join(sorted(dex_names))
+                gas_cost = await self._get_cached_data(
+                    cache_key,
+                    self._gas_cache,
+                    self._gas_cache_times
+                )
+                if gas_cost is not None:
+                    return gas_cost
+
+                # Estimate gas units (placeholder - needs actual estimation logic)
+                gas_units = 200000 * len(dex_names) # Simple estimate
+
+                # Calculate cost
+                gas_cost_wei = gas_units * self.gas_price
+                gas_cost_eth = self.w3.from_wei(gas_cost_wei, 'ether')
+
+                # Get ETH price (placeholder - needs price feed)
+                eth_price_usd = 3000.0 # Example price
+
+                gas_cost_usd = float(gas_cost_eth) * eth_price_usd
+
+                # Update cache
+                await self._update_cache(
+                    cache_key,
+                    gas_cost_usd,
+                    self._gas_cache,
+                    self._gas_cache_times
+                )
+                return gas_cost_usd
+
+        except Exception as e:
+            logger.error(f"Error estimating gas cost: {e}")
+            return 5.0 # Fallback gas cost
+
+    def _calculate_priority_score(self, **kwargs) -> float:
+        """Calculate priority score based on various factors."""
+        # Simple weighted score (adjust weights as needed)
+        score = (
+            kwargs.get('net_profit', 0) * 0.5 +
+            kwargs.get('profit_percent', 0) * 100 * 0.2 + # Scale percentage
+            kwargs.get('success_prob', 0) * 0.2 +
+            kwargs.get('impact_score', 0) * 0.1 -
+            kwargs.get('gas_cost', 0) * 0.05 # Penalize high gas
+        )
+        return max(0, score) # Ensure non-negative
+
+    async def _update_gas_price(self) -> None:
+        """Update gas price periodically."""
+        now = time.time()
+        if now - self.last_gas_update > self.gas_update_interval:
+            try:
+                async with self._gas_lock:
+                    loop = asyncio.get_event_loop()
+                    self.gas_price = await loop.run_in_executor(
+                        self.executor,
+                        lambda: self.w3.eth.gas_price
+                    )
+                    self.last_gas_update = now
+                    logger.debug(f"Updated gas price: {self.w3.from_wei(self.gas_price, 'gwei')} gwei")
+            except Exception as e:
+                logger.warning(f"Failed to update gas price: {e}")
+
+    async def _periodic_cache_cleanup(self) -> None:
+        """Periodically clean up expired cache entries."""
+        while True:
+            await asyncio.sleep(self.cache_ttl)
+            try:
+                async with self._cache_lock:
+                    now = time.time()
+                    caches = [
+                        (self._dex_cache, self._dex_cache_times),
+                        (self._quote_cache, self._quote_cache_times),
+                        (self._path_cache, self._path_cache_times),
+                        (self._gas_cache, self._gas_cache_times),
+                        (self._token_cache, self._token_cache_times),
+                    ]
+                    for cache, times in caches:
+                        expired_keys = [
+                            key for key, timestamp in times.items()
+                            if now - timestamp > self.cache_ttl
+                        ]
+                        for key in expired_keys:
+                            cache.pop(key, None)
+                            times.pop(key, None)
+                        logger.debug(f"Cleaned {len(expired_keys)} expired entries from cache")
+            except asyncio.CancelledError:
+                logger.info("Cache cleanup task cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"Error during cache cleanup: {e}")
+
+    async def _periodic_batch(self) -> None:
+        """Periodically process batches if timeout reached."""
+        while True:
+            await asyncio.sleep(BATCH_TIMEOUT)
+            try:
+                async with self._batch_lock:
+                    if self._opportunity_batch:
+                        await self._process_opportunity_batch()
+                async with self._quote_lock:
+                    if self._quote_batch:
+                        await self._process_quote_batch()
+                async with self._path_lock:
+                    if self._path_batch:
+                        await self._process_path_batch()
+            except asyncio.CancelledError:
+                logger.info("Periodic batch task cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"Error during periodic batch processing: {e}")
+
+    async def _periodic_prefetch(self) -> None:
+        """Periodically prefetch data if cache usage is high."""
+        while True:
+            await asyncio.sleep(self.cache_ttl / 2) # Check more frequently than TTL
+            try:
+                async with self._cache_lock:
+                    # Example: Prefetch quotes if cache is getting full
+                    if len(self._quote_cache) / CACHE_SIZE > self._prefetch_threshold:
+                        logger.debug("Prefetching quotes due to high cache usage...")
+                        # Add logic to determine which quotes to prefetch
+                        # e.g., based on frequently accessed pairs or ML predictions
+                        # await self._prefetch_quotes(limit=self._prefetch_size)
+                        pass # Placeholder for actual prefetch logic
+            except asyncio.CancelledError:
+                logger.info("Prefetch task cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"Error during prefetch: {e}")
+
+    async def _get_cached_data(self, key: str, cache: lru.LRU, times: Dict) -> Optional[Any]:
+        """Get data from cache if not expired."""
+        async with self._cache_lock:
+            if key in cache and key in times:
+                if time.time() - times[key] < self.cache_ttl:
+                    return cache[key]
+                else:
+                    # Expired, remove
+                    cache.pop(key, None)
+                    times.pop(key, None)
+            return None
+
+    async def _update_cache(self, key: str, value: Any, cache: lru.LRU, times: Dict) -> None:
+        """Update cache and timestamp."""
+        async with self._cache_lock:
+            cache[key] = value
+            times[key] = time.time()
+
+# Helper function (if needed outside class)
+async def get_opportunity_detector(config, web3_manager, dex_manager, analytics, ml_system):
+    detector = OpportunityDetector(config, web3_manager, dex_manager, analytics, ml_system)
+    await detector.initialize()
+    return detector

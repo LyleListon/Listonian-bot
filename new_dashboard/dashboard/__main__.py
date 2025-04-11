@@ -6,16 +6,16 @@ from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 def main():
     """Run the dashboard application."""
     try:
         logger.info("Starting dashboard...")
-        
+
         # Run the dashboard
         uvicorn.run(
             "new_dashboard.dashboard:create_app()",
@@ -25,11 +25,12 @@ def main():
             reload=False,
             log_level="info",
             access_log=True,
-            lifespan="on"
+            lifespan="on",
         )
     except Exception as e:
         logger.error(f"Failed to start dashboard: {e}", exc_info=True)
         raise
+
 
 if __name__ == "__main__":
     main()

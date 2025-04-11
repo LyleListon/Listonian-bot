@@ -1,117 +1,126 @@
-# Listonian Arbitrage Bot - Dashboard
+# Dashboard Module
 
-This dashboard provides real-time monitoring and visualization of the Listonian Arbitrage Bot's performance, trade history, and market data.
+The dashboard module provides real-time monitoring and visualization for the Listonian Arbitrage Bot. It displays critical metrics, market data, and system status information.
 
 ## Features
 
-- Real-time metrics display
-- Trade history tracking
-- Performance analytics
-- WebSocket-based updates
-- Mock data generation for testing
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.12+
-- FastAPI
-- Uvicorn
-- WebSockets support
-
-### Installation
-
-1. Make sure you have all dependencies installed:
-
-```bash
-pip install fastapi uvicorn websockets
-```
-
-2. Navigate to the project directory:
-
-```bash
-cd new_dashboard
-```
-
-### Running the Test Server
-
-To run the test server with mock data:
-
-```bash
-# Using PowerShell
-.\run_test_server.ps1
-
-# Or using Python directly
-python run_test_server.py
-```
-
-The test server will start on port 9050. You can access the dashboard at:
-
-```
-http://localhost:9050/test
-```
-
-### Running the Production Server
-
-To run the production server connected to the actual bot:
-
-```bash
-# Using Python
-python -m uvicorn dashboard.app:app --host 0.0.0.0 --port 9051
-```
-
-The production server will start on port 9051. You can access the dashboard at:
-
-```
-http://localhost:9051
-```
+- **Real-time Metrics**: Live updates of bot performance metrics
+- **Market Data**: Current prices, liquidity, and trading volumes
+- **System Status**: Health monitoring of all bot components
+- **Arbitrage Opportunities**: Visualization of detected arbitrage opportunities
+- **Historical Performance**: Charts and graphs of historical performance
+- **Alert System**: Notifications for critical events
 
 ## Architecture
 
-The dashboard consists of the following components:
+The dashboard follows a modern web architecture:
 
-1. **FastAPI Backend**: Handles WebSocket connections and serves the dashboard UI
-2. **WebSocket Server**: Provides real-time updates to connected clients
-3. **Data Processing Layer**: Processes and formats data from the bot
-4. **UI Layer**: Visualizes the data in an intuitive interface
+- **Backend**: Python-based API server using FastAPI
+- **Frontend**: Responsive web interface using HTML, CSS, and JavaScript
+- **WebSocket**: Real-time data updates via WebSocket connections
+- **Data Storage**: Time-series data for historical analysis
+
+## Components
+
+### Dashboard Server
+
+The main server component that handles API requests and serves the dashboard interface:
+
+```python
+from new_dashboard.dashboard import DashboardServer
+
+# Initialize the dashboard server
+dashboard = DashboardServer(
+    port=3000,
+    host="0.0.0.0",
+    config=dashboard_config
+)
+
+# Start the dashboard
+await dashboard.start()
+```
+
+### Data Services
+
+Services that collect and process data for the dashboard:
+
+- **SystemMonitor**: Monitors system health and resource usage
+- **MarketDataService**: Collects and processes market data
+- **PerformanceTracker**: Tracks bot performance metrics
+- **AlertService**: Generates alerts based on configurable thresholds
+
+### WebSocket Routes
+
+WebSocket endpoints for real-time data updates:
+
+- `/ws/system`: System status updates
+- `/ws/market`: Market data updates
+- `/ws/performance`: Performance metric updates
+- `/ws/alerts`: Real-time alerts
+
+## Usage
+
+### Starting the Dashboard
+
+```bash
+python run_dashboard.py
+```
+
+Or programmatically:
+
+```python
+from new_dashboard.dashboard import start_dashboard
+
+await start_dashboard(config_path="configs/dashboard_config.json")
+```
+
+### Accessing the Dashboard
+
+Open a web browser and navigate to:
+
+```
+http://localhost:3000
+```
+
+### Configuration
+
+The dashboard is configured through the `dashboard_config.json` file:
+
+```json
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000,
+    "debug": false
+  },
+  "data": {
+    "refresh_interval": 5,
+    "history_length": 1000
+  },
+  "alerts": {
+    "enabled": true,
+    "channels": ["web", "email"]
+  }
+}
+```
+
+## Customization
+
+The dashboard can be customized through:
+
+- **Themes**: Custom CSS themes in the `static/css` directory
+- **Widgets**: Add or remove widgets in the `templates/widgets` directory
+- **Data Sources**: Configure additional data sources in `services/data_sources.py`
 
 ## Development
 
-### Test Environment
+For development purposes, you can run the dashboard in debug mode:
 
-The test environment uses mock data to simulate the bot's behavior. This is useful for UI development and testing without needing to run the actual bot.
-
-### Directory Structure
-
-```
-new_dashboard/
-├── README.md
-├── run_test_server.ps1
-├── run_test_server.py
-├── tests/
-│   └── dashboard/
-│       ├── app.py
-│       └── templates/
-│           └── test.html
-└── dashboard/
-    ├── app.py
-    ├── static/
-    └── templates/
+```bash
+python run_dashboard.py --debug
 ```
 
-## Integration with the Bot
-
-The dashboard integrates with the Listonian Arbitrage Bot through a shared memory interface. The bot updates the shared memory with its current state, and the dashboard reads this data to display it to the user.
-
-## Contributing
-
-When contributing to the dashboard, please follow these guidelines:
-
-1. Use async/await patterns for all I/O operations
-2. Implement proper error handling
-3. Add appropriate logging
-4. Follow the project's coding standards
-
-## License
-
-This project is licensed under the terms of the license included with the Listonian Arbitrage Bot.
+This enables:
+- Hot reloading of template changes
+- Detailed error messages
+- Development console

@@ -16,9 +16,9 @@ TRADE_SCHEMA = {
         "transaction_hash": {"type": "string"},
         "status": {"type": "string", "enum": ["pending", "completed", "failed"]},
         "profit_loss": {"type": "number"},
-        "error": {"type": "string", "nullable": True}
+        "error": {"type": "string", "nullable": True},
     },
-    "required": ["id", "timestamp", "pair", "dex", "amount", "price", "side", "status"]
+    "required": ["id", "timestamp", "pair", "dex", "amount", "price", "side", "status"],
 }
 
 # Opportunity schema for storing arbitrage opportunities
@@ -37,13 +37,22 @@ OPPORTUNITY_SCHEMA = {
         "gas_estimate": {"type": "number"},
         "net_profit": {"type": "number"},
         "executed": {"type": "boolean"},
-        "execution_id": {"type": "string", "nullable": True}
+        "execution_id": {"type": "string", "nullable": True},
     },
     "required": [
-        "id", "timestamp", "pair", "buy_dex", "sell_dex",
-        "buy_price", "sell_price", "amount", "profit",
-        "gas_estimate", "net_profit", "executed"
-    ]
+        "id",
+        "timestamp",
+        "pair",
+        "buy_dex",
+        "sell_dex",
+        "buy_price",
+        "sell_price",
+        "amount",
+        "profit",
+        "gas_estimate",
+        "net_profit",
+        "executed",
+    ],
 }
 
 # Market data schema for storing price and liquidity information
@@ -58,9 +67,9 @@ MARKET_DATA_SCHEMA = {
         "volume_24h": {"type": "number"},
         "high_24h": {"type": "number"},
         "low_24h": {"type": "number"},
-        "price_change_24h": {"type": "number"}
+        "price_change_24h": {"type": "number"},
     },
-    "required": ["timestamp", "pair", "dex", "price", "liquidity"]
+    "required": ["timestamp", "pair", "dex", "price", "liquidity"],
 }
 
 # Configuration schema for storing bot settings
@@ -74,9 +83,9 @@ CONFIG_SCHEMA = {
                 "chain_id": {"type": "integer"},
                 "rpc_url": {"type": "string"},
                 "ws_url": {"type": "string", "nullable": True},
-                "explorer_url": {"type": "string"}
+                "explorer_url": {"type": "string"},
             },
-            "required": ["chain_id", "rpc_url", "explorer_url"]
+            "required": ["chain_id", "rpc_url", "explorer_url"],
         },
         "trading": {
             "type": "object",
@@ -86,12 +95,16 @@ CONFIG_SCHEMA = {
                 "gas_limit": {"type": "integer"},
                 "max_gas_price": {"type": "number"},
                 "retry_attempts": {"type": "integer"},
-                "retry_delay": {"type": "integer"}
+                "retry_delay": {"type": "integer"},
             },
             "required": [
-                "min_profit", "max_slippage", "gas_limit",
-                "max_gas_price", "retry_attempts", "retry_delay"
-            ]
+                "min_profit",
+                "max_slippage",
+                "gas_limit",
+                "max_gas_price",
+                "retry_attempts",
+                "retry_delay",
+            ],
         },
         "monitoring": {
             "type": "object",
@@ -99,12 +112,14 @@ CONFIG_SCHEMA = {
                 "update_interval": {"type": "integer"},
                 "price_deviation_threshold": {"type": "number"},
                 "liquidity_threshold": {"type": "number"},
-                "gas_price_threshold": {"type": "number"}
+                "gas_price_threshold": {"type": "number"},
             },
             "required": [
-                "update_interval", "price_deviation_threshold",
-                "liquidity_threshold", "gas_price_threshold"
-            ]
+                "update_interval",
+                "price_deviation_threshold",
+                "liquidity_threshold",
+                "gas_price_threshold",
+            ],
         },
         "dexes": {
             "type": "array",
@@ -115,13 +130,10 @@ CONFIG_SCHEMA = {
                     "enabled": {"type": "boolean"},
                     "factory_address": {"type": "string"},
                     "router_address": {"type": "string"},
-                    "fee_tiers": {
-                        "type": "array",
-                        "items": {"type": "integer"}
-                    }
+                    "fee_tiers": {"type": "array", "items": {"type": "integer"}},
                 },
-                "required": ["name", "enabled", "factory_address", "router_address"]
-            }
+                "required": ["name", "enabled", "factory_address", "router_address"],
+            },
         },
         "tokens": {
             "type": "array",
@@ -132,13 +144,13 @@ CONFIG_SCHEMA = {
                     "address": {"type": "string"},
                     "decimals": {"type": "integer"},
                     "min_amount": {"type": "number"},
-                    "max_amount": {"type": "number"}
+                    "max_amount": {"type": "number"},
                 },
-                "required": ["symbol", "address", "decimals"]
-            }
-        }
+                "required": ["symbol", "address", "decimals"],
+            },
+        },
     },
-    "required": ["version", "network", "trading", "monitoring", "dexes", "tokens"]
+    "required": ["version", "network", "trading", "monitoring", "dexes", "tokens"],
 }
 
 # Performance metrics schema for storing bot performance data
@@ -159,13 +171,21 @@ PERFORMANCE_SCHEMA = {
         "average_execution_time": {"type": "number"},
         "opportunities_found": {"type": "integer"},
         "opportunities_executed": {"type": "integer"},
-        "execution_rate": {"type": "number"}
+        "execution_rate": {"type": "number"},
     },
     "required": [
-        "timestamp", "period", "total_trades", "successful_trades",
-        "failed_trades", "total_profit", "total_loss", "net_profit",
-        "total_gas_used", "opportunities_found", "opportunities_executed"
-    ]
+        "timestamp",
+        "period",
+        "total_trades",
+        "successful_trades",
+        "failed_trades",
+        "total_profit",
+        "total_loss",
+        "net_profit",
+        "total_gas_used",
+        "opportunities_found",
+        "opportunities_executed",
+    ],
 }
 
 # Error log schema for storing error information
@@ -178,12 +198,9 @@ ERROR_SCHEMA = {
         "stack_trace": {"type": "string"},
         "component": {"type": "string"},
         "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
-        "related_data": {
-            "type": "object",
-            "additionalProperties": True
-        }
+        "related_data": {"type": "object", "additionalProperties": True},
     },
-    "required": ["timestamp", "error_type", "message", "component", "severity"]
+    "required": ["timestamp", "error_type", "message", "component", "severity"],
 }
 
 # Distribution configuration schema
@@ -197,7 +214,7 @@ DISTRIBUTION_CONFIG_SCHEMA = {
         "gas_price_weight": {"type": "number", "minimum": 0, "maximum": 1},
         "liquidity_weight": {"type": "number", "minimum": 0, "maximum": 1},
         "volume_weight": {"type": "number", "minimum": 0, "maximum": 1},
-        "success_rate_weight": {"type": "number", "minimum": 0, "maximum": 1}
+        "success_rate_weight": {"type": "number", "minimum": 0, "maximum": 1},
     },
     "required": [
         "max_exposure_per_dex",
@@ -207,8 +224,8 @@ DISTRIBUTION_CONFIG_SCHEMA = {
         "gas_price_weight",
         "liquidity_weight",
         "volume_weight",
-        "success_rate_weight"
-    ]
+        "success_rate_weight",
+    ],
 }
 
 # Distribution state schema
@@ -217,19 +234,15 @@ DISTRIBUTION_STATE_SCHEMA = {
     "properties": {
         "dex_exposure": {
             "type": "object",
-            "patternProperties": {
-                "^.*$": {"type": "string"}  # Decimal as string
-            }
+            "patternProperties": {"^.*$": {"type": "string"}},  # Decimal as string
         },
         "pair_exposure": {
             "type": "object",
-            "patternProperties": {
-                "^.*$": {"type": "string"}  # Decimal as string
-            }
+            "patternProperties": {"^.*$": {"type": "string"}},  # Decimal as string
         },
-        "timestamp": {"type": "number"}
+        "timestamp": {"type": "number"},
     },
-    "required": ["dex_exposure", "pair_exposure", "timestamp"]
+    "required": ["dex_exposure", "pair_exposure", "timestamp"],
 }
 
 # DEX metrics schema for distribution scoring
@@ -244,7 +257,7 @@ DEX_METRICS_SCHEMA = {
                 "volume_24h": {"type": "number"},
                 "successful_trades": {"type": "integer"},
                 "failed_trades": {"type": "integer"},
-                "timestamp": {"type": "number"}
+                "timestamp": {"type": "number"},
             },
             "required": [
                 "avg_gas_price",
@@ -252,10 +265,10 @@ DEX_METRICS_SCHEMA = {
                 "volume_24h",
                 "successful_trades",
                 "failed_trades",
-                "timestamp"
-            ]
+                "timestamp",
+            ],
         }
-    }
+    },
 }
 
 # Execution configuration schema
@@ -268,7 +281,7 @@ EXECUTION_CONFIG_SCHEMA = {
         "retry_attempts": {"type": "integer"},
         "retry_delay": {"type": "integer"},
         "confirmation_blocks": {"type": "integer"},
-        "timeout": {"type": "integer"}
+        "timeout": {"type": "integer"},
     },
     "required": [
         "max_slippage",
@@ -277,8 +290,8 @@ EXECUTION_CONFIG_SCHEMA = {
         "retry_attempts",
         "retry_delay",
         "confirmation_blocks",
-        "timeout"
-    ]
+        "timeout",
+    ],
 }
 
 # Transaction status schema
@@ -289,22 +302,18 @@ TRANSACTION_STATUS_SCHEMA = {
         "dex": {"type": "string"},
         "pair": {"type": "string"},
         "amount": {"type": "string"},  # Decimal as string
-        "status": {"type": "string", "enum": ["pending", "submitted", "confirmed", "failed"]},
+        "status": {
+            "type": "string",
+            "enum": ["pending", "submitted", "confirmed", "failed"],
+        },
         "hash": {"type": "string", "nullable": True},
         "block_number": {"type": "integer", "nullable": True},
         "gas_used": {"type": "integer", "nullable": True},
         "gas_price": {"type": "integer", "nullable": True},
         "error": {"type": "string", "nullable": True},
-        "timestamp": {"type": "number"}
+        "timestamp": {"type": "number"},
     },
-    "required": [
-        "trade_id",
-        "dex",
-        "pair",
-        "amount",
-        "status",
-        "timestamp"
-    ]
+    "required": ["trade_id", "dex", "pair", "amount", "status", "timestamp"],
 }
 
 # Execution metrics schema
@@ -329,12 +338,17 @@ EXECUTION_METRICS_SCHEMA = {
                         "executions": {"type": "integer"},
                         "success_rate": {"type": "number"},
                         "average_gas": {"type": "number"},
-                        "total_amount": {"type": "string"}  # Decimal as string
+                        "total_amount": {"type": "string"},  # Decimal as string
                     },
-                    "required": ["executions", "success_rate", "average_gas", "total_amount"]
+                    "required": [
+                        "executions",
+                        "success_rate",
+                        "average_gas",
+                        "total_amount",
+                    ],
                 }
-            }
-        }
+            },
+        },
     },
     "required": [
         "timestamp",
@@ -346,8 +360,8 @@ EXECUTION_METRICS_SCHEMA = {
         "average_gas_price",
         "average_confirmation_time",
         "total_gas_cost",
-        "execution_distribution"
-    ]
+        "execution_distribution",
+    ],
 }
 
 # System health schema for storing system status information
@@ -366,18 +380,25 @@ HEALTH_SCHEMA = {
                 "^.*$": {
                     "type": "object",
                     "properties": {
-                        "status": {"type": "string", "enum": ["healthy", "degraded", "failed"]},
+                        "status": {
+                            "type": "string",
+                            "enum": ["healthy", "degraded", "failed"],
+                        },
                         "last_update": {"type": "number"},
                         "error_count": {"type": "integer"},
-                        "message": {"type": "string"}
+                        "message": {"type": "string"},
                     },
-                    "required": ["status", "last_update"]
+                    "required": ["status", "last_update"],
                 }
-            }
-        }
+            },
+        },
     },
     "required": [
-        "timestamp", "cpu_usage", "memory_usage",
-        "disk_usage", "network_latency", "component_status"
-    ]
+        "timestamp",
+        "cpu_usage",
+        "memory_usage",
+        "disk_usage",
+        "network_latency",
+        "component_status",
+    ],
 }

@@ -7,16 +7,19 @@ from json import JSONEncoder
 from datetime import datetime
 from decimal import Decimal
 
+
 class DateTimeEncoder(JSONEncoder):
     """Custom JSON encoder for datetime objects."""
+
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
-        elif hasattr(obj, 'isoformat'):  # Handle other datetime-like objects
+        elif hasattr(obj, "isoformat"):  # Handle other datetime-like objects
             return obj.isoformat()
         elif isinstance(obj, (Decimal, float)):
             return str(obj)  # Convert Decimal/float to string
         return super().default(obj)
+
 
 import sqlite3
 from typing import Dict, Any, List, Optional
@@ -25,16 +28,22 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 def init_db(testing: bool = False) -> "Database":
     """Initialize database connection."""
     return Database(testing=testing)
+
 
 class Database:
     """Database connection and operations."""
 
     def __init__(self, testing: bool = None):
         """Initialize database connection."""
-        self.testing = testing if testing is not None else os.getenv('TESTING', '').lower() == 'true'
+        self.testing = (
+            testing
+            if testing is not None
+            else os.getenv("TESTING", "").lower() == "true"
+        )
         self._conn = None
         self._trades = []  # In-memory storage for testing
         if not self.testing:
@@ -46,31 +55,37 @@ class Database:
         if not self.testing:
             try:
                 # Create data directory if it doesn't exist
-                Path('data').mkdir(exist_ok=True)
-                
+                Path("data").mkdir(exist_ok=True)
+
                 # Connect to SQLite database
-                self._conn = sqlite3.connect('data/trades.db')
+                self._conn = sqlite3.connect("data/trades.db")
                 self._conn.row_factory = sqlite3.Row
-                
+
                 # Create tables if they don't exist
-                self._conn.execute('''
+                self._conn.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS trades (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         data TEXT NOT NULL,
                         timestamp TEXT NOT NULL
                     )
-                ''')
-                self._conn.execute('''
+                """
+                )
+                self._conn.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS metrics (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         data TEXT NOT NULL,
                         timestamp TEXT NOT NULL
                     )
-                ''')
+                """
+                )
                 self._conn.commit()
                 logger.info("Connected to SQLite database")
             except Exception as e:
-                logger.warning(f"SQLite initialization failed, falling back to in-memory storage: {e}")
+                logger.warning(
+                    f"SQLite initialization failed, falling back to in-memory storage: {e}"
+                )
                 self.testing = True
                 self._conn = None
 
@@ -85,15 +100,22 @@ class Database:
                 self.connect()
 
             # Add timestamp if not present
-            if 'timestamp' not in trade_data:
-                trade_data['timestamp'] = datetime.utcnow().isoformat()
+            if "timestamp" not in trade_data:
+                trade_data["timestamp"] = datetime.utcnow().isoformat()
 
             # Convert dict to JSON string
             data_json = json.dumps(trade_data, cls=DateTimeEncoder)
-            
+
             cursor = self._conn.execute(
-                'INSERT INTO trades (data, timestamp) VALUES (?, ?)',
-                (data_json, trade_data['timestamp'] if isinstance(trade_data['timestamp'], str) else trade_data['timestamp'].isoformat())
+                "INSERT INTO trades (data, timestamp) VALUES (?, ?)",
+                (
+                    data_json,
+                    (
+                        trade_data["timestamp"]
+                        if isinstance(trade_data["timestamp"], str)
+                        else trade_data["timestamp"].isoformat()
+                    ),
+                ),
             )
             self._conn.commit()
             return str(cursor.lastrowid)
@@ -113,10 +135,10 @@ class Database:
             if not self._conn:
                 self.connect()
 
-            cursor = self._conn.execute('SELECT data FROM trades')
+            cursor = self._conn.execute("SELECT data FROM trades")
             trades = []
             for row in cursor:
-                trade = json.loads(row['data'])
+                trade = json.loads(row["data"])
                 if all(trade.get(k) == v for k, v in query.items()):
                     trades.append(trade)
             return trades
@@ -142,20 +164,21 @@ class Database:
                 self.connect()
 
             # Get existing trade
-            cursor = self._conn.execute('SELECT data FROM trades WHERE id = ?', (trade_id,))
+            cursor = self._conn.execute(
+                "SELECT data FROM trades WHERE id = ?", (trade_id,)
+            )
             row = cursor.fetchone()
             if not row:
                 return False
 
             # Update trade data
-            trade_data = json.loads(row['data'])
+            trade_data = json.loads(row["data"])
             trade_data.update(update_data)
             data_json = json.dumps(trade_data, cls=DateTimeEncoder)
 
             # Save updated trade
             self._conn.execute(
-                'UPDATE trades SET data = ? WHERE id = ?',
-                (data_json, trade_id)
+                "UPDATE trades SET data = ? WHERE id = ?", (data_json, trade_id)
             )
             self._conn.commit()
             return True
@@ -180,7 +203,7 @@ class Database:
             if not self._conn:
                 self.connect()
 
-            cursor = self._conn.execute('DELETE FROM trades WHERE id = ?', (trade_id,))
+            cursor = self._conn.execute("DELETE FROM trades WHERE id = ?", (trade_id,))
             self._conn.commit()
             return cursor.rowcount > 0
 
@@ -188,7 +211,9 @@ class Database:
             logger.error(f"Failed to delete trade: {e}")
             return False
 
-    async def get_metrics(self, query: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    async def get_metrics(
+        self, query: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
         """Get historical metrics."""
         if self.testing:
             return []
@@ -197,31 +222,41 @@ class Database:
             if not self._conn:
                 self.connect()
 
-            if query and 'timestamp' in query:
+            if query and "timestamp" in query:
                 # Convert datetime objects to ISO format strings
-                if isinstance(query['timestamp'], dict):
-                    if '$gte' in query['timestamp']:
-                        query['timestamp']['$gte'] = query['timestamp']['$gte'].isoformat()
-                    if '$lte' in query['timestamp']:
-                        query['timestamp']['$lte'] = query['timestamp']['$lte'].isoformat()
+                if isinstance(query["timestamp"], dict):
+                    if "$gte" in query["timestamp"]:
+                        query["timestamp"]["$gte"] = query["timestamp"][
+                            "$gte"
+                        ].isoformat()
+                    if "$lte" in query["timestamp"]:
+                        query["timestamp"]["$lte"] = query["timestamp"][
+                            "$lte"
+                        ].isoformat()
 
-            cursor = self._conn.execute('SELECT data FROM metrics')
+            cursor = self._conn.execute("SELECT data FROM metrics")
             metrics = []
             for row in cursor:
-                metric = json.loads(row['data'])
+                metric = json.loads(row["data"])
                 if query:
                     # Apply query filters
                     if all(
                         k not in metric or metric[k] == v
                         for k, v in query.items()
-                        if k != 'timestamp'
+                        if k != "timestamp"
                     ):
-                        if 'timestamp' in query:
-                            ts = metric.get('timestamp')
+                        if "timestamp" in query:
+                            ts = metric.get("timestamp")
                             if ts:
-                                if '$gte' in query['timestamp'] and ts < query['timestamp']['$gte']:
+                                if (
+                                    "$gte" in query["timestamp"]
+                                    and ts < query["timestamp"]["$gte"]
+                                ):
                                     continue
-                                if '$lte' in query['timestamp'] and ts > query['timestamp']['$lte']:
+                                if (
+                                    "$lte" in query["timestamp"]
+                                    and ts > query["timestamp"]["$lte"]
+                                ):
                                     continue
                         metrics.append(metric)
                 else:
@@ -242,8 +277,8 @@ class Database:
                 self.connect()
 
             # Add timestamp if not present
-            if 'timestamp' not in metrics_data:
-                metrics_data['timestamp'] = datetime.utcnow().isoformat()
+            if "timestamp" not in metrics_data:
+                metrics_data["timestamp"] = datetime.utcnow().isoformat()
 
             # Convert dict to JSON string using DateTimeEncoder
             try:
@@ -260,16 +295,18 @@ class Database:
                         return [convert_datetime(x) for x in obj]
                     elif isinstance(obj, datetime):
                         return obj.isoformat()
-                    elif hasattr(obj, 'isoformat'):  # Handle other datetime-like objects
+                    elif hasattr(
+                        obj, "isoformat"
+                    ):  # Handle other datetime-like objects
                         return obj.isoformat()
                     return obj
 
                 metrics_data = convert_datetime(metrics_data)
                 data_json = json.dumps(metrics_data)
-            
+
             self._conn.execute(
-                'INSERT INTO metrics (data, timestamp) VALUES (?, ?)',
-                (data_json, metrics_data['timestamp'])
+                "INSERT INTO metrics (data, timestamp) VALUES (?, ?)",
+                (data_json, metrics_data["timestamp"]),
             )
             self._conn.commit()
             return True

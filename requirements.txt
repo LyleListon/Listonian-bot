@@ -21,3 +21,13 @@ msgpack>=1.0.7
 
 aiofiles>=23.1.0
 Jinja2>=3.1.0
+lru-dict>=1.1.8
+Flask>=3.0.0
+Flask-SocketIO>=5.3.0
+rich>=13.0.0
+textual>=0.50.0
+numpy>=1.26.0
+PyJWT>=2.8.0
+bcrypt>=4.1.0
+filelock>=3.12.0
+jsonschema>=4.17.0

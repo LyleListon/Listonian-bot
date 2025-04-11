@@ -17,6 +17,7 @@ from ..interfaces import Web3Client
 
 logger = logging.getLogger(__name__)
 
+
 class EthClient(Web3Client):
     """Ethereum client implementation."""
 
@@ -24,7 +25,7 @@ class EthClient(Web3Client):
         self,
         w3: Web3,
         wallet_address: Optional[ChecksumAddress] = None,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize Ethereum client.
@@ -39,15 +40,11 @@ class EthClient(Web3Client):
         self.config = config or {}
 
         logger.info(
-            f"Ethereum client initialized with "
-            f"wallet {wallet_address or 'None'}"
+            f"Ethereum client initialized with " f"wallet {wallet_address or 'None'}"
         )
 
     @with_retry(retries=3, delay=1.0)
-    async def get_balance(
-        self,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
+    async def get_balance(self, address: Optional[ChecksumAddress] = None) -> int:
         """
         Get ETH balance for address.
 
@@ -68,9 +65,7 @@ class EthClient(Web3Client):
 
     @with_retry(retries=3, delay=1.0)
     async def get_token_balance(
-        self,
-        token_address: ChecksumAddress,
-        address: Optional[ChecksumAddress] = None
+        self, token_address: ChecksumAddress, address: Optional[ChecksumAddress] = None
     ) -> int:
         """
         Get token balance for address.
@@ -97,19 +92,15 @@ class EthClient(Web3Client):
         params = self.w3.eth.abi.encode_single("address", address)
 
         # Make call
-        result = await self.w3.eth.call({
-            "to": token_address,
-            "data": selector + params
-        })
+        result = await self.w3.eth.call(
+            {"to": token_address, "data": selector + params}
+        )
 
         # Decode result
         return int.from_bytes(result, byteorder="big")
 
     @with_retry(retries=3, delay=1.0)
-    async def get_nonce(
-        self,
-        address: Optional[ChecksumAddress] = None
-    ) -> int:
+    async def get_nonce(self, address: Optional[ChecksumAddress] = None) -> int:
         """
         Get next nonce for address.
 

@@ -2,14 +2,14 @@
 
 import logging
 import asyncio
-from typing import Dict, Any, Optional, Set, List
-from decimal import Decimal
+from typing import Dict, Any
 
 from ..analytics.analytics_system import AnalyticsSystem
 from ..web3.web3_manager import Web3Manager
 from ..dex.dex_manager import DexManager
 
 logger = logging.getLogger(__name__)
+
 
 class AlertSystem:
     """System for monitoring and generating alerts."""
@@ -19,7 +19,7 @@ class AlertSystem:
         web3_manager: Web3Manager,
         dex_manager: DexManager,
         analytics_system: AnalyticsSystem,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
     ):
         """Initialize alert system."""
         self.web3_manager = web3_manager
@@ -41,7 +41,7 @@ class AlertSystem:
         async with self._task_lock:
             if self._tasks:  # Double-check under lock
                 return
-            
+
             self.monitoring = True
             self._shutdown_event.clear()
 
@@ -49,7 +49,9 @@ class AlertSystem:
                 # Create monitoring tasks
                 monitor_task = asyncio.create_task(self._monitor_conditions())
                 self._tasks.add(monitor_task)
-                monitor_task.add_done_callback(lambda t: asyncio.create_task(self._handle_task_done(t)))
+                monitor_task.add_done_callback(
+                    lambda t: asyncio.create_task(self._handle_task_done(t))
+                )
             except Exception as e:
                 logger.error("Failed to create monitoring task: %s", str(e))
 
@@ -78,10 +80,12 @@ class AlertSystem:
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*pending_tasks, return_exceptions=True),
-                    timeout=self._shutdown_timeout
+                    timeout=self._shutdown_timeout,
                 )
             except asyncio.TimeoutError:
-                logger.error("Shutdown timed out after %s seconds", self._shutdown_timeout)
+                logger.error(
+                    "Shutdown timed out after %s seconds", self._shutdown_timeout
+                )
             except Exception as e:
                 logger.error("Error during shutdown: %s", str(e))
             finally:
@@ -118,7 +122,7 @@ class AlertSystem:
                     try:
                         await asyncio.wait_for(
                             self._shutdown_event.wait(),
-                            timeout=60  # Check every minute
+                            timeout=60,  # Check every minute
                         )
                     except asyncio.TimeoutError:
                         continue
@@ -136,7 +140,7 @@ class AlertSystem:
         """Check gas price conditions."""
         try:
             gas_price = await self.web3_manager.w3.eth.gas_price
-            max_gas = self.config.get('gas', {}).get('max_fee', 200)
+            max_gas = self.config.get("gas", {}).get("max_fee", 200)
 
             if gas_price > max_gas * 10**9:  # Convert to Wei
                 logger.warning("High gas price detected: %s gwei", gas_price / 10**9)
@@ -150,13 +154,10 @@ class AlertSystem:
             balance = await self.web3_manager.w3.eth.get_balance(
                 self.web3_manager.wallet_address
             )
-            min_balance = self.config.get('min_balance_eth', 0.1) * 10**18
+            min_balance = self.config.get("min_balance_eth", 0.1) * 10**18
 
             if balance < min_balance:
-                logger.warning(
-                    "Low wallet balance: %s ETH",
-                    balance / 10**18
-                )
+                logger.warning("Low wallet balance: %s ETH", balance / 10**18)
 
         except Exception as e:
             logger.error("Failed to check balance condition: %s", str(e))
@@ -164,27 +165,26 @@ class AlertSystem:
     async def _check_profit_condition(self):
         """Check profit conditions."""
         try:
-            min_profit = self.config.get('min_profit_usd', 0.05)
-            
+            min_profit = self.config.get("min_profit_usd", 0.05)
+
             # Get current profits from analytics
-            if hasattr(self.analytics_system, 'get_current_profits'):
+            if hasattr(self.analytics_system, "get_current_profits"):
                 profits = await self.analytics_system.get_current_profits()
-                
+
                 if profits and profits < min_profit:
                     logger.warning(
-                        "Low profit detected: $%s (minimum: $%s)",
-                        profits,
-                        min_profit
+                        "Low profit detected: $%s (minimum: $%s)", profits, min_profit
                     )
 
         except Exception as e:
             logger.error("Failed to check profit condition: %s", str(e))
 
+
 async def create_alert_system(
     web3_manager: Web3Manager,
     dex_manager: DexManager,
     analytics_system: AnalyticsSystem,
-    config: Dict[str, Any]
+    config: Dict[str, Any],
 ) -> AlertSystem:
     """Create and initialize alert system."""
     try:
@@ -192,7 +192,7 @@ async def create_alert_system(
             web3_manager=web3_manager,
             dex_manager=dex_manager,
             analytics_system=analytics_system,
-            config=config
+            config=config,
         )
         # Start monitoring in a task to avoid blocking
         await system.start_monitoring()

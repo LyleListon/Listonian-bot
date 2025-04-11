@@ -29,5 +29,5 @@ __all__ = [
     "DexScreenerSource",
     "create_dexscreener_source",
     "DefiPulseSource",
-    "create_defipulse_source"
+    "create_defipulse_source",
 ]

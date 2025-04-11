@@ -14,6 +14,7 @@ from .market_data_service import MarketDataService
 
 logger = get_logger("service_manager")
 
+
 class ServiceManager:
     """Manager for coordinating all dashboard services."""
 
@@ -52,15 +53,19 @@ class ServiceManager:
                 memory_service = MemoryService(str(memory_bank_dir))
                 metrics_service = MetricsService(memory_service)
                 system_service = SystemService(memory_service, metrics_service)
-                market_data_service = MarketDataService(memory_service, metrics_service, config)
+                market_data_service = MarketDataService(
+                    memory_service, metrics_service, config
+                )
 
                 # Store services
-                self._services.update({
-                    "memory": memory_service,
-                    "metrics": metrics_service,
-                    "system": system_service,
-                    "market": market_data_service
-                })
+                self._services.update(
+                    {
+                        "memory": memory_service,
+                        "metrics": metrics_service,
+                        "system": system_service,
+                        "market": market_data_service,
+                    }
+                )
 
                 # Initialize services in order
                 await memory_service.initialize()
@@ -97,7 +102,7 @@ class ServiceManager:
 
             # Shutdown in reverse dependency order
             shutdown_order = ["market", "system", "metrics", "memory"]
-            
+
             for service_name in shutdown_order:
                 service = self._services.get(service_name)
                 if service:
@@ -115,11 +120,11 @@ class ServiceManager:
         """Get a service by name."""
         if not self._initialized:
             raise RuntimeError("Services not initialized")
-        
+
         service = self._services.get(name)
         if not service:
             raise KeyError(f"Service {name} not found")
-            
+
         return service
 
     @property
@@ -159,15 +164,20 @@ class ServiceManager:
                 "metrics": metrics,
                 "system": system_status,
                 "market": market_data,
-                "timestamp": system_status.get("timestamp")
+                "timestamp": system_status.get("timestamp"),
             }
 
         except Exception as e:
             logger.error(f"Error getting system overview: {e}")
             return {
                 "error": str(e),
-                "timestamp": system_status.get("timestamp") if "system_status" in locals() else None
+                "timestamp": (
+                    system_status.get("timestamp")
+                    if "system_status" in locals()
+                    else None
+                ),
             }
+
 
 # Global service manager instance
 service_manager = ServiceManager()
