@@ -1,0 +1,79 @@
+{
+  "providerProfiles": {
+    "currentApiConfigName": "default",
+    "apiConfigs": {
+      "default": {
+        "apiProvider": "gemini",
+        "apiModelId": "gemini-2.5-pro-preview-03-25",
+        "apiKey": "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",
+        "geminiApiKey": "AIzaSyBEOiFW34jKVrvfHx8J4JEBAcB4_KPzEGA",
+        "modelTemperature": 0.4,
+        "rateLimitSeconds": 5,
+        "id": "86d88zs7ip3"
+      }
+    },
+    "modeApiConfigs": {
+      "code": "86d88zs7ip3",
+      "debug": "86d88zs7ip3",
+      "architect": "86d88zs7ip3",
+      "ask": "86d88zs7ip3"
+    },
+    "migrations": {
+      "rateLimitSecondsMigrated": true
+    }
+  },
+  "globalSettings": {
+    "lastShownAnnouncementId": "apr-04-2025-boomerang",
+    "autoApprovalEnabled": true,
+    "alwaysAllowReadOnly": true,
+    "alwaysAllowReadOnlyOutsideWorkspace": true,
+    "alwaysAllowWrite": true,
+    "alwaysAllowWriteOutsideWorkspace": true,
+    "writeDelayMs": 1000,
+    "alwaysAllowBrowser": true,
+    "alwaysApproveResubmit": true,
+    "requestDelaySeconds": 10,
+    "alwaysAllowMcp": true,
+    "alwaysAllowModeSwitch": true,
+    "alwaysAllowSubtasks": true,
+    "alwaysAllowExecute": true,
+    "allowedCommands": [
+      "npm test",
+      "npm install",
+      "tsc",
+      "git log",
+      "git diff",
+      "git show",
+      "*"
+    ],
+    "browserToolEnabled": true,
+    "browserViewportSize": "1280x800",
+    "screenshotQuality": 75,
+    "remoteBrowserEnabled": false,
+    "enableCheckpoints": true,
+    "checkpointStorage": "task",
+    "ttsEnabled": false,
+    "ttsSpeed": 1,
+    "soundEnabled": false,
+    "soundVolume": 0.5,
+    "maxOpenTabsContext": 31,
+    "maxWorkspaceFiles": 318,
+    "showRooIgnoredFiles": true,
+    "maxReadFileLine": 1200,
+    "terminalOutputLineLimit": 2000,
+    "terminalShellIntegrationTimeout": 5000,
+    "rateLimitSeconds": 5,
+    "diffEnabled": true,
+    "fuzzyMatchThreshold": 0.9,
+    "experiments": {
+      "search_and_replace": true,
+      "insert_content": true,
+      "powerSteering": true
+    },
+    "language": "en",
+    "telemetrySetting": "enabled",
+    "mcpEnabled": true,
+    "mode": "architect",
+    "customModes": []
+  }
+}

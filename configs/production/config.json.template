@@ -1,0 +1,53 @@
+{
+  "trading": {
+    "min_profit_threshold": 0.5,
+    "max_trade_amount": 1.0,
+    "trading_enabled": true
+  },
+  "blockchain": {
+    "networks": [
+      {
+        "name": "ethereum",
+        "rpc_url": "https://mainnet.infura.io/v3/YOUR_API_KEY",
+        "ws_url": "wss://mainnet.infura.io/ws/v3/YOUR_API_KEY"
+      },
+      {
+        "name": "bsc",
+        "rpc_url": "https://bsc-dataseed.binance.org/",
+        "ws_url": "wss://bsc-ws-node.nariox.org:443"
+      },
+      {
+        "name": "base",
+        "rpc_url": "https://mainnet.base.org",
+        "ws_url": "wss://mainnet.base.org"
+      }
+    ]
+  },
+  "dashboard": {
+    "enable_authentication": true,
+    "host": "127.0.0.1"
+  },
+  "api": {
+    "enable_authentication": true,
+    "host": "127.0.0.1",
+    "cors_origins": ["https://your-domain.com"]
+  },
+  "logging": {
+    "level": "INFO",
+    "console_output": false
+  },
+  "mcp_servers": [
+    {
+      "id": "mcp1",
+      "host": "mcp1.your-domain.com",
+      "api_key": "YOUR_API_KEY_HERE",
+      "enabled": true
+    },
+    {
+      "id": "mcp2",
+      "host": "mcp2.your-domain.com",
+      "api_key": "YOUR_API_KEY_HERE",
+      "enabled": true
+    }
+  ]
+}

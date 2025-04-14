@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Bot Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="favicon.ico">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block bg-dark sidebar">
+                <div class="position-sticky">
+                    <div class="sidebar-header">
+                        <h3>Arbitrage Bot</h3>
+                    </div>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#dashboard">
+                                <i class="bi bi-speedometer2"></i>
+                                Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#opportunities">
+                                <i class="bi bi-lightning"></i>
+                                Opportunities
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#trades">
+                                <i class="bi bi-arrow-left-right"></i>
+                                Trades
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#tokens">
+                                <i class="bi bi-coin"></i>
+                                Tokens
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#settings">
+                                <i class="bi bi-gear"></i>
+                                Settings
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div id="content">
+                    <!-- Content will be loaded here -->
+                    <div id="loading" class="text-center mt-5">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p>Loading dashboard...</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Templates -->
+    <template id="dashboard-template">
+        <div class="dashboard-header">
+            <h1>Dashboard</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">Status: Unknown</span>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- Metrics cards -->
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Trading</h5>
+                        <div class="metric">
+                            <span class="metric-label">Total Trades</span>
+                            <span class="metric-value" id="total-trades">0</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Success Rate</span>
+                            <span class="metric-value" id="success-rate">0%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Net Profit</span>
+                            <span class="metric-value" id="net-profit">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Performance</h5>
+                        <div class="metric">
+                            <span class="metric-label">Opportunities Found</span>
+                            <span class="metric-value" id="opportunities-found">0</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Execution Rate</span>
+                            <span class="metric-value" id="execution-rate">0%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Avg. Execution Time</span>
+                            <span class="metric-value" id="avg-execution-time">0ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">System</h5>
+                        <div class="metric">
+                            <span class="metric-label">Uptime</span>
+                            <span class="metric-value" id="uptime">0h 0m 0s</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">CPU Usage</span>
+                            <span class="metric-value" id="cpu-usage">0%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Memory Usage</span>
+                            <span class="metric-value" id="memory-usage">0MB</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- Charts -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Profit Over Time</h5>
+                        <canvas id="profit-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Opportunities by DEX</h5>
+                        <canvas id="dex-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- Recent trades -->
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Recent Trades</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Time</th>
+                                        <th>Path</th>
+                                        <th>Status</th>
+                                        <th>Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-trades-table">
+                                    <tr>
+                                        <td colspan="5" class="text-center">No trades yet</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="opportunities-template">
+        <div class="dashboard-header">
+            <h1>Arbitrage Opportunities</h1>
+            <div class="filters">
+                <div class="form-group">
+                    <label for="min-profit">Min Profit</label>
+                    <input type="number" id="min-profit" class="form-control" value="0.5" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label for="max-risk">Max Risk</label>
+                    <select id="max-risk" class="form-control">
+                        <option value="1">1 - Very Low</option>
+                        <option value="2">2 - Low</option>
+                        <option value="3" selected>3 - Medium</option>
+                        <option value="4">4 - High</option>
+                        <option value="5">5 - Very High</option>
+                    </select>
+                </div>
+                <button id="apply-filters" class="btn btn-primary">Apply</button>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Current Opportunities</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Path</th>
+                                        <th>Input Token</th>
+                                        <th>Input Amount</th>
+                                        <th>Expected Profit</th>
+                                        <th>Risk Score</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="opportunities-table">
+                                    <tr>
+                                        <td colspan="7" class="text-center">No opportunities found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="trades-template">
+        <div class="dashboard-header">
+            <h1>Trade History</h1>
+            <div class="filters">
+                <div class="form-group">
+                    <label for="status-filter">Status</label>
+                    <select id="status-filter" class="form-control">
+                        <option value="">All</option>
+                        <option value="success">Success</option>
+                        <option value="failed">Failed</option>
+                        <option value="pending">Pending</option>
+                    </select>
+                </div>
+                <button id="apply-filters" class="btn btn-primary">Apply</button>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Trade History</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Time</th>
+                                        <th>Opportunity ID</th>
+                                        <th>Path</th>
+                                        <th>Status</th>
+                                        <th>Profit</th>
+                                        <th>Transaction Hash</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="trades-table">
+                                    <tr>
+                                        <td colspan="7" class="text-center">No trades found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination">
+                            <button id="prev-page" class="btn btn-secondary" disabled>Previous</button>
+                            <span id="page-info">Page 1 of 1</span>
+                            <button id="next-page" class="btn btn-secondary" disabled>Next</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="settings-template">
+        <div class="dashboard-header">
+            <h1>Settings</h1>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Dashboard Settings</h5>
+                        <form id="dashboard-settings-form">
+                            <div class="mb-3">
+                                <label for="theme" class="form-label">Theme</label>
+                                <select id="theme" class="form-control">
+                                    <option value="light">Light</option>
+                                    <option value="dark" selected>Dark</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="refresh-interval" class="form-label">Refresh Interval (seconds)</label>
+                                <input type="number" id="refresh-interval" class="form-control" value="5" min="1" max="60">
+                            </div>
+                            <div class="mb-3">
+                                <label for="max-trades-display" class="form-label">Max Trades to Display</label>
+                                <input type="number" id="max-trades-display" class="form-control" value="100" min="10" max="1000">
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" id="enable-notifications" class="form-check-input" checked>
+                                <label for="enable-notifications" class="form-check-label">Enable Notifications</label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Dashboard Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Trading Settings</h5>
+                        <form id="trading-settings-form">
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" id="trading-enabled" class="form-check-input">
+                                <label for="trading-enabled" class="form-check-label">Enable Trading</label>
+                            </div>
+                            <div class="mb-3">
+                                <label for="min-profit-threshold" class="form-label">Min Profit Threshold (%)</label>
+                                <input type="number" id="min-profit-threshold" class="form-control" value="0.5" step="0.1" min="0">
+                            </div>
+                            <div class="mb-3">
+                                <label for="max-slippage" class="form-label">Max Slippage (%)</label>
+                                <input type="number" id="max-slippage" class="form-control" value="1.0" step="0.1" min="0">
+                            </div>
+                            <div class="mb-3">
+                                <label for="gas-price-multiplier" class="form-label">Gas Price Multiplier</label>
+                                <input type="number" id="gas-price-multiplier" class="form-control" value="1.1" step="0.1" min="1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="max-trade-amount" class="form-label">Max Trade Amount (ETH)</label>
+                                <input type="number" id="max-trade-amount" class="form-control" value="1.0" step="0.1" min="0">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Trading Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- JavaScript libraries -->
+    <script src="js/bootstrap.bundle.min.js"></script>
+    <script src="js/chart.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

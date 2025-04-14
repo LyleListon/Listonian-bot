@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sequentialthinking": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "mcp/sequentialthinking"]
+    },
+    "base-dex-scanner": {
+      "command": "python",
+      "args": ["Listonian-bot/run_base_dex_scanner_mcp_wrapper.py"]
+    }
+  }
+}

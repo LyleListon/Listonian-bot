@@ -1,0 +1,46 @@
+{
+  "trading": {
+    "min_profit_threshold": 0.1,
+    "max_trade_amount": 0.1,
+    "trading_enabled": false
+  },
+  "blockchain": {
+    "networks": [
+      {
+        "name": "ethereum",
+        "rpc_url": "http://localhost:8545",
+        "ws_url": "ws://localhost:8546"
+      },
+      {
+        "name": "bsc",
+        "rpc_url": "http://localhost:8547",
+        "ws_url": "ws://localhost:8548"
+      },
+      {
+        "name": "base",
+        "rpc_url": "http://localhost:8549",
+        "ws_url": "ws://localhost:8550"
+      }
+    ]
+  },
+  "dashboard": {
+    "enable_authentication": false
+  },
+  "api": {
+    "enable_authentication": false
+  },
+  "logging": {
+    "level": "DEBUG",
+    "console_output": true
+  },
+  "mcp_servers": [
+    {
+      "id": "mcp1",
+      "enabled": false
+    },
+    {
+      "id": "mcp2",
+      "enabled": false
+    }
+  ]
+}

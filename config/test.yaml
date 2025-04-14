@@ -1,0 +1,117 @@
+# Test configuration for the arbitrage bot
+
+# General configuration
+environment: test
+debug: true
+
+# Logging configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: logs/arbitrage_bot_test.log
+  max_size: 10485760  # 10 MB
+  backup_count: 5
+
+# Trading configuration
+trading:
+  trading_enabled: true  # Disable actual trading in test mode
+  min_profit_threshold: 0.5  # Minimum profit threshold in percentage
+  max_slippage: 1.0  # Maximum slippage in percentage
+  gas_price_multiplier: 1.1  # Multiplier for gas price
+  max_path_length: 3  # Maximum path length for arbitrage
+  max_trade_amount: 1.0  # Maximum trade amount in ETH
+  execution_timeout: 30  # Execution timeout in seconds
+  retry_attempts: 3  # Number of retry attempts
+  retry_delay: 5  # Retry delay in seconds
+
+# Blockchain configuration
+blockchain:
+  networks:
+    - name: ethereum
+      enabled: true
+      chain_id: 1
+      rpc_url: https://mainnet.infura.io/v3/your-infura-key
+      ws_url: wss://mainnet.infura.io/ws/v3/your-infura-key
+      explorer_url: https://etherscan.io
+      is_poa: false
+      wallet_address: "0x0000000000000000000000000000000000000000"
+      private_key: ""  # Do not set private key in test mode
+
+    - name: polygon
+      enabled: true
+      chain_id: 137
+      rpc_url: https://polygon-rpc.com
+      ws_url: wss://polygon-rpc.com
+      explorer_url: https://polygonscan.com
+      is_poa: true
+      wallet_address: "0x0000000000000000000000000000000000000000"
+      private_key: ""  # Do not set private key in test mode
+
+# DEX configuration
+dexes:
+  - name: uniswap_v3
+    enabled: true
+    network: ethereum
+    factory_address: "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+    router_address: "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+    quoter_address: "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
+    fee_tiers: [0.05, 0.3, 1.0]
+
+  - name: uniswap_v3
+    enabled: true
+    network: polygon
+    factory_address: "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+    router_address: "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+    quoter_address: "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
+    fee_tiers: [0.05, 0.3, 1.0]
+
+# Flash loan configuration
+flash_loans:
+  enabled: true
+  default_provider: aave
+  providers:
+    - name: aave
+      enabled: true
+      network: ethereum
+      lending_pool_address: "0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9"
+      fee_percentage: 0.09
+      max_loan_amount: 100
+
+# MEV protection configuration
+mev_protection:
+  enabled: true
+  provider: flashbots
+  flashbots:
+    relay_url: https://relay.flashbots.net
+    min_block_confirmations: 1
+    max_block_confirmations: 3
+    priority_fee_percentage: 90
+
+# API configuration
+api:
+  host: 127.0.0.1
+  port: 8001
+  cors_origins: ["*"]
+  cors_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  cors_headers: ["Content-Type", "Authorization"]
+  cors_credentials: false
+  public_paths: ["/api/v1/status"]
+  api_keys:
+    test-key: test-user
+
+# Dashboard configuration
+dashboard:
+  host: 127.0.0.1
+  port: 8081
+  static_dir: arbitrage_bot/dashboard/frontend/static
+  theme: dark
+  refresh_interval: 5
+  max_trades_display: 100
+  enable_notifications: true
+
+# MCP configuration
+mcp:
+  host: 127.0.0.1
+  port: 9000
+  heartbeat_timeout: 30
+  task_timeout: 300

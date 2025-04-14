@@ -1,0 +1,159 @@
+{
+  "trading": {
+    "min_profit_threshold": 0.5,
+    "max_slippage": 1.0,
+    "gas_price_multiplier": 1.1,
+    "max_trade_amount": 1.0,
+    "min_liquidity": 10000,
+    "max_path_length": 3,
+    "execution_timeout": 30,
+    "retry_attempts": 3,
+    "retry_delay": 5,
+    "trading_enabled": true,
+    "trading_pairs": []
+  },
+  "blockchain": {
+    "networks": [
+      {
+        "name": "ethereum",
+        "chain_id": 1,
+        "rpc_url": "",
+        "ws_url": "",
+        "explorer_url": "https://etherscan.io",
+        "enabled": true,
+        "gas_limit": 500000,
+        "priority_fee": 1.5
+      },
+      {
+        "name": "bsc",
+        "chain_id": 56,
+        "rpc_url": "",
+        "ws_url": "",
+        "explorer_url": "https://bscscan.com",
+        "enabled": true,
+        "gas_limit": 500000,
+        "priority_fee": 1.0
+      },
+      {
+        "name": "base",
+        "chain_id": 8453,
+        "rpc_url": "",
+        "ws_url": "",
+        "explorer_url": "https://basescan.org",
+        "enabled": true,
+        "gas_limit": 500000,
+        "priority_fee": 1.0
+      }
+    ],
+    "default_network": "ethereum",
+    "block_confirmation": 1,
+    "transaction_timeout": 120
+  },
+  "dexes": [
+    {
+      "name": "pancakeswap",
+      "network": "bsc",
+      "factory_address": "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
+      "router_address": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+      "enabled": true,
+      "fee_tiers": [0.25]
+    },
+    {
+      "name": "uniswap_v3",
+      "network": "ethereum",
+      "factory_address": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+      "router_address": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+      "enabled": true,
+      "fee_tiers": [0.05, 0.3, 1.0]
+    },
+    {
+      "name": "swapbased",
+      "network": "base",
+      "factory_address": "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",
+      "router_address": "0x327Df1E6de05895d2ab08513aaDD9313Fe505d86",
+      "enabled": true,
+      "fee_tiers": [0.25]
+    }
+  ],
+  "mev_protection": {
+    "enabled": true,
+    "provider": "flashbots",
+    "flashbots": {
+      "relay_url": "https://relay.flashbots.net/",
+      "min_block_confirmations": 1,
+      "max_block_confirmations": 3,
+      "priority_fee_percentage": 90
+    },
+    "mev_blocker": {
+      "rpc_url": "https://rpc.mevblocker.io",
+      "enabled": false
+    }
+  },
+  "flash_loans": {
+    "enabled": true,
+    "providers": [
+      {
+        "name": "aave",
+        "network": "ethereum",
+        "lending_pool_address": "0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9",
+        "enabled": true,
+        "max_loan_amount": 100,
+        "fee_percentage": 0.09
+      },
+      {
+        "name": "dydx",
+        "network": "ethereum",
+        "solo_address": "0x1E0447b19BB6EcFdAe1e4AE1694b0C3659614e4e",
+        "enabled": true,
+        "max_loan_amount": 50,
+        "fee_percentage": 0
+      }
+    ],
+    "default_provider": "aave"
+  },
+  "dashboard": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "enable_authentication": true,
+    "session_timeout": 3600,
+    "refresh_interval": 5,
+    "theme": "dark",
+    "max_trades_display": 100,
+    "enable_notifications": true
+  },
+  "api": {
+    "port": 8000,
+    "host": "0.0.0.0",
+    "enable_authentication": true,
+    "rate_limit": 100,
+    "rate_limit_period": 60,
+    "cors_origins": ["*"],
+    "api_keys": []
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/bot.log",
+    "max_file_size": 10485760,
+    "backup_count": 5,
+    "console_output": true,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "mcp_servers": [
+    {
+      "id": "mcp1",
+      "host": "localhost",
+      "port": 9001,
+      "api_key": "",
+      "enabled": true,
+      "services": ["market_data", "arbitrage_engine"]
+    },
+    {
+      "id": "mcp2",
+      "host": "localhost",
+      "port": 9002,
+      "api_key": "",
+      "enabled": true,
+      "services": ["transaction_manager", "flash_loans"]
+    }
+  ]
+}
