@@ -23,6 +23,18 @@ args = parser.parse_args()
 # Determine the .env file to load
 env_file = f".env.{args.env}"
 
+# Configure basic logging first
+logging.basicConfig(
+    level=logging.INFO,  # Default level until config is loaded
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/arbitrage.log'),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
 # Load environment variables
 from scripts.load_env import load_env
 if not load_env(env_file):
@@ -64,7 +76,7 @@ async def init_and_run():
             AnalyticsManager
         )
         from arbitrage_bot.core.arbitrage.enhanced_market_data_provider import EnhancedMarketDataProvider
-        
+
         # Initialize async manager with proper error handling
         try:
             await async_init()
@@ -74,35 +86,35 @@ async def init_and_run():
         except Exception as e:
             logger.error("Failed to initialize async manager: %s", str(e), exc_info=True)
             raise
-        
+
         # Initialize bot components
         try:
             # Load configuration
             config = load_config()
-            
+
             # Initialize components
             logger.info("Initializing bot components...")
-            
+
             # Create market data provider
             market_data_provider = EnhancedMarketDataProvider(config)
             await market_data_provider.initialize()
             logger.info("Market data provider initialized")
-            
+
             # Create analytics manager
             analytics_manager = AnalyticsManager()
             await analytics_manager.initialize()
             logger.info("Analytics manager initialized")
-            
+
             # Create discovery manager
             discovery_manager = DiscoveryManager()
             await discovery_manager.initialize()
             logger.info("Discovery manager initialized")
-            
+
             # Create execution manager
             execution_manager = EnhancedExecutionManager()
             await execution_manager.initialize()
             logger.info("Execution manager initialized")
-            
+
             # Create bot instance
             bot = BaseArbitrageSystem(
                 discovery_manager=discovery_manager,
@@ -111,12 +123,12 @@ async def init_and_run():
                 market_data_provider=market_data_provider,
                 config=config
             )
-            
+
             logger.info("Successfully created ArbitrageBot")
-            
+
             # Start the bot
             start_task = asyncio.create_task(bot.start())
-            
+
             # Wait for shutdown signal
             try:
                 while True:
@@ -134,7 +146,7 @@ async def init_and_run():
                     except asyncio.CancelledError:
                         pass
                 raise
-            
+
         except Exception as e:
             logger.error("Failed to start ArbitrageBot: %s", str(e), exc_info=True)
             raise
@@ -150,7 +162,7 @@ async def init_and_run():
                 logger.info("Successfully stopped ArbitrageBot")
             except Exception as e:
                 logger.error("Error stopping bot: %s", str(e), exc_info=True)
-        
+
         # Then cleanup async manager
         if 'manager' in locals() and manager is not None:
             try:
@@ -166,16 +178,16 @@ def main():
         # Create new event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         # Only enable debug mode in development
         if os.getenv('ENV') == 'development':
             loop.set_debug(True)
             # Set a higher threshold for slow callback warnings
             loop.slow_callback_duration = 5.0  # 5 seconds
-        
+
         # Create task for init_and_run
         task = loop.create_task(init_and_run())
-        
+
         try:
             # Run until complete or interrupted
             loop.run_until_complete(task)
@@ -187,7 +199,7 @@ def main():
             # Allow the main run_until_complete(task) call on line 177
             # to handle the cancelled task, which will trigger the
             # finally block in init_and_run for cleanup.
-        
+
     except Exception as e:
         logger.error("Critical error: %s", str(e), exc_info=True)
         sys.exit(1)
@@ -201,7 +213,7 @@ def main():
                     for task in pending:
                         task.cancel()
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                
+
                 if loop.is_running():
                     loop.stop()
                 if not loop.is_closed():

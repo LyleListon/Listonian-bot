@@ -1,32 +1,32 @@
 {
   "WETH-USDC": {
-    "success_rate": 0.8653145277906005,
-    "total_profit_usd": 197.97889930688552,
-    "total_trades": 24,
-    "avg_profit_per_trade": 2.3903001918022313
+    "success_rate": 0.9264579238314767,
+    "total_profit_usd": 257.12041225722146,
+    "total_trades": 35,
+    "avg_profit_per_trade": 3.638921272126965
   },
   "WETH-USDbC": {
-    "success_rate": 0.9290678698043076,
-    "total_profit_usd": 122.76468455711343,
-    "total_trades": 19,
-    "avg_profit_per_trade": 3.0969115539352425
+    "success_rate": 0.7968175634799847,
+    "total_profit_usd": 165.60696838319907,
+    "total_trades": 38,
+    "avg_profit_per_trade": 4.225744220414821
   },
   "USDC-USDbC": {
-    "success_rate": 0.7471275532452726,
-    "total_profit_usd": 21.13290552252834,
-    "total_trades": 48,
-    "avg_profit_per_trade": 3.496385233567788
+    "success_rate": 0.8240556160598634,
+    "total_profit_usd": 60.01559702096032,
+    "total_trades": 49,
+    "avg_profit_per_trade": 0.6852327956802857
   },
   "WETH-cbETH": {
-    "success_rate": 0.8014085656468155,
-    "total_profit_usd": 295.4009143365223,
-    "total_trades": 46,
-    "avg_profit_per_trade": 2.4669992895077177
+    "success_rate": 0.9144377682172142,
+    "total_profit_usd": 149.23612859479144,
+    "total_trades": 50,
+    "avg_profit_per_trade": 2.2007243249650985
   },
   "WETH-wstETH": {
-    "success_rate": 0.8529397837715292,
-    "total_profit_usd": 100.99123948432204,
-    "total_trades": 17,
-    "avg_profit_per_trade": 1.7409508379985252
+    "success_rate": 0.8224030121204196,
+    "total_profit_usd": 54.69664202916795,
+    "total_trades": 22,
+    "avg_profit_per_trade": 2.046951763554041
   }
 }

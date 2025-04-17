@@ -63,7 +63,23 @@ WebSocket endpoints for real-time data updates:
 ### Starting the Dashboard
 
 ```bash
-python run_dashboard.py
+python -m new_dashboard.run_dashboard
+```
+
+Command line options:
+
+```bash
+--host HOST           Host to bind to (default: 0.0.0.0)
+--port PORT           Port to run the dashboard on (default: 9050)
+--reload              Enable auto-reload on code changes
+--debug               Enable debug mode
+--find-port           Find an available port automatically
+```
+
+Example with custom settings:
+
+```bash
+python -m new_dashboard.run_dashboard --port 9060 --debug --reload
 ```
 
 Or programmatically:
@@ -78,8 +94,53 @@ await start_dashboard(config_path="configs/dashboard_config.json")
 
 Open a web browser and navigate to:
 
+```text
+http://localhost:9050
 ```
-http://localhost:3000
+
+### Testing WebSocket Connection
+
+The dashboard includes a WebSocket test page that can be accessed at:
+
+```text
+http://localhost:9050/websocket-test
+```
+
+This page allows you to:
+- Test WebSocket connections
+- Send custom messages
+- View received messages
+- Debug connection issues
+
+### Generating Test Data
+
+To generate test data for the dashboard without running the actual arbitrage bot:
+
+```bash
+python -m new_dashboard.generate_test_data
+```
+
+Command line options:
+
+```bash
+--output-dir OUTPUT_DIR  Directory to save test data to (default: memory-bank)
+--interval INTERVAL      Interval between data updates in seconds (default: 1.0)
+--duration DURATION      Duration to run for in seconds, or None to run indefinitely
+```
+
+### Testing WebSocket from Command Line
+
+To test the WebSocket connection from the command line:
+
+```bash
+python -m new_dashboard.test_websocket
+```
+
+Command line options:
+
+```bash
+--url URL               WebSocket URL to connect to (default: ws://localhost:9050/ws/metrics)
+--timeout TIMEOUT       Test duration in seconds (default: 60)
 ```
 
 ### Configuration
@@ -117,10 +178,65 @@ The dashboard can be customized through:
 For development purposes, you can run the dashboard in debug mode:
 
 ```bash
-python run_dashboard.py --debug
+python -m new_dashboard.run_dashboard --debug --reload
 ```
 
 This enables:
+
 - Hot reloading of template changes
 - Detailed error messages
 - Development console
+
+## Debugging
+
+### WebSocket Debugging
+
+The dashboard includes a WebSocket debugging tool that can be accessed by:
+
+1. Pressing `Ctrl+Shift+D` while on the dashboard page
+2. Clicking the gear icon in the bottom right corner
+
+The debugging tool provides:
+
+- Connection status
+- Message logs
+- Timing information
+- Error details
+
+### Browser Console
+
+Check the browser console (F12) for detailed logs about:
+
+- WebSocket connections
+- Data updates
+- Errors
+
+### Server Logs
+
+Server logs are stored in the `logs` directory and provide information about:
+
+- Server startup
+- WebSocket connections
+- API requests
+- Errors
+
+## Troubleshooting
+
+### WebSocket Connection Issues
+
+If the dashboard is not updating in real-time:
+
+1. Check the connection status indicator in the top right corner
+2. Open the WebSocket debugging tool (Ctrl+Shift+D)
+3. Check the browser console for connection errors
+4. Verify that the WebSocket server is running
+5. Try the WebSocket test page to diagnose connection issues
+
+### Data Not Displaying
+
+If data is not displaying correctly:
+
+1. Check that the memory-bank directory exists and contains data files
+2. Run the test data generator to create sample data
+3. Check the browser console for parsing errors
+4. Verify that the data format matches what the dashboard expects

@@ -1,13 +1,13 @@
 {
-  "timestamp": "2025-04-08T00:21:08.586952",
-  "success_rate": 0.9383906785749649,
-  "total_profit_usd": 540.160429571579,
-  "total_gas_cost_eth": 0.6342742258522573,
-  "avg_execution_time": 1.9867052989551945,
-  "total_trades": 65,
-  "failed_trades": 17,
-  "trades_24h": 11,
-  "profit_24h": 25.999503978981792,
-  "active_opportunities": 2,
-  "rejected_opportunities": 34
+  "timestamp": "2025-04-14T23:24:04.379916",
+  "success_rate": 0.9240241976083005,
+  "total_profit_usd": 389.3215976238949,
+  "total_gas_cost_eth": 0.24528230431035597,
+  "avg_execution_time": 1.803130197207399,
+  "total_trades": 155,
+  "failed_trades": 18,
+  "trades_24h": 16,
+  "profit_24h": 25.447244318819934,
+  "active_opportunities": 4,
+  "rejected_opportunities": 36
 }

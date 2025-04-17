@@ -1,9 +1,9 @@
 """Service for managing market data and analysis."""
 
 import asyncio
+import os
 from typing import Dict, Any, Optional, List
-from datetime import datetime
-import json
+from datetime import datetime, timezone
 
 from ..core.logging import get_logger
 from .memory_service import MemoryService
@@ -99,15 +99,22 @@ class MarketDataService:
             self._market_data_provider = EnhancedMarketDataProvider(enhanced_config)
             logger.info("EnhancedMarketDataProvider initialized")
 
-            # Create a mock Web3Manager if we can't initialize the real one
+            # Initialize Web3Manager - fail if we can't connect in real data only mode
             try:
                 logger.info("Initializing Web3Manager")
                 self._web3 = Web3Manager(config["web3"])
                 logger.info("Web3Manager initialized")
             except Exception as e:
                 logger.error(f"Error initializing Web3Manager: {e}")
-                logger.info("Creating mock Web3Manager for dashboard")
-                self._web3 = MockWeb3Manager()
+
+                # Check if we're in real data only mode
+                use_real_data_only = os.environ.get("USE_REAL_DATA_ONLY", "").lower() == "true"
+                if use_real_data_only:
+                    logger.error("Cannot use mock Web3Manager in real data only mode")
+                    raise
+                else:
+                    logger.warning("Creating mock Web3Manager for dashboard - NOT FOR PRODUCTION USE")
+                    self._web3 = MockWeb3Manager()
         except Exception as e:
             logger.error(f"Error initializing market data components: {e}")
             raise
@@ -199,7 +206,7 @@ class MarketDataService:
                                 "prices": market_condition.get("prices", {}),
                                 "liquidity": market_condition.get("liquidity", {}),
                                 "analysis": market_condition.get("analysis", {}),
-                                "timestamp": datetime.utcnow().isoformat(),
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
                             }
                         )
 
@@ -220,7 +227,7 @@ class MarketDataService:
                         self._liquidity_cache = dict(
                             market_condition.get("liquidity", {})
                         )
-                        self._last_update = datetime.utcnow()
+                        self._last_update = datetime.now(timezone.utc)
 
                         # Calculate price spreads
                         if "prices" in market_condition:
@@ -297,7 +304,7 @@ class MarketDataService:
             # Create a copy of the data
             data_copy = {
                 "market_data": dict(self._current_data),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             # Send to all subscribers
@@ -323,7 +330,7 @@ class MarketDataService:
         try:
             data_copy = {
                 "market_data": dict(self._current_data),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             await queue.put(data_copy)
         except Exception as e:
@@ -345,5 +352,5 @@ class MarketDataService:
         async with self._lock:
             return {
                 "market_data": dict(self._current_data),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }

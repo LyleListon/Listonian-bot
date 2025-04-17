@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-07T14:16:38.357270",
+  "opportunity": {
+    "token_pair": "USDC-USDbC",
+    "dex_1": "aerodrome",
+    "dex_2": "pancakeswap",
+    "potential_profit": 0.1705061553882171,
+    "confidence": 0.5843263599512023
+  },
+  "success": true,
+  "net_profit": 0.1616508292596004,
+  "gas_cost": 0.008855326128616704,
+  "tx_hash": "0x7e99fc1bf2ca54013b9f8e69f6b5f876361d698f4772399d61eb8f79ff01ac3f",
+  "error": null
+}

@@ -2,7 +2,7 @@
   "mcpServers": {
     "base-dex-scanner": {
       "command": "python",
-      "args": ["run_base_dex_scanner_mcp_with_api.py"],
+      "args": ["run_base_dex_scanner_mcp.py"],
       "env": {
         "BASE_RPC_URL": "${BASE_RPC_URL}",
         "BASESCAN_API_KEY": "${BASESCAN_API_KEY}",
@@ -12,21 +12,13 @@
       },
       "description": "Monitors the Base blockchain for DEXes and pools"
     },
-    "crypto-price": {
+    "brave-search": {
       "command": "python",
-      "args": ["run_crypto_price_mcp.py"],
+      "args": ["run_brave_search_mcp_wrapper.py"],
       "env": {
-        "ALCHEMY_API_KEY": "${ALCHEMY_API_KEY}"
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       },
-      "description": "Provides cryptocurrency price data and market information"
-    },
-    "market-analysis": {
-      "command": "python",
-      "args": ["run_market_analysis_mcp.py"],
-      "env": {
-        "ALCHEMY_API_KEY": "${ALCHEMY_API_KEY}"
-      },
-      "description": "Analyzes market conditions and trends for trading decisions"
+      "description": "Provides access to the Brave Search API for web searches"
     }
   }
 }

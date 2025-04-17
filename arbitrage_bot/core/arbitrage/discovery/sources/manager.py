@@ -265,11 +265,13 @@ class DEXDiscoveryManager:
         await dexscreener_source.initialize()
         self._sources["dexscreener"] = dexscreener_source
 
-        # Create DefiPulse source
-        defipulse_config = self.config.get("defipulse", {})
-        defipulse_source = DefiPulseSource(defipulse_config)
-        await defipulse_source.initialize()
-        self._sources["defipulse"] = defipulse_source
+        # DeFiPulse source removed as it's unreliable
+        # We'll rely on DeFiLlama and DexScreener instead
+        if self.config.get("use_defipulse", False):
+            defipulse_config = self.config.get("defipulse", {})
+            defipulse_source = DefiPulseSource(defipulse_config)
+            await defipulse_source.initialize()
+            self._sources["defipulse"] = defipulse_source
 
     async def _discovery_loop(self) -> None:
         """Background task for periodic discovery."""

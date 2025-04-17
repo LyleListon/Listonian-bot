@@ -36,7 +36,7 @@ class DefiLlamaSource(DEXSource):
         # API configuration
         self._base_url = self.config.get("base_url", "https://api.llama.fi")
         self._protocols_endpoint = self.config.get("protocols_endpoint", "/protocols")
-        self._dexes_endpoint = self.config.get("dexes_endpoint", "/dexs")
+        self._dexes_endpoint = self.config.get("dexes_endpoint", "/overview/dexs")
 
         # Cache configuration
         self._cache_ttl = self.config.get("cache_ttl", 3600)  # 1 hour

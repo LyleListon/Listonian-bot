@@ -385,3 +385,127 @@ class UniswapV3(BaseDEX):
         except Exception as e:
             logger.error(f"Failed to decode error: {e}")
             return str(error)
+
+    async def get_token_decimals(self, token_address: str) -> int:
+        """Get token decimals."""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            # Load ERC20 ABI
+            with open("abi/erc20.json", "r") as f:
+                erc20_abi = json.load(f)
+
+            token_cs = Web3.to_checksum_address(token_address)
+            token_contract = self.web3_manager.w3.eth.contract(address=token_cs, abi=erc20_abi)
+
+            # Get decimals
+            decimals = token_contract.functions.decimals().call()
+            return decimals
+        except Exception as e:
+            logger.warning(f"Failed to get token decimals for {token_address}: {e}")
+            return 18  # Default to 18 decimals
+
+    async def get_token_pairs(self, max_pairs: int = 200) -> List[Any]:
+        """Get token pairs from the DEX."""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            # Create a dataclass for token pairs
+            from dataclasses import dataclass
+
+            @dataclass
+            class TokenPair:
+                token0_address: str
+                token1_address: str
+                pool_address: str
+                reserve0: Decimal
+                reserve1: Decimal
+                fee: Decimal
+                dex_id: str
+                token0_decimals: int = 18
+                token1_decimals: int = 18
+
+            # Get supported tokens
+            # For UniswapV3, we'll use common tokens from the config
+            supported_tokens = []
+
+            # Add WETH
+            weth_address = self.config.get("weth_address")
+            if weth_address:
+                supported_tokens.append(weth_address)
+
+            # Add other common tokens
+            for token_symbol, token_data in self.config.get("tokens", {}).items():
+                if "address" in token_data:
+                    supported_tokens.append(token_data["address"])
+
+            # Get supported fees
+            supported_fees = self.config.get("supported_fees", [500, 3000, 10000])
+
+            pairs = []
+
+            # Create a TokenPair object for each valid pair
+            for i, token0 in enumerate(supported_tokens):
+                for token1 in supported_tokens[i+1:]:
+                    for fee in supported_fees:
+                        try:
+                            # Check if pool exists
+                            try:
+                                pool_address = await self.get_pool_address(token0, token1, fee=fee)
+                            except ValueError:
+                                # No pool exists for this pair
+                                continue
+
+                            if pool_address and pool_address != "0x0000000000000000000000000000000000000000":
+                                # Get pool info
+                                pool_info = await self.get_pool_info(pool_address)
+
+                                # Skip if pool info is empty
+                                if not pool_info:
+                                    continue
+
+                                # Get token decimals
+                                token0_decimals = await self.get_token_decimals(token0)
+                                token1_decimals = await self.get_token_decimals(token1)
+
+                                # Calculate reserves from liquidity and sqrtPriceX96
+                                # This is a simplified calculation for V3 pools
+                                liquidity = Decimal(str(pool_info.get("liquidity", 0)))
+                                sqrt_price_x96 = Decimal(str(pool_info.get("sqrt_price_x96", 0)))
+
+                                # Calculate reserves (simplified)
+                                if sqrt_price_x96 > 0 and liquidity > 0:
+                                    price = (sqrt_price_x96 / Decimal(2**96))**2
+                                    reserve0 = liquidity / sqrt_price_x96 * Decimal(2**96)
+                                    reserve1 = liquidity * sqrt_price_x96 / Decimal(2**96)
+                                else:
+                                    reserve0 = Decimal(0)
+                                    reserve1 = Decimal(0)
+
+                                # Create a TokenPair object
+                                pair = TokenPair(
+                                    token0_address=token0,
+                                    token1_address=token1,
+                                    pool_address=pool_address,
+                                    reserve0=reserve0,
+                                    reserve1=reserve1,
+                                    fee=Decimal(str(pool_info.get("fee", fee))) / Decimal("1000000"),  # Convert to percentage
+                                    dex_id=self.id,
+                                    token0_decimals=token0_decimals,
+                                    token1_decimals=token1_decimals
+                                )
+                                pairs.append(pair)
+
+                                # Limit the number of pairs
+                                if len(pairs) >= max_pairs:
+                                    return pairs
+                        except Exception as e:
+                            logger.debug(f"Error getting pair {token0}/{token1} with fee {fee}: {e}")
+                            continue
+
+            return pairs
+        except Exception as e:
+            logger.error(f"Failed to get token pairs: {e}")
+            return []

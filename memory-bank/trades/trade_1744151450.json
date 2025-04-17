@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-04-08T18:30:50.357270",
+  "opportunity": {
+    "token_pair": "WETH-wstETH",
+    "dex_1": "baseswap",
+    "dex_2": "swapbased",
+    "potential_profit": 0.019098996590977982,
+    "confidence": 0.601345216544826
+  },
+  "success": false,
+  "net_profit": -0.011956055507754318,
+  "gas_cost": 0.007142941083223662,
+  "tx_hash": "0xc138967c6d956a21ddbd6fab58ce906e6a6ae30bb85ed87277f116a164ef479e",
+  "error": "Slippage exceeded"
+}

@@ -121,6 +121,12 @@ def create_app() -> FastAPI:
             await service_manager.initialize()  # Should ideally not be needed
         return templates.TemplateResponse("base.html", {"request": request})
 
+    @app.get("/websocket-test", response_class=HTMLResponse)
+    async def websocket_test(request: Request):
+        """Serve WebSocket test page."""
+        logger.info("Serving WebSocket test page")
+        return templates.TemplateResponse("websocket_test.html", {"request": request})
+
     return app
 
 

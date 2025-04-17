@@ -99,25 +99,24 @@ class CrossDexDetector(OpportunityDetector):
             kwargs.get("min_profit_wei", self.config.get("min_profit_wei", 0))
         )
         # Get all token pairs from DEXs
-        # TODO: Refactor to get pairs/prices from market_condition or another source
-        # Temporarily disabling pair fetching due to AttributeError: 'Baseswap' object has no attribute 'get_token_pairs'
-        logger.warning("Temporarily disabling token pair fetching in CrossDexDetector.")
-        raw_opportunities = [] # Set raw_opportunities to empty list instead of fetching
-        return [] # Immediately return empty list for now to prevent further errors
+        try:
+            token_pairs_by_dex = await self._get_token_pairs_by_dex(
+                token_filter=token_filter, dex_filter=dex_filter
+            )
 
-        # # token_pairs_by_dex = await self._get_token_pairs_by_dex(
-        # #     token_filter=token_filter, dex_filter=dex_filter
-        # # )
-        # #
-        # # # Group token pairs by address pair
-        # # grouped_pairs = self._group_token_pairs(token_pairs_by_dex)
-        # #
-        # # # Find arbitrage opportunities
-        # # raw_opportunities = await self._find_arbitrage_opportunities(
-        # #     grouped_pairs=grouped_pairs,
-        # #     market_condition=market_condition,
-        # #     min_profit_wei=min_profit_wei,
-        # # )
+            # Group token pairs by address pair
+            grouped_pairs = self._group_token_pairs(token_pairs_by_dex)
+
+            # Find arbitrage opportunities
+            raw_opportunities = await self._find_arbitrage_opportunities(
+                grouped_pairs=grouped_pairs,
+                market_condition=market_condition,
+                min_profit_wei=min_profit_wei,
+            )
+        except Exception as e:
+            logger.error(f"Error finding arbitrage opportunities: {e}")
+            raw_opportunities = []
+
         # Sort opportunities by expected profit and limit to max_results
         sorted_opportunities = sorted(
             raw_opportunities, key=lambda o: o.expected_profit_wei, reverse=True # Use expected_profit_wei
@@ -201,14 +200,24 @@ class CrossDexDetector(OpportunityDetector):
                 return []
 
             # Get all pairs from DEX
-            # Call get_token_pairs directly on dex if it exists, otherwise handle error
+            # Try different methods to get token pairs
             if hasattr(dex, 'get_token_pairs'):
-                 token_pairs = await dex.get_token_pairs(
-                     max_pairs=self.max_pairs_per_dex
-                 )
+                # Use get_token_pairs if available
+                token_pairs = await dex.get_token_pairs(
+                    max_pairs=self.max_pairs_per_dex
+                )
+            elif hasattr(dex, 'get_supported_tokens'):
+                # If get_token_pairs is not available, try to build pairs from supported tokens
+                logger.info(f"Using get_supported_tokens for {dex.id} instead of get_token_pairs")
+                token_pairs = await self._build_token_pairs_from_supported_tokens(dex)
+            elif hasattr(dex, 'get_pools'):
+                # If get_pools is available, try to use that
+                logger.info(f"Using get_pools for {dex.id} instead of get_token_pairs")
+                token_pairs = await self._build_token_pairs_from_pools(dex)
             else:
-                 logger.warning(f"DEX {dex.id} does not have get_token_pairs method.")
-                 return []
+                # No suitable method found
+                logger.warning(f"DEX {dex.id} does not have get_token_pairs or alternative methods.")
+                return []
 
             # Filter by tokens if specified
             if token_filter:
@@ -418,6 +427,204 @@ class CrossDexDetector(OpportunityDetector):
                         opportunities.append(opportunity)
 
         return opportunities
+
+    async def _build_token_pairs_from_supported_tokens(self, dex: BaseDEX) -> List[Any]:
+        """
+        Build token pairs from supported tokens.
+
+        Args:
+            dex: DEX to get token pairs from
+
+        Returns:
+            List of token pairs
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class TokenPair:
+            token0_address: str
+            token1_address: str
+            pool_address: str
+            reserve0: Decimal
+            reserve1: Decimal
+            fee: Decimal
+            dex_id: str
+            token0_decimals: int = 18
+            token1_decimals: int = 18
+
+        try:
+            # Get supported tokens
+            supported_tokens = await dex.get_supported_tokens()
+            if not supported_tokens:
+                logger.warning(f"No supported tokens found for {dex.id}")
+                return []
+
+            # Create pairs from supported tokens
+            pairs = []
+            for i, token0 in enumerate(supported_tokens):
+                for token1 in supported_tokens[i+1:]:
+                    try:
+                        # Check if pool exists
+                        try:
+                            pool_address = await dex.get_pool_address(token0, token1)
+                        except (ValueError, AttributeError):
+                            # Try with fee parameter if available
+                            try:
+                                if hasattr(dex, 'fee'):
+                                    pool_address = await dex.get_pool_address(token0, token1, fee=dex.fee)
+                                else:
+                                    # No pool exists for this pair
+                                    continue
+                            except Exception:
+                                # No pool exists for this pair
+                                continue
+
+                        if not pool_address or pool_address == "0x0000000000000000000000000000000000000000":
+                            continue
+
+                        # Get token decimals
+                        token0_decimals = 18
+                        token1_decimals = 18
+                        try:
+                            if hasattr(dex, 'get_token_decimals'):
+                                token0_decimals = await dex.get_token_decimals(token0)
+                                token1_decimals = await dex.get_token_decimals(token1)
+                        except Exception as e:
+                            logger.debug(f"Error getting token decimals: {e}")
+
+                        # Get reserves
+                        reserve0 = Decimal(0)
+                        reserve1 = Decimal(0)
+                        fee = Decimal("0.003")  # Default fee
+
+                        try:
+                            if hasattr(dex, 'get_reserves'):
+                                reserves = await dex.get_reserves(pool_address)
+                                if isinstance(reserves, tuple) and len(reserves) == 2:
+                                    reserve0, reserve1 = reserves
+                            elif hasattr(dex, 'get_pool_info'):
+                                pool_info = await dex.get_pool_info(pool_address)
+                                if pool_info:
+                                    # Extract reserves from pool info
+                                    if 'reserve0' in pool_info and 'reserve1' in pool_info:
+                                        reserve0 = Decimal(str(pool_info['reserve0']))
+                                        reserve1 = Decimal(str(pool_info['reserve1']))
+                                    # Extract fee from pool info
+                                    if 'fee' in pool_info:
+                                        fee = Decimal(str(pool_info['fee'])) / Decimal("1000000")
+                        except Exception as e:
+                            logger.debug(f"Error getting reserves: {e}")
+                            continue
+
+                        # Create token pair
+                        pair = TokenPair(
+                            token0_address=token0,
+                            token1_address=token1,
+                            pool_address=pool_address,
+                            reserve0=reserve0,
+                            reserve1=reserve1,
+                            fee=fee,
+                            dex_id=dex.id,
+                            token0_decimals=token0_decimals,
+                            token1_decimals=token1_decimals
+                        )
+                        pairs.append(pair)
+
+                        # Limit the number of pairs
+                        if len(pairs) >= self.max_pairs_per_dex:
+                            return pairs
+                    except Exception as e:
+                        logger.debug(f"Error creating pair {token0}/{token1}: {e}")
+                        continue
+
+            return pairs
+        except Exception as e:
+            logger.error(f"Error building token pairs from supported tokens for {dex.id}: {e}")
+            return []
+
+    async def _build_token_pairs_from_pools(self, dex: BaseDEX) -> List[Any]:
+        """
+        Build token pairs from pools.
+
+        Args:
+            dex: DEX to get token pairs from
+
+        Returns:
+            List of token pairs
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class TokenPair:
+            token0_address: str
+            token1_address: str
+            pool_address: str
+            reserve0: Decimal
+            reserve1: Decimal
+            fee: Decimal
+            dex_id: str
+            token0_decimals: int = 18
+            token1_decimals: int = 18
+
+        try:
+            # Get pools
+            pools = await dex.get_pools()
+            if not pools:
+                logger.warning(f"No pools found for {dex.id}")
+                return []
+
+            # Create pairs from pools
+            pairs = []
+            for pool in pools:
+                try:
+                    # Extract pool data
+                    pool_address = pool.get('address')
+                    token0 = pool.get('token0')
+                    token1 = pool.get('token1')
+
+                    if not pool_address or not token0 or not token1:
+                        continue
+
+                    # Get token decimals
+                    token0_decimals = 18
+                    token1_decimals = 18
+                    try:
+                        if hasattr(dex, 'get_token_decimals'):
+                            token0_decimals = await dex.get_token_decimals(token0)
+                            token1_decimals = await dex.get_token_decimals(token1)
+                    except Exception as e:
+                        logger.debug(f"Error getting token decimals: {e}")
+
+                    # Get reserves
+                    reserve0 = pool.get('reserve0', Decimal(0))
+                    reserve1 = pool.get('reserve1', Decimal(0))
+                    fee = pool.get('fee', Decimal("0.003"))  # Default fee
+
+                    # Create token pair
+                    pair = TokenPair(
+                        token0_address=token0,
+                        token1_address=token1,
+                        pool_address=pool_address,
+                        reserve0=Decimal(str(reserve0)),
+                        reserve1=Decimal(str(reserve1)),
+                        fee=Decimal(str(fee)),
+                        dex_id=dex.id,
+                        token0_decimals=token0_decimals,
+                        token1_decimals=token1_decimals
+                    )
+                    pairs.append(pair)
+
+                    # Limit the number of pairs
+                    if len(pairs) >= self.max_pairs_per_dex:
+                        return pairs
+                except Exception as e:
+                    logger.debug(f"Error creating pair from pool: {e}")
+                    continue
+
+            return pairs
+        except Exception as e:
+            logger.error(f"Error building token pairs from pools for {dex.id}: {e}")
+            return []
 
     async def _get_token_pair_prices(
         self, dex: BaseDEX, token_pair: Any

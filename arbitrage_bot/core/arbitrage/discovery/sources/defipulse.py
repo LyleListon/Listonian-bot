@@ -6,6 +6,7 @@ This module provides a DEX source that fetches information from DefiPulse.
 
 import asyncio
 import logging
+import os
 import time
 from typing import Dict, List, Optional, Any, Set
 
@@ -182,10 +183,18 @@ class DefiPulseSource(DEXSource):
             try:
                 # Check if API key is provided
                 if not self._api_key:
-                    logger.warning(
-                        "No API key provided for DefiPulse source, using fallback data"
-                    )
-                    dex_infos = await self._get_fallback_dexes()
+                    # Check if we're in real data only mode
+                    use_real_data_only = self.config.get("use_real_data_only", False)
+                    if use_real_data_only or os.environ.get("USE_REAL_DATA_ONLY", "").lower() == "true":
+                        logger.error(
+                            "No API key provided for DefiPulse source and real data only mode is enabled. Cannot use fallback data."
+                        )
+                        return []
+                    else:
+                        logger.warning(
+                            "No API key provided for DefiPulse source, using fallback data"
+                        )
+                        dex_infos = await self._get_fallback_dexes()
                 else:
                     # Fetch projects
                     projects = await self._fetch_projects()

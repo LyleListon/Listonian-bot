@@ -37,7 +37,7 @@ class DexScreenerSource(DEXSource):
         self._base_url = self.config.get(
             "base_url", "https://api.dexscreener.com/latest"
         )
-        self._dexes_endpoint = self.config.get("dexes_endpoint", "/dexs")
+        self._dexes_endpoint = self.config.get("dexes_endpoint", "/dexs/list/all")
         self._pairs_endpoint = self.config.get("pairs_endpoint", "/pairs")
 
         # Cache configuration

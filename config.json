@@ -1,5 +1,15 @@
 {
-    "provider_url": "https://mainnet.base.org",
+    "provider_url": "https://base-mainnet.g.alchemy.com/v2/your_alchemy_api_key",
+    "backup_providers": [
+        "https://base-mainnet.infura.io/v3/your_infura_api_key",
+        "https://mainnet.base.org"
+    ],
+    "rpc_settings": {
+        "max_retries": 5,
+        "retry_delay": 2,
+        "timeout": 30,
+        "batch_size": 50
+    },
     "chain_id": 8453,
     "private_key": "${PRIVATE_KEY}",
     "tokens": {
@@ -94,8 +104,9 @@
     },
     "monitoring": {
         "enabled": true,
-        "interval": 60,
-        "metrics_port": 9090
+        "interval": 30,
+        "metrics_port": 9090,
+        "use_real_data_only": true
     },
     "security": {
         "slippage_tolerance": 0.5,
@@ -108,5 +119,33 @@
         "cache_ttl": 600,
         "max_concurrent_paths": 10,
         "batch_size": 100
+    },
+    "market_data": {
+        "use_real_data_only": true,
+        "price_sources": ["onchain", "api"],
+        "api_keys": {
+            "coingecko": "${COINGECKO_API_KEY}",
+            "defillama": "${DEFILLAMA_API_KEY}",
+            "dexscreener": "${DEXSCREENER_API_KEY}"
+        },
+        "update_interval": 15,
+        "max_price_deviation": 1.0
+    },
+    "dex_discovery": {
+        "use_defipulse": false,
+        "discovery_interval_seconds": 3600,
+        "auto_validate": true,
+        "sources": {
+            "defillama": {
+                "enabled": true,
+                "base_url": "https://api.llama.fi",
+                "timeout": 30
+            },
+            "dexscreener": {
+                "enabled": true,
+                "base_url": "https://api.dexscreener.com/latest",
+                "timeout": 30
+            }
+        }
     }
 }

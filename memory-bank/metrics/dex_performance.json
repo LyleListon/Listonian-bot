@@ -1,26 +1,26 @@
 {
   "baseswap": {
-    "success_rate": 0.6903760820688618,
-    "total_profit_usd": 262.4329037269706,
-    "total_trades": 42,
-    "avg_profit_per_trade": 3.3220442650637527
+    "success_rate": 0.8181271846434063,
+    "total_profit_usd": 291.18582588967615,
+    "total_trades": 30,
+    "avg_profit_per_trade": 1.170772263801553
   },
   "aerodrome": {
-    "success_rate": 0.7565033177335738,
-    "total_profit_usd": 20.993548105735513,
-    "total_trades": 14,
-    "avg_profit_per_trade": 2.6702834942198543
+    "success_rate": 0.7262860616629372,
+    "total_profit_usd": 235.2448437376459,
+    "total_trades": 35,
+    "avg_profit_per_trade": 2.611928109335142
   },
   "pancakeswap": {
-    "success_rate": 0.8753794668699275,
-    "total_profit_usd": 202.36443219061252,
-    "total_trades": 34,
-    "avg_profit_per_trade": 1.3506243632296258
+    "success_rate": 0.9497415458428944,
+    "total_profit_usd": 106.5062560876441,
+    "total_trades": 32,
+    "avg_profit_per_trade": 1.1147881072433918
   },
   "swapbased": {
-    "success_rate": 0.7085884713265189,
-    "total_profit_usd": 114.48827246920148,
-    "total_trades": 31,
-    "avg_profit_per_trade": 2.1914624535981186
+    "success_rate": 0.6227245681232291,
+    "total_profit_usd": 80.53001922560262,
+    "total_trades": 47,
+    "avg_profit_per_trade": 4.424797478535095
   }
 }

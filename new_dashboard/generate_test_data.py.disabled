@@ -1,0 +1,342 @@
+#!/usr/bin/env python
+"""
+Test Data Generator
+
+This script generates test data for the dashboard and saves it to the memory bank.
+It can be used to test the dashboard without running the actual arbitrage bot.
+"""
+
+import json
+import os
+import random
+import time
+import argparse
+from datetime import datetime, timedelta
+from pathlib import Path
+
+
+class TestDataGenerator:
+    """Generate test data for the dashboard."""
+    
+    def __init__(self, output_dir, interval=1.0):
+        """Initialize the test data generator.
+        
+        Args:
+            output_dir: Directory to save test data to
+            interval: Interval between data updates in seconds
+        """
+        self.output_dir = Path(output_dir)
+        self.interval = interval
+        self.metrics_dir = self.output_dir / "metrics"
+        self.state_dir = self.output_dir / "state"
+        self.trades_dir = self.output_dir / "trades"
+        
+        # Create directories if they don't exist
+        self.metrics_dir.mkdir(parents=True, exist_ok=True)
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.trades_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize state
+        self.start_time = datetime.now()
+        self.trade_count = 0
+        self.total_profit = 0.0
+        self.success_count = 0
+        self.trade_history = []
+        
+        # Token pairs
+        self.token_pairs = [
+            "WETH/USDC",
+            "WETH/DAI",
+            "USDC/DAI",
+            "WBTC/WETH",
+            "WETH/USDT"
+        ]
+        
+        # DEXes
+        self.dexes = [
+            "BaseSwap",
+            "Aerodrome",
+            "Uniswap V3",
+            "SushiSwap"
+        ]
+        
+        # Initialize prices
+        self.prices = {
+            "WETH": 3500.0,
+            "WBTC": 65000.0,
+            "USDC": 1.0,
+            "DAI": 1.0,
+            "USDT": 1.0
+        }
+        
+        print(f"Test data generator initialized. Output directory: {self.output_dir}")
+    
+    def generate_metrics(self):
+        """Generate metrics data."""
+        # Update prices with small random changes
+        for token in self.prices:
+            change = random.uniform(-0.002, 0.002)  # 0.2% max change
+            self.prices[token] *= (1 + change)
+        
+        # System metrics
+        cpu_usage = random.uniform(10, 90)
+        memory_usage = random.uniform(20, 80)
+        disk_usage = random.uniform(30, 70)
+        
+        # Network metrics
+        gas_price = random.uniform(15, 40)
+        block_number = int(time.time() / 12) + 1000000  # Roughly one block every 12 seconds
+        
+        # Performance metrics
+        success_rate = self.success_count / max(1, self.trade_count)
+        
+        # Generate profit trend (last 24 hours)
+        profit_trend = []
+        for i in range(24):
+            timestamp = datetime.now() - timedelta(hours=24-i)
+            profit = random.uniform(0.001, 0.01)
+            profit_trend.append({
+                "timestamp": timestamp.isoformat(),
+                "profit": profit
+            })
+        
+        # Market data
+        market_data = {
+            "prices": {
+                "baseswap_v3": self.prices["WETH"] * random.uniform(0.998, 1.002),
+                "aerodrome_v3": self.prices["WETH"] * random.uniform(0.998, 1.002)
+            },
+            "liquidity": {
+                "baseswap_v3": random.uniform(100, 200) * 1e18,
+                "aerodrome_v3": random.uniform(80, 150) * 1e18
+            },
+            "spreads": {
+                "WETH/USDC": random.uniform(0.001, 0.005),
+                "WETH/DAI": random.uniform(0.001, 0.005),
+                "USDC/DAI": random.uniform(0.0001, 0.0005)
+            }
+        }
+        
+        # Calculate best spread
+        best_spread = max(market_data["spreads"].values()) * 100  # Convert to percentage
+        
+        # Metrics data
+        metrics = {
+            "timestamp": datetime.now().isoformat(),
+            "metrics": {
+                "total_profit_eth": self.total_profit,
+                "success_rate": success_rate,
+                "total_trades": self.trade_count,
+                "profit_trend": profit_trend,
+                "best_spread": best_spread
+            },
+            "system": {
+                "cpu_usage": cpu_usage,
+                "memory_usage": memory_usage,
+                "disk_usage": disk_usage
+            },
+            "gas_price": gas_price,
+            "block_number": block_number
+        }
+        
+        # Save metrics
+        metrics_file = self.metrics_dir / "metrics.json"
+        with open(metrics_file, "w") as f:
+            json.dump(metrics, f, indent=2)
+        
+        # Return combined data for WebSocket
+        return {
+            "metrics": metrics,
+            "market_data": market_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def generate_state(self):
+        """Generate state data."""
+        # Bot status
+        statuses = ["Running", "Scanning", "Executing Trade", "Idle"]
+        bot_status = random.choice(statuses)
+        
+        # Network status
+        network_statuses = ["Connected", "Syncing", "Reconnecting"]
+        network_status = random.choice(network_statuses)
+        network_status = "Connected" if random.random() < 0.9 else network_status  # 90% chance of Connected
+        
+        # State data
+        state = {
+            "timestamp": datetime.now().isoformat(),
+            "bot_status": bot_status,
+            "network_status": network_status,
+            "uptime": (datetime.now() - self.start_time).total_seconds(),
+            "last_update": datetime.now().isoformat()
+        }
+        
+        # Save state
+        state_file = self.state_dir / "state.json"
+        with open(state_file, "w") as f:
+            json.dump(state, f, indent=2)
+        
+        return state
+    
+    def generate_trade(self):
+        """Generate a random trade."""
+        # Only generate a trade sometimes
+        if random.random() > 0.2:  # 20% chance of generating a trade
+            return None
+        
+        # Generate trade data
+        token_pair = random.choice(self.token_pairs)
+        dex_1 = random.choice(self.dexes)
+        dex_2 = random.choice([d for d in self.dexes if d != dex_1])
+        
+        # Trade success/failure
+        success = random.random() < 0.8  # 80% success rate
+        
+        # Trade profit
+        profit = random.uniform(0.001, 0.01) if success else 0
+        gas_cost = random.uniform(0.0005, 0.002)
+        net_profit = profit - gas_cost if success else -gas_cost
+        
+        # Update totals
+        self.trade_count += 1
+        if success:
+            self.success_count += 1
+            self.total_profit += net_profit
+        
+        # Trade data
+        trade = {
+            "timestamp": datetime.now().isoformat(),
+            "opportunity": {
+                "token_pair": token_pair,
+                "dex_1": dex_1,
+                "dex_2": dex_2,
+                "potential_profit": profit
+            },
+            "success": success,
+            "profit": profit,
+            "gas_cost": gas_cost,
+            "net_profit": net_profit,
+            "tx_hash": f"0x{''.join(random.choices('0123456789abcdef', k=64))}" if success else None
+        }
+        
+        # Add to trade history
+        self.trade_history.append(trade)
+        
+        # Keep only the last 100 trades
+        if len(self.trade_history) > 100:
+            self.trade_history = self.trade_history[-100:]
+        
+        # Save trade history
+        trades_file = self.trades_dir / "recent_trades.json"
+        with open(trades_file, "w") as f:
+            json.dump(self.trade_history, f, indent=2)
+        
+        return trade
+    
+    def generate_opportunities(self):
+        """Generate active opportunities."""
+        # Number of opportunities
+        num_opportunities = random.randint(0, 5)
+        
+        opportunities = []
+        for _ in range(num_opportunities):
+            token_pair = random.choice(self.token_pairs)
+            dex_1 = random.choice(self.dexes)
+            dex_2 = random.choice([d for d in self.dexes if d != dex_1])
+            
+            potential_profit = random.uniform(0.0005, 0.008)
+            confidence = random.uniform(70, 99)
+            
+            opportunity = {
+                "token_pair": token_pair,
+                "dex_1": dex_1,
+                "dex_2": dex_2,
+                "potential_profit": potential_profit,
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            opportunities.append(opportunity)
+        
+        return opportunities
+    
+    def run(self, duration=None):
+        """Run the test data generator.
+        
+        Args:
+            duration: Duration to run for in seconds, or None to run indefinitely
+        """
+        start_time = time.time()
+        iteration = 0
+        
+        try:
+            while duration is None or time.time() - start_time < duration:
+                iteration += 1
+                print(f"Generating data (iteration {iteration})...")
+                
+                # Generate data
+                metrics_data = self.generate_metrics()
+                state_data = self.generate_state()
+                trade = self.generate_trade()
+                opportunities = self.generate_opportunities()
+                
+                # Combine data for WebSocket
+                combined_data = {
+                    **metrics_data,
+                    "system_status": state_data,
+                    "trade_history": self.trade_history,
+                    "opportunities": opportunities,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Save combined data for WebSocket
+                combined_file = self.output_dir / "combined_data.json"
+                with open(combined_file, "w") as f:
+                    json.dump(combined_data, f, indent=2)
+                
+                # Print status
+                print(f"  Timestamp: {datetime.now().isoformat()}")
+                print(f"  Total trades: {self.trade_count}")
+                print(f"  Total profit: {self.total_profit:.6f} ETH")
+                print(f"  Success rate: {(self.success_count / max(1, self.trade_count)) * 100:.1f}%")
+                if trade:
+                    print(f"  New trade: {trade['opportunity']['token_pair']} - {'Success' if trade['success'] else 'Failed'} - {trade['net_profit']:.6f} ETH")
+                print(f"  Active opportunities: {len(opportunities)}")
+                print()
+                
+                # Sleep until next update
+                time.sleep(self.interval)
+        
+        except KeyboardInterrupt:
+            print("\nTest data generator stopped by user.")
+        
+        print(f"Test data generator finished. Generated {iteration} iterations.")
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Test Data Generator")
+    parser.add_argument(
+        "--output-dir", 
+        default="memory-bank",
+        help="Directory to save test data to"
+    )
+    parser.add_argument(
+        "--interval", 
+        type=float, 
+        default=1.0,
+        help="Interval between data updates in seconds"
+    )
+    parser.add_argument(
+        "--duration", 
+        type=int, 
+        default=None,
+        help="Duration to run for in seconds, or None to run indefinitely"
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    generator = TestDataGenerator(args.output_dir, args.interval)
+    generator.run(args.duration)

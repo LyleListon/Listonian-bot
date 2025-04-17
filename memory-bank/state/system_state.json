@@ -1,31 +1,31 @@
 {
-  "timestamp": "2025-04-08T00:21:08.586585",
+  "timestamp": "2025-04-14T23:24:04.379453",
   "status": "running",
-  "uptime": 78568,
+  "uptime": 37136,
   "version": "1.0.0",
   "network": {
     "chain_id": 8453,
-    "gas_price": 0.8653509253988807,
-    "block_number": 5278753,
+    "gas_price": 0.8611384948740369,
+    "block_number": 5655179,
     "connected": true
   },
   "performance": {
-    "cpu_usage": 18.08465391090482,
-    "memory_usage": 291.57210153017695,
-    "disk_usage": 22.623615571799327
+    "cpu_usage": 39.8840893963133,
+    "memory_usage": 222.7227883554956,
+    "disk_usage": 11.59666714538461
   },
   "components": {
     "arbitrage_bot": {
       "status": "running",
-      "last_update": "2025-04-08T00:05:08.586592"
+      "last_update": "2025-04-14T23:22:04.379460"
     },
     "dashboard": {
       "status": "running",
-      "last_update": "2025-04-08T00:11:08.586596"
+      "last_update": "2025-04-14T23:14:04.379465"
     },
     "memory_bank": {
       "status": "healthy",
-      "last_update": "2025-04-08T00:08:08.586598"
+      "last_update": "2025-04-14T23:04:04.379467"
     }
   }
 }

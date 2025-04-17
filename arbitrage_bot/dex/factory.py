@@ -1,4 +1,4 @@
-e"""DEX factory for creating DEX instances."""
+"""DEX factory for creating DEX instances."""
 
 import logging
 from typing import Dict, Any, Optional

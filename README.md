@@ -48,8 +48,26 @@ The Listonian Arbitrage Bot is built with a modular architecture that separates 
 
 ### Running the Bot
 
+You can run the entire system using the `run_all.py` script:
+
+```bash
+python run_all.py --use-real-data --clear-memory
+```
+
+Command-line arguments:
+- `--use-real-data`: Use real data instead of mock data
+- `--clear-memory`: Clear the memory bank before starting
+
+Alternatively, you can run each component separately:
+
+1. Run the arbitrage bot:
 ```bash
 python run_bot.py
+```
+
+2. Run the dashboard:
+```bash
+python run_dashboard.py
 ```
 
 ## Configuration
@@ -69,6 +87,8 @@ The bot includes a real-time dashboard for monitoring performance:
 ```bash
 python run_dashboard.py
 ```
+
+The dashboard is available at `http://localhost:9050` by default. You can change the port by setting the `DASHBOARD_PORT` environment variable.
 
 ## Testing
 

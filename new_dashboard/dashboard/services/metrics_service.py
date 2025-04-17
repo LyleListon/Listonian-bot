@@ -8,7 +8,7 @@ import logging
 import statistics
 from pathlib import Path
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import psutil
 
 from ..core.logging import get_logger
@@ -39,7 +39,7 @@ class MetricsService:
                 "total_profit_eth": 0.0,
                 "success_rate": 0.0,
                 "total_trades": 0,
-                "gas_price": 0.0,  # Average gas price?
+                "gas_price": 0.0,  # Average gas price
                 # New Profitability Metrics
                 "net_profit_by_pair": {},  # e.g., {"ETH/USDC": 10.5}
                 "roi_by_trade_type": {},  # e.g., {"simple": 1.5, "flashloan": 0.8}
@@ -56,11 +56,16 @@ class MetricsService:
             "system_status": {
                 "network_status": "Unknown",
                 "bot_status": "Initializing",
-                "last_update": datetime.utcnow().isoformat(),
+                "last_update": datetime.now(timezone.utc).isoformat(),
+                "use_real_data_only": True,
             },
             "trade_history": [],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+        # Check environment for real data only flag
+        import os
+        self._use_real_data_only = os.environ.get('USE_REAL_DATA_ONLY', 'true').lower() == 'true'
         self._lock = asyncio.Lock()
         self._update_task: Optional[asyncio.Task] = None
         self._memory_update_task: Optional[asyncio.Task] = None
@@ -345,11 +350,11 @@ class MetricsService:
             # --- End New Metric Calculation ---
             # Update system status (assuming MemoryService doesn't provide this)
             # We might need a separate mechanism if bot status changes
-            self._stats["system_status"]["last_update"] = datetime.utcnow().isoformat()
+            self._stats["system_status"]["last_update"] = datetime.now(timezone.utc).isoformat()
 
             # Update timestamp from the memory service update if available
             self._stats["timestamp"] = update.get(
-                "timestamp", datetime.utcnow().isoformat()
+                "timestamp", datetime.now(timezone.utc).isoformat()
             )
 
             # Update the main metrics dictionary
@@ -373,7 +378,7 @@ class MetricsService:
                         # Update timestamp for this specific update type
                         self._stats["system_status"][
                             "last_update"
-                        ] = datetime.utcnow().isoformat()
+                        ] = datetime.now(timezone.utc).isoformat()
 
                         # Update the main metrics dictionary with the latest system stats
                         self._current_metrics["system"] = self._stats["system"]
@@ -490,7 +495,7 @@ class MetricsService:
             else:
                 price_change_pct = 0
 
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
 
             # Create price update record
             price_record = {

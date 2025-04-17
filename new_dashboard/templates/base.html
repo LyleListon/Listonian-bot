@@ -9,6 +9,7 @@
     <script src="{{ url_for('static', path='js/chart.min.js') }}"></script>
     <script src="{{ url_for('static', path='js/moment.min.js') }}"></script>
     <script src="{{ url_for('static', path='js/chartjs-adapter-date-fns.min.js') }}"></script>
+    <script src="{{ url_for('static', path='js/websocket-manager.js') }}"></script>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -44,53 +45,76 @@
     </div>
 
     <script>
-        // WebSocket connection
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        const connectionStatus = document.querySelector('#connection-status .status-value');
-        const memoryStatus = document.querySelector('#memory-status .status-value');
-        const updateTime = document.querySelector('#update-time .status-value');
+        // Initialize WebSocket Manager
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get DOM elements
+            const connectionStatus = document.querySelector('#connection-status .status-value');
+            const memoryStatus = document.querySelector('#memory-status .status-value');
+            const updateTime = document.querySelector('#update-time .status-value');
 
-        ws.onopen = () => {
-            console.log('WebSocket connection established');
-            connectionStatus.textContent = 'Connected';
-            connectionStatus.classList.add('connected');
-        };
+            // Configure WebSocket Manager
+            window.wsManager = new WebSocketManager({
+                debug: true,
+                endpoints: {
+                    metrics: '/ws/metrics',
+                    system: '/ws/system',
+                    trades: '/ws/trades',
+                    market: '/ws/market'
+                }
+            });
 
-        ws.onclose = () => {
-            console.log('WebSocket connection closed');
-            connectionStatus.textContent = 'Disconnected';
-            connectionStatus.classList.remove('connected');
-            setTimeout(() => {
-                window.location.reload();
-            }, 5000);
-        };
+            // Set up event handlers
+            window.wsManager.on('metrics', 'open', () => {
+                console.log('Metrics WebSocket connected');
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.classList.add('connected');
+            });
 
-        ws.onmessage = (event) => {
-            console.log('Raw WebSocket message:', event.data);
-            const data = JSON.parse(event.data);
-            console.log('Parsed WebSocket message:', data);
-            
-            if (data.type === 'memory_update') {
-                // Update memory status
-                const stats = data.data.memory_stats;
-                memoryStatus.textContent = `Market: ${stats.market_data_size} | Tx: ${stats.transactions_size} | Analytics: ${stats.analytics_size}`;
-                
+            window.wsManager.on('metrics', 'close', () => {
+                console.log('Metrics WebSocket disconnected');
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.classList.remove('connected');
+            });
+
+            window.wsManager.on('metrics', 'message', (data) => {
+                console.log('Received metrics update:', data);
+
+                // Update memory status if available
+                if (data.memory_stats) {
+                    const stats = data.memory_stats;
+                    memoryStatus.textContent = `Market: ${stats.market_data_size || 0} | Tx: ${stats.transactions_size || 0} | Analytics: ${stats.analytics_size || 0}`;
+                }
+
                 // Update timestamp
-                updateTime.textContent = moment(data.timestamp).format('HH:mm:ss');
-                
-                // Trigger custom event for page-specific updates
-                console.log('Dispatching memory update event:', data);
+                updateTime.textContent = moment(data.timestamp || new Date()).format('HH:mm:ss');
+
+                // Dispatch memory update event for backward compatibility
                 const updateEvent = new CustomEvent('memoryUpdate', { detail: data });
                 document.dispatchEvent(updateEvent);
-            }
-        };
+            });
 
-        // Error handling
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            connectionStatus.textContent = 'Error';
-            connectionStatus.classList.remove('connected');
-        };
+            window.wsManager.on('metrics', 'error', (error) => {
+                console.error('Metrics WebSocket error:', error);
+                connectionStatus.textContent = 'Error';
+                connectionStatus.classList.remove('connected');
+            });
+
+            // Connect to all endpoints
+            window.wsManager.connectAll();
+
+            // Set up reconnection check
+            setInterval(() => {
+                const allDisconnected = Object.keys(window.wsManager.endpoints).every(
+                    endpoint => window.wsManager.getStatus(endpoint) === 'closed' ||
+                               window.wsManager.getStatus(endpoint) === 'disconnected'
+                );
+
+                if (allDisconnected) {
+                    console.log('All WebSockets disconnected, attempting to reconnect...');
+                    window.wsManager.connectAll();
+                }
+            }, 10000); // Check every 10 seconds
+        });
     </script>
 
     {% block extra_scripts %}{% endblock %}
