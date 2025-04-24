@@ -1,5 +1,17 @@
 {
   "mcpServers": {
+    "filesystem": {
+  "command": "npx",
+  "args": [
+    "-y",
+    "@modelcontextprotocol/server-filesystem",
+    "/home/lylepaul78"
+  ],
+  "env": {},
+  "disabled": false,
+  "alwaysAllow": []
+},
+    
     "base-dex-scanner": {
       "command": "python",
       "args": ["run_base_dex_scanner_mcp.py"],

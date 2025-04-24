@@ -19,6 +19,18 @@
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       },
       "description": "Provides access to the Brave Search API for web searches"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/lylepaul78"
+      ],
+      "env": {},
+      "disabled": false,
+      "alwaysAllow": [],
+      "description": "Provides access to the filesystem for reading and writing files"
     }
   }
 }

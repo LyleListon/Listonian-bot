@@ -1,0 +1,15 @@
+{
+  "name": "context7-mcp-wrapper",
+  "version": "1.0.0",
+  "description": "Context7 MCP server wrapper for Listonian bot",
+  "main": "run_context7_mcp.py",
+  "scripts": {
+    "start": "python run_context7_mcp.py"
+  },
+  "dependencies": {
+    "@upstash/context7-mcp": "latest"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

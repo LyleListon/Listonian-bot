@@ -1,0 +1,40 @@
+{
+    "filesystem": {
+  "command": "npx",
+  "args": [
+    "-y",
+    "@modelcontextprotocol/server-filesystem",
+    "/home/lylepaul78"
+  ],
+  "env": {},
+  "disabled": false,
+  "alwaysAllow": []
+} 
+
+
+  "mcpServers": {
+    "base-dex-scanner": {
+      "command": "python",
+      "args": ["run_base_dex_scanner_mcp.py"],
+      "env": {
+        "BASE_RPC_URL": "${BASE_RPC_URL}",
+        "BASESCAN_API_KEY": "${BASESCAN_API_KEY}",
+        "DATABASE_URI": "${DATABASE_URI}",
+        "SCAN_INTERVAL_MINUTES": "60"
+      },
+      "description": "Monitors the Base blockchain for DEXes and pools",
+      "disabled": false,
+      "alwaysAllow": []
+    },
+    "brave-search": {
+      "command": "python",
+      "args": ["run_brave_search_mcp_wrapper.py"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      },
+      "description": "Provides access to the Brave Search API for web searches",
+      "disabled": false,
+      "alwaysAllow": []
+    }
+  }
+}

@@ -1,0 +1,17 @@
+from mcp_client import MCPClient
+
+def test_uniswap_docs():
+    client = MCPClient()
+    
+    # Try to get Uniswap V3 core documentation
+    docs = client.get_documentation("@uniswap/v3-core")
+    print("Uniswap V3 Core Documentation:")
+    print(docs)
+    
+    # Try to get Uniswap V3 periphery documentation
+    docs = client.get_documentation("@uniswap/v3-periphery")
+    print("\nUniswap V3 Periphery Documentation:")
+    print(docs)
+
+if __name__ == "__main__":
+    test_uniswap_docs()
